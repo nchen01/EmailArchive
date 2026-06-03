@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+*.so
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Alembic generated artifacts (keep versions/ but not pycache inside)
+alembic/__pycache__/
+alembic/versions/__pycache__/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/tsconfig.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / env files (never commit tokens)
+.env
+.env.*
+!.env.example
+
+# Tool-specific
+.codex_pydeps
+.claude/
+
+# Docker volumes (data lives outside the repo)
+pgdata/

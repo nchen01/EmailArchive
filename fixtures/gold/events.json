@@ -1,0 +1,20 @@
+[
+  {
+    "actor": "p_jenna",
+    "type": "did",
+    "summary": "Sent the Atlas cutover plan",
+    "source": "pmsg_000"
+  },
+  {
+    "actor": "p_raj",
+    "type": "proposed",
+    "summary": "Will re-shard the index before cutover",
+    "source": "pmsg_001"
+  },
+  {
+    "actor": "p_grace",
+    "type": "outcome",
+    "summary": "Staging cutover completed and verified",
+    "source": "pmsg_005"
+  }
+]

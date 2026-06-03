@@ -1,0 +1,191 @@
+# Email Knowledge Continuity
+
+> Turns a departing or covered employee's mailbox into a structured, queryable map
+> of people, projects, roles, and evidenced work — so a successor can take over fast.
+
+**Status:** S1 + S2 complete · S3 (project clustering + project view) is next.
+Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
+Target wedge: **coverage** (employee present, opt-in).
+
+---
+
+## TL;DR for engineers and AI agents reading this repo
+
+- **AI agents implementing this: start with `AGENTS.md`** — read order, the hard rules, and how to pick up a sprint.
+- The pipeline has four stages: **L0 ingest → L1 enrich → L2 retrieve (RAG) → L3 synthesize.**
+- The differentiated value is **L1 (structuring)**, *not* retrieval. Start with
+  `docs/specs/01-layer1-enrichment.md`.
+- Every user-facing claim MUST be **citation-bound** to a source `message_id_header`. No citation, no claim.
+- Schemas in `packages/ekc_schemas/` are the single source of truth. Generate, don't hand-copy.
+- Each spec section is tagged `@sprint` and `@acceptance` for sprint planning — see
+  [Sprint orientation](#sprint-orientation).
+
+## Why
+
+Onboarding is well tooled; offboarding and coverage are not. When someone leaves, goes
+on leave, or hands off a role, the institutional memory in their inbox — who they worked
+with, what they owned, the live state of each project — evaporates. This system turns the
+unstructured mailbox into structured knowledge a successor can query.
+
+## Two products, one engine
+
+| | Coverage (0-to-1, build first) | Offboarding (v2) |
+|---|---|---|
+| Trigger | Vacation, leave, role handoff | Departure / termination |
+| Employee present? | Yes — participates (clean consent) | No (admin-side, after the fact) |
+| Data freshness | Current | Historical |
+| Scrutiny | Low | High (reads as monitoring) |
+| Buyer | Manager | HR / IT |
+
+Same pipeline underneath; different go-to-market and risk profile.
+
+## Architecture
+
+```
+   mailbox ─► [L0 ingest] ─► [L1 enrich] ─► [L2 retrieve/RAG] ─► [L3 synthesize] ─► UI
+                                  │
+              materializes Person / Org / Project / Edge / Event objects
+              that L2 queries and L3 cites.
+```
+
+| Layer | Service | Responsibility |
+|---|---|---|
+| L0 | `services/ingest` | OAuth pull, thread reconstruction, dedupe, noise + sensitivity tagging |
+| L1 | `services/enrich` | identity resolution, relationship graph, role inference, project clustering, event extraction |
+| L2 | `services/retrieval` | embeddings + hybrid (vector + structured) retrieval over L1 objects |
+| L3 | `services/synthesis` | grounded, citation-bound answer generation |
+
+Full design rationale: `docs/implementation-plan.md`.
+
+## Tech stack
+
+One language per side: Python 3.11+ across the backend (data, ML, and services share a runtime),
+TypeScript/React on the frontend. Pydantic schemas in `packages/ekc_schemas` are the single contract
+that threads every layer, and FastAPI turns those same schemas into the API and OpenAPI types.
+
+| Area | Choice | Why |
+|---|---|---|
+| Language (backend) | Python 3.11+ | One runtime for ingest, ML enrichment, and services. |
+| Language (frontend) | TypeScript + React 18 | Network map + project view surfaces. |
+| Schemas / contract | Pydantic v2 → OpenAPI → TS types | One source of truth; no drift between API and UI. |
+| L0 ingest | `google-api-python-client`, `msgraph-sdk`, `authlib`, `html2text`, `charset-normalizer`, `tldextract` | Provider pull + MIME/body normalization. `talon` for quote/sig stripping where available; regex fallback otherwise. |
+| L1 enrich | `rapidfuzz` (identity); `numpy`, `scipy`, `scikit-learn`, `spaCy`, `sentence-transformers`, `hnswlib`, `python-igraph` + `leidenalg` (clustering, S3) | Identity resolution, graph, role inference, clustering. |
+| L2 retrieval | Postgres + `pgvector`, hybrid with Postgres FTS (BM25) | Vectors live next to relational data — one store to start. Graduate to Qdrant/OpenSearch only at scale. |
+| L3 synthesis | Claude via Anthropic API, structured outputs (`instructor`/Pydantic) | The only nondeterministic component, isolated behind the citation contract. |
+| API | FastAPI (async) | Pydantic-native; the schemas *are* the API. |
+| Frontend graph | React + `react-force-graph-2d` (D3 force simulation) | D9: chosen over sigma.js for simpler React integration at current scale. sigma.js is the upgrade path if the graph grows to thousands of nodes. |
+| Primary store | PostgreSQL 16 + `pgvector` (Docker) | Objects, embeddings, FTS in one engine. Migrations via Alembic. |
+| Object store | S3-compatible | Raw MIME archive + debug artifacts (attachments hash-only by default). Deferred to production hardening. |
+| Queue / cache | Redis + a task queue (`arq`/`dramatiq`) | Rate-limited ingest, async enrichment jobs. Synchronous for S1/S2 fixture runs; wired when real Gmail is connected. |
+| Secrets | Vault or cloud secrets manager | OAuth tokens are the crown-jewel credential — never in app DB/logs. Env-var shim behind `get_token()` for development. |
+| Infra | Docker Compose (dev); orchestration TBD (k8s / ECS / Fly) | CI runs tests + the clustering eval gates (spec 03 §18). |
+| Observability | `structlog` + OpenTelemetry/Prometheus | Plus per-stage debug artifacts (spec 03 §21, spec 00 §18). |
+
+Guiding choices: keep infra lean for the 0-to-1 (Postgres+pgvector instead of a separate vector
+DB), isolate the LLM at L3 so everything upstream is deterministic and debuggable, and let the
+embedding model be configured once and shared between L1 features (spec 03 §5) and L2 retrieval.
+
+## Repository layout
+
+```
+email-archive/
+  README.md
+  AGENTS.md                         # start here if you are an AI implementing this repo
+  docker-compose.yml                # Postgres 16 + pgvector dev DB
+  pyproject.toml                    # package config + pytest settings
+  requirements.txt
+  alembic.ini
+  alembic/
+    env.py
+    versions/
+      0001_baseline.py              # extensions + mailbox + audit tables + schema_meta
+      0002_l0_tables.py             # thread + message (with FTS tsvector) + attachments
+      0003_l1_tables.py             # org + person + identity + edge
+      0004_l1_projects.py           # project + event + assignments (S3)
+      0005_fix_event_citation_check.py  # D8: cardinality() replaces array_length()
+  docs/
+    implementation-plan.md          # the why + end-to-end design
+    decisions.md                    # D1–D9 resolved build decisions (supersede spec open decisions)
+    specs/
+      00-l0-ingest.md               # L0 ingest + normalization  ✓ S1
+      01-layer1-enrichment.md       # L1: identity, graph, roles, clustering, events  ✓ §3-§5 S1-S2
+      02-project-view.md            # project-view surface  → S3
+      03-project-clustering.md      # L1 §6 deep dive — full clustering impl  → S3
+      04-storage-schema.md          # Postgres + pgvector schema & migrations  ✓ S2
+      05-network-map.md             # network-map surface + API  ✓ S2
+  fixtures/                         # seed synthetic mailbox + gold labels
+    generate.py                     #   deterministic generator (source of truth)
+    mailbox.json                    #   18-message synthetic mailbox L0 ingests
+    gold/                           #   hand-labeled answers the acceptance gates check against
+  packages/
+    schemas/                        # Pydantic models = the single source of truth
+      models.py                     #   the one authoritative file — import, never re-declare
+      README.md                     #   conventions + contradictions reconciled
+  services/
+    db/                             # SQLAlchemy ORM models + Pydantic↔row mappers
+      engine.py  models.py  mappers.py  store.py
+    ingest/                         # L0  ✓ S1
+      providers/                    #   base.py · fixture.py · gmail.py · msgraph.py (stub)
+      normalize/                    #   address · threads · body · artifacts · noise · sensitivity
+      params.py  store.py  pipeline.py
+    enrich/                         # L1  ✓ S1-S2
+      identity.py  graph.py  roles.py  params.py  pipeline.py
+    api/                            # FastAPI  ✓ S2
+      main.py  deps.py
+      routers/network_map.py
+      schemas/network_map.py
+    retrieval/                      # L2 — not yet built (externally owned query router)
+    synthesis/                      # L3 — not yet built
+  frontend/                         # React 18 + TypeScript + react-force-graph-2d  ✓ S2
+    src/
+      api/        # client.ts + types.ts
+      components/ # NetworkMap · RoleLegend · ContactPanel
+      hooks/      # useNetworkMap · useContactDetail
+      utils/      # roleColors.ts
+  scripts/
+    dev_seed.py                     # seed fixture mailbox into DB; --serve starts uvicorn
+  tests/                            # 46 tests (38 pass without DB; 46 with)
+    test_l0_*.py   test_l1_*.py   test_db_roundtrip.py   test_api_network_map.py
+```
+
+## Conventions
+
+- **Language:** Python 3.11 for the backend. Data models are Pydantic v2, defined
+  authoritatively in `packages/ekc_schemas/models.py` — import them, never re-declare them.
+- **IDs:** every object has a stable `id` (UUIDv4). Email provenance is preserved as
+  `message_id_header` (RFC `Message-ID`) and provider `thread_id`; citations use `message_id_header`.
+- **Citations:** any asserting field carries `source_message_ids: list[str]` holding
+  `Message.message_id_header` (RFC) values — not internal ids — so they resolve to openable email.
+- **Confidence:** inferred fields (`role`, `project` membership) carry a `confidence: float`
+  in `[0, 1]`. The UI renders inferred facts only above a configurable threshold.
+- **Idempotency:** every L1 stage is a pure function of its inputs + a content hash, so a
+  mailbox can be re-processed without duplicating objects.
+- **Sprint tags:** spec sections carry `@sprint S<n>` and `@acceptance` blocks so this repo
+  is plannable by humans and parseable by AI agents.
+
+## Sprint orientation
+
+| Sprint | Theme | Status | Primary doc |
+|---|---|---|---|
+| S0 | Schemas contract + DB spec + synthetic fixture | ✓ done | `packages/ekc_schemas`, spec 04 |
+| S1 | L0 ingest + identity resolution + relationship graph | ✓ done | spec 00, spec 01 §3–§4 |
+| S2 | Role inference + DB migrations + network-map surface | ✓ done | spec 01 §5, spec 05 |
+| S3 | Project clustering + project view surface | **next** | spec 03, spec 02 |
+| S4 | Event extraction + L3 grounded synthesis | planned | spec 01 §7 |
+
+**Quick start (S1+S2 running):**
+```bash
+docker compose up -d                              # start Postgres + pgvector
+DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
+  alembic upgrade head                            # apply migrations
+python scripts/dev_seed.py                        # seed fixture; prints mailbox UUID
+uvicorn services.api.main:app --reload            # API on :8000
+cd frontend && VITE_MAILBOX_ID=<uuid> npm run dev # UI on :5173
+```
+
+## Privacy guardrails (non-negotiable)
+
+- The mailbox holds **third-party personal data**; those people retain GDPR/CCPA rights.
+- L0 must tag privileged / legal / HR / personal content so later layers can exclude it.
+- All access is logged (immutable audit trail); support retention limits and deletion.
+- *Not legal advice — a privacy review precedes any regulated-buyer sale.*

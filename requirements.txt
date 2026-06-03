@@ -1,0 +1,13 @@
+# Install the shared schemas package first so all services can import ekc_schemas.
+-e packages/
+pydantic>=2.0
+rapidfuzz>=3.0
+tldextract>=5.0
+html2text>=2024.2.26
+charset-normalizer>=3.3
+beautifulsoup4>=4.12
+google-api-python-client>=2.100
+google-auth>=2.20
+talon>=1.4; sys_platform != "win32"
+pytest>=8.0
+pytest-timeout>=2.1

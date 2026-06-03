@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "email-knowledge-continuity"
+version = "0.1.0"
+description = "Email Knowledge Continuity — mailbox → structured knowledge graph (SaaS)"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "rapidfuzz>=3.0",
+    "tldextract>=5.0",
+    "html2text>=2024.2.26",
+    "charset-normalizer>=3.3",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+gmail = [
+    "google-api-python-client>=2.100",
+    "google-auth>=2.20",
+]
+db = [
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "psycopg2-binary>=2.9",
+]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+test = [
+    "pytest>=8.0",
+    "pytest-timeout>=2.1",
+    "httpx>=0.27",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["services*"]
+exclude = ["tests*", "packages*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests", "packages"]

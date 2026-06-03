@@ -1,0 +1,31 @@
+# Normalize line endings: LF in the repo, platform-native on checkout.
+* text=auto
+
+# Force LF for files that must stay LF (scripts, configs consumed by Linux containers).
+*.py        text eol=lf
+*.sh        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.toml      text eol=lf
+*.ini       text eol=lf
+*.cfg       text eol=lf
+Makefile    text eol=lf
+
+# Force LF for web assets (Node tooling expects LF).
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.json      text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+
+# Docs — LF is fine.
+*.md        text eol=lf
+
+# Binary — no line-ending treatment.
+*.png       binary
+*.jpg       binary
+*.ico       binary
+*.woff2     binary
+*.pdf       binary

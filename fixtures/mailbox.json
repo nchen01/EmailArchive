@@ -1,0 +1,288 @@
+{
+  "owner_email": "alex@acme.com",
+  "internal_domains": [
+    "acme.com"
+  ],
+  "messages": [
+    {
+      "provider_id": "pmsg_000",
+      "provider_thread_id": "pt_atlas1",
+      "headers": {
+        "Message-ID": "<atlas-1@acme.com>",
+        "From": "Jenna Park <jenna@acme.com>",
+        "To": "Alex Rivera <alex@acme.com>, Raj Patel <raj@acme.com>",
+        "Date": "2026-04-01T09:00:00Z",
+        "Subject": "Atlas Migration: cutover plan"
+      },
+      "body_text": "Hi team, attaching the cutover plan for Atlas. Targeting the 5th.\n\nJenna Park\nStaff Engineer, Acme",
+      "attachments": [
+        {
+          "sha256": "18e64564df12114fac07bbd3f6689d33305194e111a7fe5407742bf3b9df27f0",
+          "filename": "cutover_plan.xlsx",
+          "mimetype": "application/vnd.ms-excel",
+          "size_bytes": 24000
+        }
+      ]
+    },
+    {
+      "provider_id": "pmsg_001",
+      "provider_thread_id": "pt_atlas1",
+      "headers": {
+        "Message-ID": "<atlas-2@acme.com>",
+        "From": "Raj Patel <raj@acme.com>",
+        "To": "Jenna Park <jenna@acme.com>, Alex Rivera <alex@acme.com>",
+        "Date": "2026-04-01T11:30:00Z",
+        "Subject": "Re: Atlas Migration: cutover plan",
+        "In-Reply-To": "<atlas-1@acme.com>",
+        "References": "<atlas-1@acme.com>"
+      },
+      "body_text": "I'll re-shard the index before cutover.\n\nOn Wed, Apr 1, Jenna Park <jenna@acme.com> wrote:\n> Hi team, attaching the cutover plan for Atlas. Targeting the 5th.\n\n--\nRaj Patel | Acme Engineering | raj@acme.com",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_002",
+      "provider_thread_id": "pt_atlas1",
+      "headers": {
+        "Message-ID": "<atlas-3@acme.com>",
+        "From": "Alex Rivera <alex@acme.com>",
+        "To": "Jenna Park <jenna@acme.com>, Raj Patel <raj@acme.com>",
+        "Date": "2026-04-02T08:15:00Z",
+        "Subject": "Re: Atlas Migration: cutover plan",
+        "In-Reply-To": "<atlas-2@acme.com>",
+        "References": "<atlas-1@acme.com> <atlas-2@acme.com>"
+      },
+      "body_text": "Approved. Let's proceed with the 5th.",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_003",
+      "provider_thread_id": "pt_atlas2",
+      "headers": {
+        "Message-ID": "<atlas-sow-1@datapipe.com>",
+        "From": "Ben Carter <ben@datapipe.com>",
+        "To": "Alex Rivera <alex@acme.com>, Jenna Park <jenna@acme.com>",
+        "Date": "2026-04-03T14:00:00Z",
+        "Subject": "DataPipe migration SOW \u2014 redlines"
+      },
+      "body_text": "Attaching the revised SOW for the Atlas data migration. See section 3 for the cutover window.",
+      "attachments": [
+        {
+          "sha256": "f05c19b57b8ed7d8219a590fb7802fa9c7bab07c8e2af2b31ebe36e2b9a5181b",
+          "filename": "sow_datapipe.pdf",
+          "mimetype": "application/pdf",
+          "size_bytes": 88000
+        }
+      ]
+    },
+    {
+      "provider_id": "pmsg_004",
+      "provider_thread_id": "pt_atlas2",
+      "headers": {
+        "Message-ID": "<atlas-sow-2@acme.com>",
+        "From": "Jenna Park <jenna@acme.com>",
+        "To": "Ben Carter <ben@datapipe.com>, Alex Rivera <alex@acme.com>",
+        "Date": "2026-04-03T16:20:00Z",
+        "Subject": "Re: DataPipe migration SOW \u2014 redlines",
+        "In-Reply-To": "<atlas-sow-1@datapipe.com>",
+        "References": "<atlas-sow-1@datapipe.com>"
+      },
+      "body_text": "Section 3 looks fine. One nit on the rollback clause.",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_005",
+      "provider_thread_id": "pt_atlas3",
+      "headers": {
+        "Message-ID": "<atlas-signoff-1@acme.com>",
+        "From": "Grace Mueller <grace@acme.com>",
+        "To": "Alex Rivera <alex@acme.com>",
+        "Date": "2026-04-06T10:00:00Z",
+        "Subject": "FWD: final cutover sign-off"
+      },
+      "body_text": "Staging cutover completed and verified over the weekend. Signing off.",
+      "attachments": [
+        {
+          "sha256": "18e64564df12114fac07bbd3f6689d33305194e111a7fe5407742bf3b9df27f0",
+          "filename": "cutover_plan.xlsx",
+          "mimetype": "application/vnd.ms-excel",
+          "size_bytes": 24000
+        }
+      ]
+    },
+    {
+      "provider_id": "pmsg_006",
+      "provider_thread_id": "pt_bor1",
+      "headers": {
+        "Message-ID": "<bor-1@acme.com>",
+        "From": "Aiko Tanaka <aiko@acme.com>",
+        "To": "Alex Rivera <alex@acme.com>, Marcus Lee <marcus@cloudpeak.io>",
+        "Date": "2026-03-10T09:00:00Z",
+        "Subject": "Borealis Launch kickoff"
+      },
+      "body_text": "Kicking off Borealis. Marcus, excited to have Cloudpeak as a launch partner.",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_007",
+      "provider_thread_id": "pt_bor1",
+      "headers": {
+        "Message-ID": "<bor-2@cloudpeak.io>",
+        "From": "Marcus Lee <marcus@cloudpeak.io>",
+        "To": "Aiko Tanaka <aiko@acme.com>, Alex Rivera <alex@acme.com>",
+        "Date": "2026-03-10T15:00:00Z",
+        "Subject": "Re: Borealis Launch kickoff",
+        "In-Reply-To": "<bor-1@acme.com>",
+        "References": "<bor-1@acme.com>"
+      },
+      "body_text": "Thrilled to partner. Sending over our requirements this week.",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_008",
+      "provider_thread_id": "pt_bor2",
+      "headers": {
+        "From": "Aiko Tanaka <aiko@acme.com>",
+        "To": "Alex Rivera <alex@acme.com>",
+        "Date": "2026-03-18T12:00:00Z",
+        "Subject": "Borealis launch copy review"
+      },
+      "body_text": "Draft launch copy attached for review.",
+      "attachments": [
+        {
+          "sha256": "5e7fe42dfdbf52b6c2d348597e9c224aa10bd7c33db0c3995fed778e1517ec70",
+          "filename": "borealis_copy_v2.docx",
+          "mimetype": "application/msword",
+          "size_bytes": 15000
+        }
+      ]
+    },
+    {
+      "provider_id": "pmsg_009",
+      "provider_thread_id": "pt_ren1",
+      "headers": {
+        "Message-ID": "<ren-1@northwind.com>",
+        "From": "Dana Okafor <dana@northwind.com>",
+        "To": "Alex Rivera <alex@acme.com>",
+        "Date": "2026-05-02T13:00:00Z",
+        "Subject": "Q3 Renewals \u2014 Northwind"
+      },
+      "body_text": "Renewal paperwork for Q3 is ready. Can you confirm seat count?",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_010",
+      "provider_thread_id": "pt_ren1",
+      "headers": {
+        "Message-ID": "<ren-2@acme.com>",
+        "From": "Alex Rivera <alex@acme.com>",
+        "To": "Dana Okafor <dana@northwind.com>",
+        "Date": "2026-05-02T17:30:00Z",
+        "Subject": "Re: Q3 Renewals \u2014 Northwind",
+        "In-Reply-To": "<ren-1@northwind.com>",
+        "References": "<ren-1@northwind.com>"
+      },
+      "body_text": "Confirmed: 240 seats.",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_011",
+      "provider_thread_id": "pt_sync1",
+      "headers": {
+        "Message-ID": "<sync-1@acme.com>",
+        "From": "Jenna Park <j.park@acme.com>",
+        "To": "Alex Rivera <alex@acme.com>, Aiko Tanaka <aiko@acme.com>, Grace Mueller <grace@acme.com>",
+        "Date": "2026-04-04T16:00:00Z",
+        "Subject": "Weekly sync notes"
+      },
+      "body_text": "Notes: Atlas cutover on track for the 5th; Borealis copy review pending Aiko.",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_012",
+      "provider_thread_id": "pt_dup",
+      "headers": {
+        "Message-ID": "<qq-dana@northwind.com>",
+        "From": "Dana Okafor <dana@northwind.com>",
+        "To": "Alex Rivera <alex@acme.com>",
+        "Date": "2026-05-05T09:00:00Z",
+        "Subject": "Re: quick question"
+      },
+      "body_text": "Quick one on the renewal discount tier \u2014 can we do 12%?",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_013",
+      "provider_thread_id": "pt_dup",
+      "headers": {
+        "Message-ID": "<qq-marcus@cloudpeak.io>",
+        "From": "Marcus Lee <marcus@cloudpeak.io>",
+        "To": "Alex Rivera <alex@acme.com>",
+        "Date": "2026-05-06T09:00:00Z",
+        "Subject": "Re: quick question"
+      },
+      "body_text": "Quick one on Borealis \u2014 when does the partner portal go live?",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_014",
+      "provider_thread_id": "pt_news1",
+      "headers": {
+        "List-Unsubscribe": "<mailto:unsub@updates.examplesaas.com>",
+        "Precedence": "bulk",
+        "Message-ID": "<news-1@updates.examplesaas.com>",
+        "From": "news <news@updates.examplesaas.com>",
+        "To": "Alex Rivera <alex@acme.com>",
+        "Date": "2026-04-15T06:00:00Z",
+        "Subject": "ExampleSaaS Monthly: 7 tips for power users"
+      },
+      "body_text": "Read our latest tips. Click here to learn more.",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_015",
+      "provider_thread_id": "pt_hr1",
+      "headers": {
+        "Message-ID": "<hr-1@acme.com>",
+        "From": "People Ops <hr@acme.com>",
+        "To": "Alex Rivera <alex@acme.com>",
+        "Date": "2026-04-20T10:00:00Z",
+        "Subject": "Your 2026 compensation review"
+      },
+      "body_text": "Your updated salary and benefits enrollment details for the 2026 performance review cycle.",
+      "attachments": []
+    },
+    {
+      "provider_id": "pmsg_016",
+      "provider_thread_id": "pt_legal1",
+      "headers": {
+        "Message-ID": "<legal-1@morrislaw.com>",
+        "From": "Morris Law <counsel@morrislaw.com>",
+        "To": "Alex Rivera <alex@acme.com>, Grace Mueller <grace@acme.com>",
+        "Date": "2026-04-22T11:00:00Z",
+        "Subject": "Privileged and confidential: DataPipe contract review"
+      },
+      "body_text": "Attorney-client privileged. Our review of the DataPipe agreement is attached.",
+      "attachments": [
+        {
+          "sha256": "a452caa71170bfbe77407b6c20182f63be1027f8b0d586b1ac53c912ba3a4b77",
+          "filename": "contract_review.pdf",
+          "mimetype": "application/pdf",
+          "size_bytes": 120000
+        }
+      ]
+    },
+    {
+      "provider_id": "pmsg_017",
+      "provider_thread_id": "pt_eval1",
+      "headers": {
+        "Message-ID": "<eval-1@vertexlabs.com>",
+        "From": "Jenna Brooks <jenna@vertexlabs.com>",
+        "To": "Alex Rivera <alex@acme.com>",
+        "Date": "2026-03-12T10:00:00Z",
+        "Subject": "Interested in Borealis \u2014 eval access?"
+      },
+      "body_text": "Hi Alex, Jenna Brooks here from Vertex Labs. We'd love early eval access to Borealis.\n\nJenna Brooks\nVertex Labs",
+      "attachments": []
+    }
+  ]
+}

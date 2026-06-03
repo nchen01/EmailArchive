@@ -1,0 +1,54 @@
+{
+  "members_by_provider_id": {
+    "T1": [
+      "pmsg_000",
+      "pmsg_001",
+      "pmsg_002"
+    ],
+    "T2": [
+      "pmsg_003",
+      "pmsg_004"
+    ],
+    "T3": [
+      "pmsg_005"
+    ],
+    "T4": [
+      "pmsg_006",
+      "pmsg_007"
+    ],
+    "T5": [
+      "pmsg_008"
+    ],
+    "T6": [
+      "pmsg_009",
+      "pmsg_010"
+    ],
+    "T7": [
+      "pmsg_011"
+    ],
+    "T8": [
+      "pmsg_012"
+    ],
+    "T9": [
+      "pmsg_013"
+    ],
+    "T10": [
+      "pmsg_014"
+    ],
+    "T11": [
+      "pmsg_015"
+    ],
+    "T12": [
+      "pmsg_016"
+    ],
+    "T13": [
+      "pmsg_017"
+    ]
+  },
+  "shared_provider_thread_id_but_separate": [
+    "pt_dup"
+  ],
+  "synthetic_message_id": [
+    "pmsg_008"
+  ]
+}

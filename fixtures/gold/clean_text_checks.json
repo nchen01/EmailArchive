@@ -1,0 +1,6 @@
+{
+  "pmsg_001": {
+    "startswith": "I'll re-shard the index before cutover.",
+    "must_not_contain": "Hi team, attaching"
+  }
+}

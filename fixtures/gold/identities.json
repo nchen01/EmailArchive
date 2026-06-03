@@ -1,0 +1,28 @@
+{
+  "address_to_person": {
+    "alex@acme.com": "p_alex",
+    "jenna@acme.com": "p_jenna",
+    "j.park@acme.com": "p_jenna",
+    "raj@acme.com": "p_raj",
+    "aiko@acme.com": "p_aiko",
+    "grace@acme.com": "p_grace",
+    "dana@northwind.com": "p_dana",
+    "marcus@cloudpeak.io": "p_marcus",
+    "ben@datapipe.com": "p_ben",
+    "jenna@vertexlabs.com": "p_jbrooks",
+    "hr@acme.com": "p_hr",
+    "counsel@morrislaw.com": "p_legal"
+  },
+  "must_merge": [
+    [
+      "jenna@acme.com",
+      "j.park@acme.com"
+    ]
+  ],
+  "must_not_merge": [
+    [
+      "jenna@acme.com",
+      "jenna@vertexlabs.com"
+    ]
+  ]
+}
