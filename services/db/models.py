@@ -1,7 +1,7 @@
 """SQLAlchemy 2.0 ORM models — one class per physical table (spec 04 §3-5).
 
 These mirror the authoritative SQL in spec 04. Shapes (the Pydantic contract)
-live in ``packages/schemas/models.py``; this module only describes *storage*.
+live in ``packages/ekc_schemas/models.py``; this module only describes *storage*.
 
 Notes
 -----

@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Email Knowledge Continuity — mailbox → structured knowledge graph (SaaS)"
 requires-python = ">=3.11"
 dependencies = [
+    "ekc-schemas @ file:packages",  # local monorepo package; path relative to this file
     "pydantic>=2.0",
     "rapidfuzz>=3.0",
     "tldextract>=5.0",

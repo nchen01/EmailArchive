@@ -32,7 +32,7 @@ exist; your job is to realize them faithfully, not to redesign them. **Read befo
 
 ## 3. Invariants you cannot break
 
-1. **Import models from `packages/schemas`; never re-declare or fork them.** Inline code in specs is
+1. **Import models from `ekc_schemas`; never re-declare or fork them.** Inline code in specs is
    illustrative; if it conflicts with the schema file, the file wins.
 2. **Two id schemes, never mixed:** internal foreign keys use UUID `id`; citations/provenance use
    `Message.message_id_header` (RFC 5322 Message-ID), so they survive re-ingest and open the email.
@@ -56,7 +56,7 @@ exist; your job is to realize them faithfully, not to redesign them. **Read befo
 The two deep-dive specs (00 and 03) share one shape — learn it once:
 
 - **Scope & invariants** — what you build and the rules around it.
-- **Data contracts** — a pointer to `packages/schemas`; import, don't redefine.
+- **Data contracts** — a pointer to `ekc_schemas`; import, don't redefine.
 - **Stages** — each section is headed with its target module file (e.g. `normalize/threads.py`,
   `communities.py`) and carries reference code. Implement file by file, in order.
 - **Parameters & defaults** — go in `params.py`; nothing hardcoded in logic.
@@ -69,7 +69,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
 
 ## 5. Sprint & dependency order
 
-- **S0 ✓** — schemas contract (`packages/schemas/models.py`), DB spec (spec 04), and seed fixture
+- **S0 ✓** — schemas contract (`packages/ekc_schemas/models.py`), DB spec (spec 04), and seed fixture
   (`fixtures/`, 18 messages + `gold/`) are all in place.
 - **S1 ✓** — L0 ingest (`services/ingest/`) + identity resolution + relationship graph
   (`services/enrich/identity.py`, `graph.py`). 38 passing tests.
@@ -120,7 +120,7 @@ authoritative field name is `Message.message_id_header`.
 
 ## 9. When docs disagree
 
-Precedence: **`packages/schemas/models.py` → your layer's spec → `implementation-plan.md` → README →
+Precedence: **`packages/ekc_schemas/models.py` → your layer's spec → `implementation-plan.md` → README →
 this file.** Where specs overlap, the newer (spec 03) overrides the older (spec 01 §6). When a spec's
 **"Open decisions"** list contains an item that **`docs/decisions.md`** has resolved, the decision log
 wins. **Surface the conflict** to a human; do not silently choose.

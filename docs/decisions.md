@@ -7,7 +7,7 @@ binding for the build.
 ---
 
 ## D1 — Build order: logic in-memory first, persistence second
-**Decision.** Implement L0 and L1 as pure functions producing `packages/schemas` objects, validated
+**Decision.** Implement L0 and L1 as pure functions producing `ekc_schemas` objects, validated
 in-memory against `fixtures/`, *before* writing the DB layer. Then implement Alembic migrations
 (spec 04 tickets 4.1–4.4) + mappers (4.7) and the round-trip/idempotency tests.
 **Why.** The acceptance gates (spec 00 §19, spec 01, spec 03 §22) check object correctness, not
@@ -82,9 +82,11 @@ expanded phrase instead.
 empty array, so the constraint correctly rejects it. This is a real spec bug.
 **Scope.** S2 (migration 0005). **Affects.** spec 04 §5 (event table, to be amended); `0004_l1_projects.py` uses `cardinality` (correct); `0005_fix_event_citation_check.py` re-adds the constraint correctly on the live DB.
 
-## D9 — Frontend graph library: `react-force-graph`
-**Decision.** Use `react-force-graph` (backed by D3 force simulation) for the network-map
-canvas. Record as a library choice — not revisit it unless a performance threshold is hit.
+## D9 — Frontend graph library: `react-force-graph-2d`
+**Decision.** Use `react-force-graph-2d` (backed by D3 force simulation) for the network-map
+canvas. The umbrella `react-force-graph` package (which bundles 2D, 3D, and VR renderers) is
+not installed — only the 2D variant. Record as a library choice — not revisit unless a
+performance threshold is hit.
 **Why over sigma.js:** simpler React integration, no separate renderer setup, force-directed
 layout is automatic, and at fixture-scale (10 nodes) and expected production scale (hundreds of
 nodes) D3 force performs fine. Sigma.js is the upgrade path if the graph grows to thousands of

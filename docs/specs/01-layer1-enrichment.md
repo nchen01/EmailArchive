@@ -21,9 +21,9 @@ Five sub-modules, run in this order (each idempotent):
 4. Project clustering   → `Project`
 5. Event extraction     → `Event`
 
-## 2. Data models (`packages/schemas`)
+## 2. Data models (`ekc_schemas`)
 
-> **Authoritative definitions live in `packages/schemas/models.py`.** The code below is
+> **Authoritative definitions live in `packages/ekc_schemas/models.py`.** The code below is
 > illustrative context — import the real models, do not re-declare them. (Note: the `Project`
 > model shown here is superseded by the richer one in spec 03 / the schemas package.)
 

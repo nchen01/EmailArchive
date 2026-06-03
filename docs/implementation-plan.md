@@ -177,7 +177,7 @@ Where summaries get generated — and where the grounding discipline lives.
 - Role inference — rules-based v1 (internal/external split + keyword signals).
 - PostgreSQL 16 + pgvector persistence via Alembic migrations + SQLAlchemy mappers.
 - Network-map surface: FastAPI `GET /api/network-map/{mailbox_id}` + contact detail endpoint.
-  React 18 + `react-force-graph` frontend with role-colored nodes, legend toggles, contact drawer.
+  React 18 + `react-force-graph-2d` frontend with role-colored nodes, legend toggles, contact drawer.
 
 **Next (S3):**
 - Project clustering (spec 03, tickets 3.1–3.11): thread-similarity graph, community detection,

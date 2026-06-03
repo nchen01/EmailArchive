@@ -45,9 +45,9 @@ Goals, in priority order:
   - `clean_text` is valid UTF-8; raw MIME is archived separately (object store), never inline.
   - Re-ingesting an unchanged mailbox is a no-op (idempotent upsert by content hash).
 
-## 3. Data contracts (`packages/schemas`)
+## 3. Data contracts (`ekc_schemas`)
 
-> **Authoritative definitions live in `packages/schemas/models.py`.** The code below is
+> **Authoritative definitions live in `packages/ekc_schemas/models.py`.** The code below is
 > illustrative context for this spec — import the real models, do not re-declare them.
 
 ```python

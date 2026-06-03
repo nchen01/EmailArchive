@@ -1,8 +1,8 @@
 """Network-map response DTOs (spec 05 §5).
 
-These are serializations DERIVED from ``packages.schemas`` (Person, Edge, Thread,
+These are serializations DERIVED from ``ekc_schemas`` (Person, Edge, Thread,
 Role) — not a fork. The role *value strings* come straight from
-``packages.schemas.Role``; the API never emits display labels or colors (spec 05 §4).
+``ekc_schemas.Role``; the API never emits display labels or colors (spec 05 §4).
 """
 from __future__ import annotations
 

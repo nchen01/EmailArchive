@@ -2,7 +2,7 @@
 
 Two directions per model. The ``*_to_row`` functions return plain column dicts
 (used by the upsert statements in ``store.py``); the ``row_to_*`` functions
-reconstruct the authoritative ``packages.schemas`` objects from ORM rows.
+reconstruct the authoritative ``ekc_schemas`` objects from ORM rows.
 
 Design notes
 ------------

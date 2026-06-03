@@ -238,7 +238,7 @@ Gates run against the fixture's L1 output (after identity resolution + graph + r
 
 ### Frontend
 - [ ] Graph canvas: force-directed layout, owner pinned at center, role-colored nodes, weighted
-      edges. Use `react-force-graph` or `sigma.js` (pick one; note choice in a follow-up decision).
+      edges. Uses `react-force-graph-2d` (D9 — resolved, do not re-open).
 - [ ] Role legend with toggle.
 - [ ] Contact detail drawer: header + stats + recent threads.
 - [ ] "Ask about this contact" button (disabled, S4 tooltip).
@@ -247,8 +247,7 @@ Gates run against the fixture's L1 output (after identity resolution + graph + r
 
 ## 9. Open decisions
 
-- **Graph library choice:** `react-force-graph` vs `sigma.js` vs `d3` direct. Decision gates the
-  frontend ticket — choose and log before implementing the canvas.
+- **Graph library choice:** resolved as `react-force-graph-2d` (D9 in `docs/decisions.md`). Not an open decision.
 - **Layout algorithm:** force-directed (default, interactive) vs static hierarchical. Force-
   directed is the natural fit; note that with 10 nodes the fixture is small — test the layout at
   ~50 nodes before committing.

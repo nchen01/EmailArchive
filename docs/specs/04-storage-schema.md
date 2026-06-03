@@ -1,12 +1,12 @@
 # Spec 04 — Storage Schema & Migrations (foundation)
 
-> Maps the authoritative `packages/schemas` objects to physical Postgres + pgvector tables.
+> Maps the authoritative `ekc_schemas` objects to physical Postgres + pgvector tables.
 > Build-ready: an agent should be able to write the migrations and the persistence layer from
 > this doc alone. This is **foundational** — L0 §12 (persist) and all of L1 write through it, so
 > it lands in **Sprint 0** before S1 persistence.
 
 **Stack (pinned):** PostgreSQL 16 · `pgvector` ≥ 0.7 · SQLAlchemy 2.0 (Core/ORM) · Alembic
-(migrations). Source of truth for *shapes* remains `packages/schemas/models.py`; this spec defines
+(migrations). Source of truth for *shapes* remains `packages/ekc_schemas/models.py`; this spec defines
 how those shapes are *stored*, not what they are.
 
 ---

@@ -10,7 +10,7 @@
 ## TL;DR
 
 The **engine transitions cleanly**. Coverage and offboarding run the *same* L0→L1→L2→L3 pipeline
-over the same `packages/schemas` contracts (this is the "two products, one engine" premise in
+over the same `ekc_schemas` contracts (this is the "two products, one engine" premise in
 `README.md` and `implementation-plan.md` §2). Offboarding is **not a second build** — it is:
 
 1. a different **consent + trigger** path into ingestion,
@@ -25,7 +25,7 @@ The pipeline is product-agnostic: L0 ingests a mailbox, L1 structures it, L2 ret
 with citations. None of it cares *why* the mailbox is being processed — a departed employee's inbox
 and a vacationing employee's inbox are the same shape going in.
 
-- **All data contracts** (`packages/schemas/models.py`) — no schema changes required.
+- **All data contracts** (`packages/ekc_schemas/models.py`) — no schema changes required.
 - **L0 normalization, L1 enrichment (identity, graph, roles, clustering, events), L2 retrieval, L3
   grounded synthesis** — reused as-is.
 - **The citation contract and grounding discipline** — identical, and arguably more valuable here.
@@ -80,7 +80,7 @@ deletion semantics.
 | 5 | Retention/TTL + data-subject deletion enforcement | Eng | spec 04 §10/§12 |
 | 6 | UI copy shift: "live state" → "state at departure" | Eng (surface) | spec 02 |
 | 7 | Promote accomplishment summaries to a primary surface | Eng | spec 01 §7 (events) + L3 |
-| 8 | Pipeline engine (L0–L3) | **No change** | `packages/schemas`, specs 00/01/03 |
+| 8 | Pipeline engine (L0–L3) | **No change** | `ekc_schemas`, specs 00/01/03 |
 
 ## Bottom line
 

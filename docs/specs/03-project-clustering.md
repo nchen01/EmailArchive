@@ -45,7 +45,7 @@ Goals, in priority order:
 
 ## 3. Data contracts
 
-> **Authoritative definitions live in `packages/schemas/models.py`.** The code below is
+> **Authoritative definitions live in `packages/ekc_schemas/models.py`.** The code below is
 > illustrative context — import the real models, do not re-declare them.
 
 ```python
@@ -155,7 +155,7 @@ def build_thread_features(threads, messages_by_thread, embed_fn, nlp, tfidf,
 Notes:
 - `tfidf` is a `TfidfVectorizer` fit over **all thread documents** in the mailbox (one doc per
   thread, cleaned text). `top_terms` returns the highest-weight n-grams (1–2) per thread.
-- `embed_fn` MUST be the same model used by L2 retrieval — align in `packages/schemas` config.
+- `embed_fn` MUST be the same model used by L2 retrieval — align in `ekc_schemas` config.
 - Owner is excluded from `participants`: they are on every thread and carry zero discriminative
   signal. The same applies to any auto-distribution list flagged by L0.
 
