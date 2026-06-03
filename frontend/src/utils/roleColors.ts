@@ -1,5 +1,5 @@
 // Canonical role -> color map (spec 05 §4). Role value strings match
-// packages.schemas.Role. The API never emits labels/colors; the frontend owns them.
+// ekc_schemas.Role. The API never emits labels/colors; the frontend owns them.
 
 export const ROLE_COLORS: Record<string, string> = {
   internal: "#4F81BD",

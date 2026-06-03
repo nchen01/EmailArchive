@@ -13,7 +13,7 @@ interface NetworkMapProps {
   selectedPersonId: string | null;
 }
 
-// Graph node: the API node fields plus react-force-graph display fields.
+// Graph node: the API node fields plus react-force-graph-2d display fields.
 interface GraphNode {
   id: string;
   name: string;

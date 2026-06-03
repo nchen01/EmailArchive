@@ -175,12 +175,24 @@ email-archive/
 
 **Quick start (S1+S2 running):**
 ```bash
-docker compose up -d                              # start Postgres + pgvector
+# 1. Python deps (one time)
+pip install -e packages/   # editable schema — changes to models.py are live
+pip install -e .[dev]      # app + all dev/test/api/db/gmail deps
+# or: pip install -r requirements.txt  (same thing in one command)
+
+# 2. Database
+docker compose up -d                                          # start Postgres + pgvector
 DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
-  alembic upgrade head                            # apply migrations
-python scripts/dev_seed.py                        # seed fixture; prints mailbox UUID
-uvicorn services.api.main:app --reload            # API on :8000
-cd frontend && VITE_MAILBOX_ID=<uuid> npm run dev # UI on :5173
+  alembic upgrade head                                        # apply migrations
+
+# 3. Run
+python scripts/dev_seed.py                                    # seed fixture; prints mailbox UUID
+uvicorn services.api.main:app --reload                        # API on :8000
+cd frontend && npm install && VITE_MAILBOX_ID=<uuid> npm run dev  # UI on :5173
+
+# 4. Tests
+DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
+  pytest                                                      # 46 tests (8 skip without DB)
 ```
 
 ## Privacy guardrails (non-negotiable)
