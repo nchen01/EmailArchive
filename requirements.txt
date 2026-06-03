@@ -1,10 +1,12 @@
 # Development convenience installer.
 # pyproject.toml is the source of truth for all dependencies.
 #
-# Installs ekc_schemas in editable mode (changes to models.py are live)
-# then the app with all dev/test/api/db/gmail deps in one shot:
--e packages/
+# Install everything needed for local development and testing:
 -e .[dev]
 #
-# CI (no gmail deps, no editable schema): pip install -e .[test]
-# Production (choose the extras the service needs): pip install .[api,db]
+# Optional — only needed if you are actively editing packages/ekc_schemas/models.py
+# and want changes to be live without reinstalling:
+#   pip install -e packages/
+#
+# CI (no gmail deps): pip install -e .[test]
+# Production (pick the service extras): pip install .[api,db]

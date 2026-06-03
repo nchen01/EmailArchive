@@ -118,9 +118,10 @@ email-archive/
     mailbox.json                    #   18-message synthetic mailbox L0 ingests
     gold/                           #   hand-labeled answers the acceptance gates check against
   packages/
-    schemas/                        # Pydantic models = the single source of truth
-      models.py                     #   the one authoritative file — import, never re-declare
-      README.md                     #   conventions + contradictions reconciled
+    ekc_schemas/                    # installable schema package (`pip install -e packages/`)
+      __init__.py
+      models.py                     #   THE source of truth — import, never re-declare
+    pyproject.toml                  #   declares `ekc-schemas`; root pyproject.toml depends on it
   services/
     db/                             # SQLAlchemy ORM models + Pydantic↔row mappers
       engine.py  models.py  mappers.py  store.py
@@ -176,9 +177,9 @@ email-archive/
 **Quick start (S1+S2 running):**
 ```bash
 # 1. Python deps (one time)
-pip install -e packages/   # editable schema — changes to models.py are live
 pip install -e .[dev]      # app + all dev/test/api/db/gmail deps
-# or: pip install -r requirements.txt  (same thing in one command)
+# or: pip install -r requirements.txt  (same thing)
+# optional: pip install -e packages/  # only if actively editing models.py
 
 # 2. Database
 docker compose up -d                                          # start Postgres + pgvector
