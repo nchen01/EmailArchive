@@ -37,22 +37,6 @@ OWNER_EMAIL = "alex@acme.com"
 INTERNAL_DOMAINS = ["acme.com"]
 
 
-@pytest.fixture(scope="session", autouse=True)
-def clean_db_for_session():
-    """Wipe all mailboxes before the API test session (see test_db_roundtrip.py for rationale)."""
-    if not _db_reachable():
-        return
-    from services.db import models as orm
-    from services.db.engine import SessionLocal
-
-    s = SessionLocal()
-    try:
-        s.execute(orm.Mailbox.__table__.delete())
-        s.commit()
-    finally:
-        s.close()
-
-
 @pytest.fixture()
 def seeded():
     """Persist fixture L0+L1 into a fresh isolated mailbox; yield (client, mailbox_id)."""

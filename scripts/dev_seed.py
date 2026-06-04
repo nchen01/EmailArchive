@@ -74,6 +74,7 @@ def seed() -> str:
         cfg = IngestConfig(
             provider="fixture",
             mailbox_path=FIXTURE,
+            db_mailbox_id=mailbox_id,   # scope Message/Thread PKs to this mailbox
             owner_email=OWNER_EMAIL,
             internal_domains=INTERNAL_DOMAINS,
             params=params,

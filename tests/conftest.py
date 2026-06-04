@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -8,6 +9,58 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 FIXTURE_DIR = ROOT / "fixtures"
+
+
+# ── Optional DB wipe (test isolation) ────────────────────────────────────────
+#
+# Message.id = uuid5("msg:<db_mailbox_id>:<message_id_header>") when a real DB
+# mailbox UUID is supplied, so dev_seed.py messages and test messages get
+# different PKs and coexist without collision.  No wipe needed under normal use.
+#
+# If you DO need a clean slate (e.g. old data from before this fix), enable by
+# setting EKC_TEST_DB_ALLOW_WIPE=1 OR pointing DATABASE_URL at a DB whose name
+# ends in _test / _tests / _testing.
+def _db_wipe_allowed() -> bool:
+    if os.environ.get("EKC_TEST_DB_ALLOW_WIPE", "").lower() in ("1", "true", "yes"):
+        return True
+    db_name = os.environ.get("DATABASE_URL", "").rsplit("/", 1)[-1].split("?")[0]
+    return db_name.endswith(("_test", "_tests", "_testing"))
+
+
+def _db_reachable() -> bool:
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        return False
+    try:
+        from services.db.engine import engine
+        with engine.connect():
+            return True
+    except Exception:
+        return False
+
+
+import pytest  # noqa: E402  (must be after sys.path manipulation)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _maybe_wipe_db_for_test_session():
+    """Wipe all mailboxes before the test session IF explicitly allowed.
+
+    With db_mailbox_id-scoped Message/Thread PKs (see threads.py), dev_seed data
+    and test data no longer collide, so this fixture is normally a no-op.
+    Enable via EKC_TEST_DB_ALLOW_WIPE=1 or a DATABASE_URL ending in _test.
+    """
+    if not _db_reachable() or not _db_wipe_allowed():
+        return
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+
+    s = SessionLocal()
+    try:
+        s.execute(orm.Mailbox.__table__.delete())
+        s.commit()
+    finally:
+        s.close()
 
 
 def load_mailbox():

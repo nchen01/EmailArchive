@@ -15,7 +15,10 @@ from .store import IngestStore, persist
 class IngestConfig:
     provider: str = "fixture"            # "fixture" | "gmail" | "msgraph"
     mailbox_path: Path | None = None     # for fixture provider
-    mailbox_id: str = ""                 # for gmail/msgraph
+    mailbox_id: str = ""                 # provider credential ID (gmail/msgraph OAuth)
+    db_mailbox_id: str = ""              # DB mailbox UUID; scopes Message/Thread PKs so two
+                                         # mailboxes can hold the same RFC Message-ID without
+                                         # primary-key collision.  Empty = in-memory/test mode.
     owner_email: str = ""
     internal_domains: list[str] = field(default_factory=list)
     params: IngestParams = field(default_factory=IngestParams)
@@ -38,5 +41,5 @@ def run_ingest(cfg: IngestConfig) -> IngestStore:
     provider = make_provider(cfg)
     provider.authorize({})
     raws = list(provider.fetch_all())
-    messages, threads = reconstruct(raws, cfg.owner_email, cfg.params)
+    messages, threads = reconstruct(raws, cfg.owner_email, cfg.params, cfg.db_mailbox_id)
     return persist(messages, threads)

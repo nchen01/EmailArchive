@@ -38,31 +38,6 @@ OWNER_EMAIL = "alex@acme.com"
 INTERNAL_DOMAINS = ["acme.com"]
 
 
-@pytest.fixture(scope="session", autouse=True)
-def clean_db_for_session():
-    """Delete all mailboxes (cascade) before the DB test session runs.
-
-    Message IDs are uuid5("msg:" + message_id_header) — globally deterministic,
-    independent of mailbox — so if dev_seed.py was run before the tests, the
-    seeded mailbox's messages have the same PKs as what test mailboxes will try
-    to insert. This fixture wipes the slate so each test starts from a known state.
-
-    Tests create their own isolated mailbox rows and cascade-delete them on
-    teardown via the `mailbox_id` fixture below.
-    """
-    if not _db_reachable():
-        return
-    from services.db import models as orm
-    from services.db.engine import SessionLocal
-
-    s = SessionLocal()
-    try:
-        s.execute(orm.Mailbox.__table__.delete())
-        s.commit()
-    finally:
-        s.close()
-
-
 @pytest.fixture()
 def session():
     from services.db.engine import SessionLocal
