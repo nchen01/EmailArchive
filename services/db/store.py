@@ -68,7 +68,13 @@ def persist_l0(store: IngestStore, mailbox_id: str, session: Session) -> None:
 
 
 def persist_l1(result: EnrichResult, mailbox_id: str, session: Session) -> None:
-    """Upsert orgs, persons, identities, edges. Idempotent on id / natural keys."""
+    """Upsert orgs, persons, identities, edges (+ clustering if present).
+
+    Idempotent on id / natural keys. Clustering rows are mailbox-scoped and a
+    re-cluster may change the project set, so existing project rows for the
+    mailbox are cleared before re-insert (project/member/assignment children
+    cascade on delete).
+    """
     org_rows = [mappers.org_to_row(o, mailbox_id) for o in result.orgs]
     _upsert(session, orm.Org, org_rows, ["id"])
 
@@ -81,4 +87,41 @@ def persist_l1(result: EnrichResult, mailbox_id: str, session: Session) -> None:
     edge_rows = [mappers.edge_to_row(e, mailbox_id) for e in result.edges]
     _upsert(session, orm.Edge, edge_rows, ["mailbox_id", "person_id"])
 
+    if result.clustering is not None:
+        _persist_clustering(result.clustering, mailbox_id, session)
+
     session.commit()
+
+
+def _persist_clustering(clustering, mailbox_id: str, session: Session) -> None:
+    """Replace the mailbox's projects with the new clustering result."""
+    from sqlalchemy import delete, select
+
+    # Clear existing projects (children cascade); assignments reference projects.
+    old_ids = list(
+        session.execute(
+            select(orm.Project.id).where(orm.Project.mailbox_id == mailbox_id)
+        ).scalars()
+    )
+    if old_ids:
+        session.execute(
+            delete(orm.ThreadProjectAssignment).where(
+                orm.ThreadProjectAssignment.project_id.in_(old_ids)
+            )
+        )
+        session.execute(delete(orm.Project).where(orm.Project.id.in_(old_ids)))
+
+    project_rows = [
+        mappers.project_to_row(p, mailbox_id) for p in clustering.projects
+    ]
+    _upsert(session, orm.Project, project_rows, ["id"])
+
+    member_rows: list[dict] = []
+    for p in clustering.projects:
+        member_rows.extend(mappers.project_member_rows(p))
+    _upsert(session, orm.ProjectMember, member_rows, ["project_id", "person_id"])
+
+    assignment_rows = [mappers.assignment_to_row(a) for a in clustering.assignments]
+    _upsert(
+        session, orm.ThreadProjectAssignment, assignment_rows, ["thread_id", "project_id"]
+    )
