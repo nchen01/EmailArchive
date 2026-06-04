@@ -62,3 +62,25 @@ class ClusteringParams:
 
 
 PARAMS = ClusteringParams()
+
+# Params tuned for the synthetic fixture + deterministic test embeddings.
+#
+# Production defaults (PARAMS) target 768-dim sentence-transformer embeddings
+# where the embedding component carries significant weight. The testkit's 16-dim
+# hash-based embeddings carry far less discriminative signal, so FIXTURE_PARAMS
+# leans on participants, keywords, and temporal signals and uses a lower tau to
+# avoid over-fragmenting the small (13-thread) fixture corpus.
+#
+# Use FIXTURE_PARAMS in: scripts/dev_seed.py, eval/run_eval.py, and any test
+# that needs clustering output that matches the eval gate results.
+FIXTURE_PARAMS = ClusteringParams(
+    tau=0.125,
+    w_part=0.37,
+    w_emb=0.06,
+    w_kw=0.43,
+    w_temp=0.09,
+    w_attach=0.05,
+    ratio=0.20,
+    min_aff=0.10,
+    gamma=1.0,
+)

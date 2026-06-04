@@ -27,6 +27,7 @@ from sqlalchemy import select  # noqa: E402
 from services.db.engine import SessionLocal  # noqa: E402
 from services.db import models as orm  # noqa: E402
 from services.db.store import persist_l0, persist_l1  # noqa: E402
+from services.enrich.clustering.params import FIXTURE_PARAMS  # noqa: E402
 from services.enrich.clustering.testkit import FakeNlp, make_test_embed  # noqa: E402
 from services.enrich.pipeline import run_enrichment  # noqa: E402
 from services.ingest.params import IngestParams  # noqa: E402
@@ -80,13 +81,15 @@ def seed() -> str:
         store = run_ingest(cfg)
         persist_l0(store, mailbox_id, session)
 
-        # Clustering uses deterministic testkit fakes — no live embedding model
-        # or spaCy download needed for the fixture dev seed.
+        # Clustering uses deterministic testkit fakes and FIXTURE_PARAMS (the same
+        # params that pass the eval gates), so the Projects tab shows meaningful
+        # multi-thread clusters, not near-all-singletons from production defaults.
         result = run_enrichment(
             store.messages, owner_email=OWNER_EMAIL, internal_domains=INTERNAL_DOMAINS,
             threads=store.threads,
             embed_fn=make_test_embed(),
             nlp=FakeNlp(),
+            cluster_params=FIXTURE_PARAMS,
         )
         persist_l1(result, mailbox_id, session)
 

@@ -16,7 +16,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from services.enrich.clustering.params import ClusteringParams
+from services.enrich.clustering.params import ClusteringParams, FIXTURE_PARAMS
 from services.enrich.clustering.pipeline import cluster_from_store
 from services.enrich.clustering.testkit import FakeNlp, make_test_embed
 
@@ -28,22 +28,9 @@ FIXTURES = ROOT / "fixtures"
 OWNER_EMAIL = "alex@acme.com"
 INTERNAL_DOMAINS = ["acme.com"]
 
-# Eval-tuned params. The deterministic test embeddings carry less magnitude than
-# the production 768-dim sentence embeddings the defaults target, so the eval
-# regime leans on participants/keywords/temporal/attachments and uses a
-# fixture-scale threshold. (Params are config, spec §16.)
-EVAL_PARAMS = ClusteringParams(
-    tau=0.125,
-    w_part=0.37,
-    w_kw=0.43,
-    w_emb=0.06,
-    w_temp=0.09,
-    w_attach=0.05,
-    kw_overlap=True,
-    ratio=0.2,
-    min_aff=0.10,
-    gamma=1.0,
-)
+# Canonical fixture/eval params live in params.py so dev_seed and run_eval
+# stay in sync. Import and alias for readability in this module.
+EVAL_PARAMS = FIXTURE_PARAMS
 
 
 def _load_inputs():
@@ -86,7 +73,7 @@ def _gold(store) -> dict:
     return gold
 
 
-def run(params: ClusteringParams = EVAL_PARAMS, verbose: bool = True) -> dict:
+def run(params: ClusteringParams = FIXTURE_PARAMS, verbose: bool = True) -> dict:
     store, e2p, by_thread = _load_inputs()
     gold = _gold(store)
 
