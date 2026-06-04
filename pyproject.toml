@@ -59,15 +59,18 @@ test = [
     "numpy>=1.26",
     "scipy>=1.13",
     "scikit-learn>=1.5",
+    # spacy library (not the model — download via scripts/download_models.py)
     "spacy>=3.7",
-    "sentence-transformers>=3.0",
-    "hnswlib>=0.8",
     "python-igraph>=0.11",
     "leidenalg>=0.10",
+    # hnswlib is NOT here: requires MS C++ Build Tools on Windows and fails to
+    # build without them.  blocking.py falls back to scikit-learn NearestNeighbors
+    # automatically, so the full test suite passes without hnswlib.
+    # Add pip install .[clustering] on Linux/prod where hnswlib builds cleanly.
 ]
 # dev: one-shot local-development install (test suite + Gmail provider).
 # Python extras cannot reference sibling extras portably, so deps are listed
-# explicitly. Use: pip install -e packages/ && pip install -e .[dev]
+# explicitly. Use: pip install -r requirements.txt
 dev = [
     "pytest>=8.0",
     "pytest-timeout>=2.1",
@@ -83,10 +86,9 @@ dev = [
     "scipy>=1.13",
     "scikit-learn>=1.5",
     "spacy>=3.7",
-    "sentence-transformers>=3.0",
-    "hnswlib>=0.8",
     "python-igraph>=0.11",
     "leidenalg>=0.10",
+    # hnswlib excluded — see test extra comment above.
 ]
 
 [tool.setuptools.packages.find]

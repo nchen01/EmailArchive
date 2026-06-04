@@ -94,27 +94,49 @@ def persist_l1(result: EnrichResult, mailbox_id: str, session: Session) -> None:
 
 
 def _persist_clustering(clustering, mailbox_id: str, session: Session) -> None:
-    """Replace the mailbox's projects with the new clustering result."""
+    """Upsert the clustering result; only delete projects that disappeared.
+
+    Project IDs are stable across re-clusters (uuid5 + carry_over_ids), so we
+    must not delete-all-then-reinsert: that would break any future FK that points
+    at project.id (e.g. event.project_id with ON DELETE SET NULL).  Instead:
+
+    1. Delete only projects absent from the new result (cascade removes their
+       memberships and assignments automatically via ON DELETE CASCADE).
+    2. Upsert all current projects (stable IDs survive unchanged).
+    3. Delete + reinsert memberships and assignments for current projects, because
+       involvement weights may have changed even when the project ID is the same.
+    """
     from sqlalchemy import delete, select
 
-    # Clear existing projects (children cascade); assignments reference projects.
-    old_ids = list(
+    new_project_ids = {p.id for p in clustering.projects}
+
+    existing_ids = set(
         session.execute(
             select(orm.Project.id).where(orm.Project.mailbox_id == mailbox_id)
         ).scalars()
     )
-    if old_ids:
+    removed_ids = existing_ids - new_project_ids
+    if removed_ids:
+        # ON DELETE CASCADE handles ThreadProjectAssignment + ProjectMember rows.
+        session.execute(delete(orm.Project).where(orm.Project.id.in_(removed_ids)))
+
+    # Upsert projects — insert new ones, update label/confidence/span on existing.
+    project_rows = [mappers.project_to_row(p, mailbox_id) for p in clustering.projects]
+    _upsert(session, orm.Project, project_rows, ["id"])
+
+    # Refresh memberships and assignments for all current projects.
+    # Delete-then-reinsert is safe here: these child rows carry no downstream FKs.
+    if new_project_ids:
         session.execute(
-            delete(orm.ThreadProjectAssignment).where(
-                orm.ThreadProjectAssignment.project_id.in_(old_ids)
+            delete(orm.ProjectMember).where(
+                orm.ProjectMember.project_id.in_(new_project_ids)
             )
         )
-        session.execute(delete(orm.Project).where(orm.Project.id.in_(old_ids)))
-
-    project_rows = [
-        mappers.project_to_row(p, mailbox_id) for p in clustering.projects
-    ]
-    _upsert(session, orm.Project, project_rows, ["id"])
+        session.execute(
+            delete(orm.ThreadProjectAssignment).where(
+                orm.ThreadProjectAssignment.project_id.in_(new_project_ids)
+            )
+        )
 
     member_rows: list[dict] = []
     for p in clustering.projects:

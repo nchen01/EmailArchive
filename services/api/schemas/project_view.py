@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProjectMetrics(BaseModel):
@@ -67,4 +67,4 @@ class ProjectDetailOut(BaseModel):
     who_to_ask: list[WhoToAsk]
     members: list[ProjectMemberOut]
     recent_threads: list[RecentThreadOut]
-    activity: list = []  # @sprint S4 — Events deferred; always empty in S3
+    activity: list[dict] = Field(default_factory=list)  # @sprint S4 — Events deferred

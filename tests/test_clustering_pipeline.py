@@ -84,3 +84,38 @@ def test_assignment_ids_reference_projects():
     _, r = _run()
     pids = {p.id for p in r.projects}
     assert {a.project_id for a in r.assignments} <= pids
+
+
+def test_debug_artifacts_emitted(tmp_path):
+    """DoD §22: --debug must emit cluster_cards.json and similarity_graph.graphml."""
+    from services.enrich.clustering.blocking import participant_idf
+    from services.enrich.clustering.features import build_thread_features
+    from services.enrich.clustering.labeling_tfidf import ThreadTfidf as CorpusTfidf
+    from services.enrich.clustering.pipeline import write_debug_artifacts
+
+    store, _, ctx = build_cluster_inputs()
+    _, r = _run()
+
+    tfidf = CorpusTfidf.fit(ctx["threads"], ctx["messages_by_thread"])
+    feats = build_thread_features(
+        ctx["threads"], ctx["messages_by_thread"],
+        ctx["email_to_person_id"], ctx["owner_person_id"],
+        embed_fn=make_test_embed(), nlp=FakeNlp(), tfidf=tfidf,
+    )
+    pidf, _, _ = participant_idf(feats, PARAMS.drop_frac)
+    write_debug_artifacts(feats, r, pidf, out_dir=tmp_path, params=PARAMS)
+
+    cards_file = tmp_path / "cluster_cards.json"
+    graphml_file = tmp_path / "similarity_graph.graphml"
+
+    assert cards_file.exists(), "cluster_cards.json not emitted"
+    assert graphml_file.exists(), "similarity_graph.graphml not emitted"
+    assert cards_file.stat().st_size > 0, "cluster_cards.json is empty"
+    assert graphml_file.stat().st_size > 0, "similarity_graph.graphml is empty"
+
+    cards = json.loads(cards_file.read_text())
+    assert isinstance(cards, list) and len(cards) >= 1
+    assert all("id" in c and "confidence" in c and "label" in c for c in cards)
+
+    graphml = graphml_file.read_text()
+    assert "<graphml" in graphml and "<graph" in graphml

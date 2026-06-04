@@ -3,10 +3,16 @@ import { ContactPanel } from "./components/ContactPanel";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { NetworkMap } from "./components/NetworkMap";
+import { ProjectDetail } from "./components/ProjectDetail";
+import { ProjectList } from "./components/ProjectList";
 import { RoleLegend } from "./components/RoleLegend";
 import { useContactDetail } from "./hooks/useContactDetail";
 import { useNetworkMap } from "./hooks/useNetworkMap";
+import { useProjectDetail } from "./hooks/useProjectDetail";
+import { useProjects } from "./hooks/useProjects";
 import { ROLE_COLORS } from "./utils/roleColors";
+
+type ViewTab = "network" | "projects";
 
 const ENV_MAILBOX_ID = import.meta.env.VITE_MAILBOX_ID ?? "";
 
@@ -15,7 +21,9 @@ export default function App() {
   const [mailboxId, setMailboxId] = useState<string>(ENV_MAILBOX_ID);
   const [mailboxInput, setMailboxInput] = useState<string>(ENV_MAILBOX_ID);
 
+  const [activeTab, setActiveTab] = useState<ViewTab>("network");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [activeRoles, setActiveRoles] = useState<Set<string>>(
     new Set(Object.keys(ROLE_COLORS)),
   );
@@ -26,6 +34,11 @@ export default function App() {
     loading: detailLoading,
     error: detailError,
   } = useContactDetail(mailboxId || null, selectedPersonId);
+
+  const { projects, loading: projectsLoading, error: projectsError } =
+    useProjects(mailboxId || null);
+  const { detail: projectDetail, loading: projectDetailLoading } =
+    useProjectDetail(mailboxId || null, selectedProjectId);
 
   const toggleRole = (role: string) => {
     setActiveRoles((prev) => {
@@ -44,12 +57,30 @@ export default function App() {
       <header className="z-10 border-b border-slate-200 bg-white px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-base font-semibold text-slate-800">
-              Network Map
-            </h1>
-            {data ? (
+            <div className="flex rounded-md border border-slate-200 overflow-hidden">
+              {(["network", "projects"] as ViewTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-1 text-sm font-medium capitalize transition-colors ${
+                    activeTab === tab
+                      ? "bg-slate-800 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {tab === "network" ? "Network Map" : "Projects"}
+                </button>
+              ))}
+            </div>
+            {activeTab === "network" && data ? (
               <span className="text-sm text-slate-400">
                 {data.owner.name} · {data.nodes.length} contacts
+              </span>
+            ) : null}
+            {activeTab === "projects" && projects ? (
+              <span className="text-sm text-slate-400">
+                {projects.length} project{projects.length === 1 ? "" : "s"}
               </span>
             ) : null}
           </div>
@@ -89,8 +120,8 @@ export default function App() {
         ) : null}
       </header>
 
-      {/* Main canvas area */}
-      <main className="relative flex-1 overflow-hidden">
+      {/* Main content area */}
+      <main className="relative flex-1 overflow-hidden flex">
         {!mailboxId ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-slate-500">
             <div>
@@ -130,7 +161,7 @@ export default function App() {
           </div>
         ) : null}
 
-        {mailboxId && !loading && !error && hasGraph ? (
+        {activeTab === "network" && mailboxId && !loading && !error && hasGraph ? (
           <NetworkMap
             data={data}
             activeRoles={activeRoles}
@@ -138,13 +169,56 @@ export default function App() {
             onNodeClick={(node) => setSelectedPersonId(node.person_id)}
           />
         ) : null}
+
+        {/* Projects view */}
+        {activeTab === "projects" && mailboxId ? (
+          <>
+            {projectsLoading && (
+              <div className="flex h-full w-full items-center justify-center">
+                <LoadingSpinner label="Loading projects…" />
+              </div>
+            )}
+            {projectsError && !projectsLoading && (
+              <div className="mx-auto mt-8 max-w-lg px-4 w-full">
+                <ErrorBanner message={projectsError} />
+              </div>
+            )}
+            {!projectsLoading && !projectsError && (
+              <div className="flex w-full overflow-hidden">
+                <aside className="w-72 flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-white">
+                  <ProjectList
+                    projects={projects ?? []}
+                    selectedProjectId={selectedProjectId}
+                    onSelect={setSelectedProjectId}
+                  />
+                </aside>
+                <div className="flex-1 overflow-y-auto bg-slate-50">
+                  {selectedProjectId && projectDetail ? (
+                    <ProjectDetail detail={projectDetail} />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-slate-400 text-sm">
+                      {projects && projects.length > 0
+                        ? "Select a project to see details."
+                        : "No projects yet — run the clustering pipeline."}
+                    </div>
+                  )}
+                  {projectDetailLoading && (
+                    <div className="flex h-full items-center justify-center">
+                      <LoadingSpinner label="Loading project…" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        ) : null}
       </main>
 
       <ContactPanel
         detail={detail}
         loading={detailLoading}
         error={detailError}
-        open={selectedPersonId !== null}
+        open={activeTab === "network" && selectedPersonId !== null}
         onClose={() => setSelectedPersonId(null)}
       />
     </div>

@@ -3,12 +3,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from ekc_schemas import ClusteringResult, Edge, Identity, Org, Person
 
-from .clustering.params import PARAMS as CLUSTER_PARAMS
-from .clustering.params import ClusteringParams
-from .clustering.pipeline import cluster_from_store
+# Clustering deps are optional (pip install .[clustering]).  Do NOT import them at
+# module level — that would break pip install -e .[test] without the clustering
+# extra.  All clustering imports live inside _run_clustering() which is only called
+# when ``threads`` is passed to run_enrichment().
+if TYPE_CHECKING:  # IDE / mypy only — never executed at runtime
+    from .clustering.params import ClusteringParams
+
 from .graph import build_relationship_graph
 from .identity import resolve_identities
 from .params import EnrichParams
@@ -34,7 +39,7 @@ def run_enrichment(
     threads=None,
     embed_fn=None,
     nlp=None,
-    cluster_params: ClusteringParams = CLUSTER_PARAMS,
+    cluster_params: ClusteringParams | None = None,  # default resolved lazily inside _run_clustering
     prev_clustering: ClusteringResult | None = None,
 ) -> EnrichResult:
     """Run L1 enrichment.
@@ -71,7 +76,17 @@ def _run_clustering(
     threads, messages, email_to_pid, owner_email, *,
     embed_fn, nlp, params, prev_clustering,
 ):
-    """Build per-thread message map and cluster. Returns None if < 2 threads."""
+    """Build per-thread message map and cluster. Returns None if < 2 threads.
+
+    All clustering imports are lazy so the module loads without the clustering extra.
+    """
+    # Lazy imports — only resolved when clustering is actually requested.
+    from .clustering.params import PARAMS as CLUSTER_PARAMS  # noqa: PLC0415
+    from .clustering.pipeline import cluster_from_store  # noqa: PLC0415
+
+    if params is None:
+        params = CLUSTER_PARAMS
+
     by_thread: dict = {}
     for m in messages:
         by_thread.setdefault(m.thread_id, []).append(m)

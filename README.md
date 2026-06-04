@@ -3,7 +3,7 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S1 + S2 complete · S3 (project clustering + project view) is next.
+**Status:** S1 + S2 + S3 complete · S4 (event extraction + L3 synthesis) is next.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
@@ -171,8 +171,8 @@ email-archive/
 | S0 | Schemas contract + DB spec + synthetic fixture | ✓ done | `packages/ekc_schemas`, spec 04 |
 | S1 | L0 ingest + identity resolution + relationship graph | ✓ done | spec 00, spec 01 §3–§4 |
 | S2 | Role inference + DB migrations + network-map surface | ✓ done | spec 01 §5, spec 05 |
-| S3 | Project clustering + project view surface | **next** | spec 03, spec 02 |
-| S4 | Event extraction + L3 grounded synthesis | planned | spec 01 §7 |
+| S3 | Project clustering + project view surface | ✓ done | spec 03, spec 02 |
+| S4 | Event extraction + L3 grounded synthesis | **next** | spec 01 §7 |
 
 **Quick start (S1+S2 running):**
 ```bash
