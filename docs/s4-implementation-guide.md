@@ -5,10 +5,11 @@ This is an **implementation guide**, not a spec. It bridges the existing specs (
 drift before implementation. Precedence when docs disagree:
 `ekc_schemas/models.py` → layer spec → implementation-plan → README → AGENTS (AGENTS §9).
 
-S4 introduces the **first and only LLM call in the system** (AGENTS §3 #9: "the LLM appears only
-in L3"). Everything upstream is deterministic. Two new behaviors land: deterministic Event
-extraction (which feeds the existing `activity` field) and nondeterministic L3 synthesis (isolated
-behind the citation contract). They are built on separate tracks and converge only at the surfaces.
+S4 introduces two LLM-backed behaviors. AGENTS §3 #9 says "the LLM appears only in L3" — S4
+introduces one sanctioned exception recorded as **D10** in `docs/decisions.md`: event extraction
+is L1 materialization backed by an **injectable** LLM function; tests remain deterministic and
+offline. The second behavior — L3 synthesis — is the nondeterministic component AGENTS §3 #9
+intended, isolated behind the citation contract. The two tracks converge only at the surfaces.
 
 ---
 
@@ -180,16 +181,36 @@ Event extraction involves an LLM and is **inherently nondeterministic**. Strateg
   apply — flag this explicitly to the reviewer so the eval isn't built wrong). The eval gate is
   **structural** (§10): every Event parses and has ≥1 citation.
 
-### Deduplication (re-run safety)
+### Deduplication (re-run safety) — confirmed: delete-and-reinsert by thread scope
 Re-running enrichment must not double Events. The `event` table has no natural unique constraint
-today. Use an **idempotent upsert keyed on a content hash** consistent with AGENTS §3 #6 /
-`ekc_schemas` convention #5 (enrichment is a pure function of inputs + content hash). Proposed
-natural key: `(mailbox_id, actor_person_id, type, source_message_ids[0], summary_hash)` where
-`summary_hash = sha256(summary)[:16]`. **Confirm the dedup key with the reviewer** (§11) — because
-the LLM may produce slightly different `summary` text across runs, a pure-content key can still
-double rows. Mitigation options to weigh: (a) delete-and-reinsert per (mailbox_id, thread set) on
-re-run, or (b) upsert on the key above accepting occasional near-dupes. Recommend (a) for
-correctness, scoped to the threads re-processed.
+today, and a content-key upsert is unreliable because the LLM may vary `summary` text across runs.
+
+**Confirmed rule (reviewer decision, §11 #2):** for each set of threads being (re-)processed,
+delete all existing `event` rows for `(mailbox_id, project_id)` whose
+`source_message_ids` overlap the `message_id_header` values of the threads in the batch, then
+insert fresh Events. Concretely:
+
+1. Collect `message_id_header` values for every message in the threads being processed.
+2. `DELETE FROM event WHERE mailbox_id = :mid AND source_message_ids && :headers_array`
+   (PostgreSQL `&&` array overlap; `ix_event_srcs` GIN index covers this efficiently).
+3. Insert all new Events produced by `extract_fn`.
+
+This is safe for incremental sync: it only clears Events whose source messages are in the current
+batch, leaving Events from other threads untouched.
+
+### Actor resolution
+`Event.actor_person_id` is required (non-nullable FK). The LLM returns an actor as a name or email;
+the code must map that to a `person_id` via the `Identity` table before constructing the `Event`.
+**Rules:**
+- If the actor can be unambiguously mapped to a `Person` → use that `person_id`.
+- If the actor mention is ambiguous or cannot be resolved → **skip the event entirely**. Do not
+  assign a placeholder or the owner's `person_id`. An ungrounded actor corrupts the relationship
+  graph downstream.
+- If the actor is implied (passive voice, "it was decided") → either skip or extract only if the
+  implied actor is independently evidenced from the message headers (sender/recipient).
+
+This is a **precision-over-recall** call: one unattributed but grounded event is better than a
+fabricated attribution.
 
 ---
 
@@ -230,12 +251,12 @@ Claude via the Anthropic API. Default **`claude-sonnet-4-6`** (current environme
 not a code change (§9 model-version pinning). Same model id as event extraction (one cost bucket).
 
 ### Prompt caching
-The same project/contact context may be queried repeatedly. Use the Anthropic API's
-`cache_control` on the **context portion** of the prompt (the large, stable block: system prompt +
-Events + thread digest), so repeat queries hit the cache and cost less. **The `claude-api` skill in
-this environment handles prompt caching — use it** when implementing `services/synthesis/client.py`.
-Verify cache hits via the response `usage` metadata (`cache_read_input_tokens`) — this is a DoD item
-(§10).
+The same project/contact context may be queried repeatedly. Use the Anthropic SDK's
+`cache_control` parameter on the **context portion** of the prompt (the large, stable block: system
+prompt + Events + thread digest), so repeat queries hit the cache and reduce token cost. Implement
+this directly using the Anthropic Python SDK; see the Anthropic prompt-caching documentation for
+the `cache_control` field and `cache_read_input_tokens` in `usage` metadata. Verify cache hits via
+`response.usage.cache_read_input_tokens > 0` on a repeat query — this is a DoD item (§10).
 
 ### Anti-patterns the system prompt MUST enforce
 - **Volume ≠ accomplishment** (AGENTS §3 #8; D8 spirit) — never render "sent 200 emails" as
@@ -282,7 +303,10 @@ table — coordinate the number if both land.)
 ### Existing — now populated
 `GET /api/projects/{mailbox_id}/{project_id}` (`project_view.py`) — S4 populates `activity` from
 the `event` table: select `event` where `project_id == this`, ordered by epistemic grade
-(`outcome > did > proposed`) then ts. **Replace `activity: list[dict]`** with a typed
+(`outcome > did > proposed`) then by the **latest cited message timestamp** — `Event` has no
+`ts` field (`ekc_schemas.Event`, line 183); derive it by joining
+`event.source_message_ids[0]` to `message.message_id_header` within the mailbox and using
+`message.ts`. **Replace `activity: list[dict]`** with a typed
 `ActivityItemOut { type, summary, actor (person_id), source_message_ids, confidence }` derived from
 `Event` (spec 02 §5 shape). Hard invariant (spec 02 §5): every `activity` item ships ≥1
 `source_message_ids`; the API rejects any Event without one (the DB CHECK already guarantees this,
@@ -380,23 +404,25 @@ right drawer.
 
 ---
 
-## 11. Open decisions (confirm before build starts)
+## 11. Resolved decisions (confirmed by reviewer; no remaining open questions)
 
-1. **Claude model for extraction + synthesis.** Suggest `claude-sonnet-4-6` (current environment
-   default). Must be the **same** id for both (one cost bucket). Confirm and record in config + a
-   decision-log entry (D10).
-2. **Event deduplication on re-run.** Delete-and-reinsert (scoped to re-processed threads) vs upsert
-   on a content key. Recommend delete-and-reinsert for correctness, because the LLM may vary
-   `summary` text across runs and defeat a pure-content upsert key. Reviewer picks; record the
-   natural key if upsert.
-3. **`synthesis_log` table (audit/replay/budget).** Argue **for** a `synthesis_log` (request hash,
-   response, citations, ts, model, token usage): it enables replay without re-spending, per-mailbox
-   cost tracking, and an audit trail consistent with the system's provenance posture. S4 ships
-   without it by default; reviewer decides yes/no. If yes → migration 0006 (coordinate the number
-   with the deferred `message_embedding` table, AGENTS §6).
-4. **"Ask about contact" evidence scope.** Does synthesis include `Event`s from the contact's
-   threads, or only `Edge` stats + `Thread` subjects? Default: include Events (already grounded).
-   Confirm — it changes the context size and the citation density.
-5. **Per-user rate limiting / cost guardrails at S4.** Is per-user/per-mailbox rate limiting needed
-   now, or deferred? S4 gates synthesis behind explicit user actions (one click = one call), which
-   is a soft guardrail. Decide whether an explicit rate limit / budget cap is required before ship.
+1. **Claude model — ✓ CONFIRMED** `claude-sonnet-4-6` for both extraction and synthesis (one cost
+   bucket, one config key). Recorded as **D10** in `docs/decisions.md`. Store the model id in
+   mailbox config, never hardcoded. Supports prompt caching (Anthropic docs confirmed).
+
+2. **Event deduplication — ✓ CONFIRMED** delete-and-reinsert scoped to reprocessed threads (see §4
+   Deduplication section). Do **not** upsert on summary text — nondeterministic LLM output makes
+   content keys unreliable.
+
+3. **`synthesis_log` table — ✓ DEFERRED.** S4 ships without it. Do **not** claim migration 0006
+   casually — `message_embedding` (AGENTS §6 ticket 4.5) is already earmarked there. If a log is
+   added later, coordinate the migration number in `docs/decisions.md` first.
+
+4. **"Ask about contact" evidence scope — ✓ CONFIRMED** include Events from the contact's threads
+   **plus** Edge stats and thread subjects. Events are already grounded and give better answers.
+   Cap by recency/top-N to control context size (exact N is a `params.py` tuning value).
+
+5. **Rate limiting — ✓ CONFIRMED** defer hard per-user limits for S4. Implement cheap guardrails
+   now: explicit user click only (no background batch), max context size (configured in
+   `services/synthesis/params.py`), request timeout, and a structured 503 when the API key is
+   absent. Hard rate limiting deferred to a future sprint.

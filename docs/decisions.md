@@ -92,3 +92,16 @@ layout is automatic, and at fixture-scale (10 nodes) and expected production sca
 nodes) D3 force performs fine. Sigma.js is the upgrade path if the graph grows to thousands of
 nodes (benchmark first).
 **Scope.** S2 frontend. **Affects.** spec 05 §9 open decision (resolved).
+
+## D10 — S4 event extraction is L1 materialization backed by an injected LLM fn
+**Decision.** Event extraction (`services/enrich/events.py`, spec 01 §7) lives in the L1 enrich
+service and produces persisted `Event` objects — structurally identical to how identity resolution
+produces `Person` objects. The LLM dependency is fully injectable (`extract_fn` parameter, same
+pattern as `embed_fn`/`nlp` in clustering), so all tests remain deterministic and offline. This is
+the one sanctioned exception to AGENTS §3 #9 ("the LLM appears only in L3").
+**Why not L3:** extraction runs offline/batch and materializes first-class objects that L2 and L3
+later query. Doing it lazily at query time would be slower, more expensive, and would break the
+grounding discipline (cited Events must be present before synthesis runs).
+**Invariant preserved:** `extract_fn` is the seam — L1 orchestrates + persists; the network call
+stays behind the injectable interface; tests never call the Anthropic API.
+**Scope.** S4. **Affects.** `services/enrich/events.py`; AGENTS §3 #9 (exception now documented).
