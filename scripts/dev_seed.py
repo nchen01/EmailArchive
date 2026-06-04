@@ -80,7 +80,7 @@ def seed() -> str:
             params=params,
         )
         store = run_ingest(cfg)
-        persist_l0(store, mailbox_id, session)
+        persist_l0(store, mailbox_id, session, replace_snapshot=True)
 
         # Clustering uses deterministic testkit fakes and FIXTURE_PARAMS (the same
         # params that pass the eval gates), so the Projects tab shows meaningful

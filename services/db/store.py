@@ -44,45 +44,56 @@ def _upsert(session: Session, model, rows: list[dict], index_elements: list[str]
     session.execute(stmt)
 
 
-def persist_l0(store: IngestStore, mailbox_id: str, session: Session) -> None:
+def persist_l0(
+    store: IngestStore,
+    mailbox_id: str,
+    session: Session,
+    *,
+    replace_snapshot: bool = False,
+) -> None:
     """Upsert threads then messages (+ attachments). Idempotent on message_id_header.
 
-    Stale-ID removal: Message.id and Thread.id are scoped to db_mailbox_id
-    (threads.py). If this mailbox was previously persisted with unscoped IDs,
-    those rows have a different PK from what the new ingest produces.  _upsert
-    cannot update PKs (they are excluded from the SET clause), so the attachment
-    upsert would reference a new scoped message_id that does not yet exist in
-    the message table → FK violation.  We detect and DELETE stale rows first so
-    the subsequent upserts INSERT fresh rows with the correct IDs.
+    Default (``replace_snapshot=False``): pure upsert — adds or updates rows in
+    *store* and never deletes rows that are absent from the batch. This is the
+    correct semantics for incremental/partial sync (spec 00 §5, §13): a
+    historyId/delta run only contains changed messages, not the full mailbox.
+
+    ``replace_snapshot=True``: before upserting, delete any existing
+    thread/message rows for this mailbox whose PK does not appear in *store*.
+    Use this only for:
+      - Full re-ingest / dev seed (all messages present in the store).
+      - Legacy-ID upgrade (unscoped → scoped db_mailbox_id): the upsert cannot
+        change PKs, so stale rows must be removed first or attachment FKs break.
     The thread→message→message_attachment CASCADE chain handles child cleanup.
     """
     from sqlalchemy import delete, select
 
-    # ── Stale thread removal ─────────────────────────────────────────────────
-    new_thread_ids = {t.id for t in store.threads}
-    stale_thr_ids = [
-        row
-        for (row,) in session.execute(
-            select(orm.Thread.id).where(orm.Thread.mailbox_id == mailbox_id)
-        ).all()
-        if row not in new_thread_ids
-    ]
-    if stale_thr_ids:
-        # CASCADE: thread → message → message_attachment
-        session.execute(delete(orm.Thread).where(orm.Thread.id.in_(stale_thr_ids)))
+    if replace_snapshot:
+        # ── Stale thread removal ─────────────────────────────────────────────
+        new_thread_ids = {t.id for t in store.threads}
+        stale_thr_ids = [
+            row
+            for (row,) in session.execute(
+                select(orm.Thread.id).where(orm.Thread.mailbox_id == mailbox_id)
+            ).all()
+            if row not in new_thread_ids
+        ]
+        if stale_thr_ids:
+            # CASCADE: thread → message → message_attachment
+            session.execute(delete(orm.Thread).where(orm.Thread.id.in_(stale_thr_ids)))
 
-    # ── Stale message removal (belt-and-suspenders for edge cases) ───────────
-    new_msg_ids = {m.id for m in store.messages}
-    stale_msg_ids = [
-        row
-        for (row,) in session.execute(
-            select(orm.Message.id).where(orm.Message.mailbox_id == mailbox_id)
-        ).all()
-        if row not in new_msg_ids
-    ]
-    if stale_msg_ids:
-        # CASCADE: message → message_attachment
-        session.execute(delete(orm.Message).where(orm.Message.id.in_(stale_msg_ids)))
+        # ── Stale message removal (belt-and-suspenders for edge cases) ───────
+        new_msg_ids = {m.id for m in store.messages}
+        stale_msg_ids = [
+            row
+            for (row,) in session.execute(
+                select(orm.Message.id).where(orm.Message.mailbox_id == mailbox_id)
+            ).all()
+            if row not in new_msg_ids
+        ]
+        if stale_msg_ids:
+            # CASCADE: message → message_attachment
+            session.execute(delete(orm.Message).where(orm.Message.id.in_(stale_msg_ids)))
 
     # ── Upserts ───────────────────────────────────────────────────────────────
     thread_rows = [mappers.thread_to_row(t, mailbox_id) for t in store.threads]

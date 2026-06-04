@@ -202,8 +202,8 @@ def test_two_scoped_mailboxes_no_pk_collision(session):
             db_mailbox_id=mid_b, owner_email=OWNER_EMAIL, internal_domains=INTERNAL_DOMAINS,
         ))
 
-        persist_l0(store_a, mid_a, session)   # must not raise
-        persist_l0(store_b, mid_b, session)   # must not raise (second mailbox, same headers)
+        persist_l0(store_a, mid_a, session, replace_snapshot=True)   # full fixture seed
+        persist_l0(store_b, mid_b, session, replace_snapshot=True)   # second mailbox, same headers
 
         count_a = session.execute(select(func.count()).select_from(orm.Message).where(orm.Message.mailbox_id == mid_a)).scalar()
         count_b = session.execute(select(func.count()).select_from(orm.Message).where(orm.Message.mailbox_id == mid_b)).scalar()
@@ -236,7 +236,7 @@ def test_legacy_to_scoped_upgrade_no_fk_violation(session, mailbox_id):
         db_mailbox_id="",  # legacy: no mailbox scope
         owner_email=OWNER_EMAIL, internal_domains=INTERNAL_DOMAINS,
     ))
-    persist_l0(store_legacy, mailbox_id, session)
+    persist_l0(store_legacy, mailbox_id, session, replace_snapshot=True)
 
     # Step 2: re-persist the same mailbox with scoped IDs. Must not raise.
     store_scoped = run_ingest(IngestConfig(
@@ -244,11 +244,42 @@ def test_legacy_to_scoped_upgrade_no_fk_violation(session, mailbox_id):
         db_mailbox_id=mailbox_id,  # scoped: new scheme
         owner_email=OWNER_EMAIL, internal_domains=INTERNAL_DOMAINS,
     ))
-    persist_l0(store_scoped, mailbox_id, session)  # ForeignKeyViolation before the fix
+    # replace_snapshot=True: stale unscoped rows must be cleared before re-insert.
+    persist_l0(store_scoped, mailbox_id, session, replace_snapshot=True)
 
     # After upgrade the row count matches the scoped store (stale rows replaced).
     assert _count(session, orm.Message, mailbox_id) == len(store_scoped.messages)
     assert _count(session, orm.Thread, mailbox_id) == len(store_scoped.threads)
+
+
+def test_partial_batch_preserves_existing_rows(session, mailbox_id):
+    """Default persist_l0 (replace_snapshot=False) never deletes rows missing from the batch.
+
+    Spec 00 §5 / §13: incremental sync delivers only changed messages, not the
+    full mailbox.  Persisting a partial batch must leave existing rows untouched.
+    """
+    from services.db import models as orm
+    from services.db.store import persist_l0
+    from services.ingest.store import IngestStore
+
+    store = run_full_ingest()
+    persist_l0(store, mailbox_id, session, replace_snapshot=True)
+    assert _count(session, orm.Message, mailbox_id) == len(store.messages)
+
+    # Build a one-thread slice — the incremental-sync equivalent.
+    first_thread = store.threads[0]
+    partial = IngestStore(
+        messages=[m for m in store.messages if m.thread_id == first_thread.id],
+        threads=[first_thread],
+    )
+    assert len(partial.messages) < len(store.messages), "slice must be smaller than full store"
+
+    # Default path: upsert only, must NOT delete the other 12+ threads/messages.
+    persist_l0(partial, mailbox_id, session)   # replace_snapshot=False (default)
+
+    assert _count(session, orm.Message, mailbox_id) == len(store.messages), (
+        "partial batch must not delete existing rows (spec 00 §5 / §13)"
+    )
 
 
 def test_event_check_rejects_empty_sources(session, mailbox_id):
