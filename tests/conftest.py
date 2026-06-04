@@ -3,6 +3,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # Make `packages` and `services` importable when running pytest from repo root.
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -37,9 +39,6 @@ def _db_reachable() -> bool:
             return True
     except Exception:
         return False
-
-
-import pytest  # noqa: E402  (must be after sys.path manipulation)
 
 
 @pytest.fixture(scope="session", autouse=True)
