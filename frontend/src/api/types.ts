@@ -57,3 +57,63 @@ export interface ContactDetail {
   edge: Edge;
   recent_threads: ThreadSummary[];
 }
+
+// ── Project view (spec 02 §5) ────────────────────────────────────────────────
+
+export interface ProjectSummary {
+  id: string;
+  label: string;
+  state: string; // "active" | "stale"
+  confidence: number;
+  start: string;
+  end: string;
+  member_count: number;
+  thread_count: number;
+}
+
+export interface ProjectListData {
+  projects: ProjectSummary[];
+}
+
+export interface ProjectMetrics {
+  members: number;
+  threads: number;
+  last_activity: string;
+}
+
+export interface WhoToAsk {
+  person_id: string;
+  name: string;
+  role: string;
+  in_project_count: number;
+  weight: number;
+}
+
+export interface ProjectMember {
+  person_id: string;
+  name: string;
+  role: string;
+  in_project_count: number;
+  involvement: number;
+}
+
+export interface RecentThread {
+  thread_id: string;
+  subject: string;
+  participants: string[];
+  last: string;
+}
+
+export interface ProjectDetailData {
+  id: string;
+  label: string;
+  state: string;
+  confidence: number;
+  start: string;
+  end: string;
+  metrics: ProjectMetrics;
+  who_to_ask: WhoToAsk[];
+  members: ProjectMember[];
+  recent_threads: RecentThread[];
+  activity: unknown[]; // @sprint S4 — always empty in S3
+}

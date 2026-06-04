@@ -1,4 +1,9 @@
-import type { ContactDetail, NetworkMapData } from "./types";
+import type {
+  ContactDetail,
+  NetworkMapData,
+  ProjectDetailData,
+  ProjectListData,
+} from "./types";
 
 // Empty string in dev: requests hit Vite, which proxies /api -> FastAPI.
 // Override with VITE_API_URL for non-proxied deployments.
@@ -46,4 +51,21 @@ export async function fetchContactDetail(
     mailboxId,
   )}/contact/${encodeURIComponent(personId)}`;
   return getJson<ContactDetail>(url);
+}
+
+export async function fetchProjects(
+  mailboxId: string,
+): Promise<ProjectListData> {
+  const url = `${API_BASE}/api/projects/${encodeURIComponent(mailboxId)}`;
+  return getJson<ProjectListData>(url);
+}
+
+export async function fetchProjectDetail(
+  mailboxId: string,
+  projectId: string,
+): Promise<ProjectDetailData> {
+  const url = `${API_BASE}/api/projects/${encodeURIComponent(
+    mailboxId,
+  )}/${encodeURIComponent(projectId)}`;
+  return getJson<ProjectDetailData>(url);
 }
