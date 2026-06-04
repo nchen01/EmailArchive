@@ -78,7 +78,7 @@ fixture-validated state before wiring. Ticket numbering mirrors spec 03's style.
   `services/enrich/events_llm.py`. Isolated so 4.1 tests never touch the network.
 - **4.3** Wire `extract_events` into `run_enrichment` (pipeline.py), gated like clustering: runs
   only when `threads` is supplied AND an `extract_fn` is available; returns `[]` otherwise.
-- **4.4** Persist Events (idempotent upsert, §4 dedup) + populate `ProjectDetailOut.activity`.
+- **4.4** Persist Events via scoped delete-and-reinsert (§4 dedup) + populate `ProjectDetailOut.activity`.
 - **4.5** Track-A eval (`services/enrich/events/eval/run_eval.py`, modeled on
   `clustering/eval/run_eval.py`). Structural gates only (§10) — NOT byte-identical.
 
@@ -239,9 +239,10 @@ synthesis layer.** Uncited claims never reach the API. The validator is the Trac
   (spec 02 §6).
 
 **(b) "Ask about this contact"** (spec 05 §3.4 — the disabled button)
-- Input context: the contact `Person` + their `Edge` stats + shared `Thread`s (subjects, ts).
-  Whether Events from the contact's threads are in scope is an **open decision** (§11) — default to
-  including them, since they are already grounded.
+- Input context (confirmed, §11 #4): the contact `Person` + their `Edge` stats + shared `Thread`
+  subjects/timestamps + **capped recent `Event`s from those threads** (top N by recency, N in
+  `services/synthesis/params.py`). Events are already grounded and improve answer quality. Edge
+  stats and thread subjects provide structural context even when no Events exist.
 - Output: a grounded relationship summary (what this contact works on with the owner, in what
   capacity), every claim cited to a thread/message. No invented claims.
 
@@ -287,14 +288,11 @@ traceback to the user.** Key-absent is a 503 with a clear message (§7).
   and `ix_event_srcs` (GIN) indexes. **No new table for Events** — S4 only populates rows.
 - `ProjectDetailOut.activity` is already a field (default `[]`); S4 fills it from the `event` table.
 
-### Synthesis cache/log table — decision: **NO for S4** (revisit in §11)
-S4 ships without a `synthesis_log` table. Synthesis is user-triggered and not cached at the DB
-level (prompt caching at the API covers repeat-query cost). **Rationale:** adding a table is reversible
-later; shipping the two surfaces is the S4 goal. **However**, §11 argues for a `synthesis_log`
-(request hash, response, citations, ts) for audit/replay and per-mailbox budget tracking — the
-reviewer decides. If yes, it becomes **migration 0006** and Track B writes to it after each call.
-(Note: migration 0006 is currently reserved in AGENTS §6 for the deferred `message_embedding`
-table — coordinate the number if both land.)
+### Synthesis cache/log table — **DEFERRED, do not claim migration 0006**
+S4 ships without a `synthesis_log` table (confirmed, §11 #3). Synthesis is user-triggered;
+prompt caching at the API layer covers repeat-query cost. If a log is needed in a future sprint
+for audit or budget tracking, coordinate its migration number in `docs/decisions.md` first —
+migration 0006 is earmarked for the deferred `message_embedding` table (AGENTS §6 ticket 4.5).
 
 ---
 
@@ -303,10 +301,10 @@ table — coordinate the number if both land.)
 ### Existing — now populated
 `GET /api/projects/{mailbox_id}/{project_id}` (`project_view.py`) — S4 populates `activity` from
 the `event` table: select `event` where `project_id == this`, ordered by epistemic grade
-(`outcome > did > proposed`) then by the **latest cited message timestamp** — `Event` has no
-`ts` field (`ekc_schemas.Event`, line 183); derive it by joining
-`event.source_message_ids[0]` to `message.message_id_header` within the mailbox and using
-`message.ts`. **Replace `activity: list[dict]`** with a typed
+(`outcome > did > proposed`) then by the **max cited message timestamp** — `Event` has no `ts`
+field (`ekc_schemas.Event`, line 183); derive it by unnesting all of
+`event.source_message_ids` (not just `[0]` — an Event may cite multiple messages), joining each
+to `message.message_id_header` within the mailbox, and using `MAX(message.ts)` per Event. **Replace `activity: list[dict]`** with a typed
 `ActivityItemOut { type, summary, actor (person_id), source_message_ids, confidence }` derived from
 `Event` (spec 02 §5 shape). Hard invariant (spec 02 §5): every `activity` item ships ≥1
 `source_message_ids`; the API rejects any Event without one (the DB CHECK already guarantees this,
@@ -372,8 +370,8 @@ right drawer.
 - **Cost control.** L3 calls are expensive. Gate behind explicit user actions; never batch. Add a
   per-mailbox request log only if budget tracking is needed (ties to the §11 `synthesis_log`
   decision).
-- **Prompt caching.** Use `cache_control` on the context portion. The `claude-api` skill handles
-  this — use it. Verify via `usage` metadata.
+- **Prompt caching.** Use the Anthropic SDK's `cache_control` on the context portion. Verify
+  via `response.usage.cache_read_input_tokens > 0` on a repeat query.
 - **Model version pinning.** The Claude model id is **config, not code**. Changing it is a config
   change. Both extraction and synthesis read the same id.
 - **ID scheme.** Citations are `message_id_header`, never UUIDs (AGENTS §3 #2). Easy to get wrong
