@@ -121,7 +121,7 @@ contract boundary that keeps 4.1 testable offline.
 ### Model
 Claude via the Anthropic API, with **structured output** (Pydantic tool-use / `instructor`-style),
 NOT freeform text parsed by regex. **Same model and cost bucket as L3 synthesis** (§5) — one model,
-one config key. Default `claude-sonnet-4-6` (see §11 open decision); stored in config, never
+one config key. Default `claude-sonnet-4-6` (confirmed in §11 / D10); stored in config, never
 hardcoded.
 
 ### Input granularity
@@ -247,7 +247,7 @@ synthesis layer.** Uncited claims never reach the API. The validator is the Trac
   capacity), every claim cited to a thread/message. No invented claims.
 
 ### Model
-Claude via the Anthropic API. Default **`claude-sonnet-4-6`** (current environment default; §11).
+Claude via the Anthropic API. Default **`claude-sonnet-4-6`** (confirmed in §11 / D10).
 **Configurable, stored in mailbox config, never hardcoded** — changing the model is a config change,
 not a code change (§9 model-version pinning). Same model id as event extraction (one cost bucket).
 
@@ -363,13 +363,13 @@ right drawer.
   only identifiable actor get **lower confidence** unless their action is directly evidenced in text.
 - **LLM determinism vs eval.** Event extraction is nondeterministic; **do NOT add a byte-identical
   determinism gate** (the one exception to AGENTS §3 #6). Do add a **structural** gate: every
-  extracted Event parses without error and has ≥1 `source_message_id`.
+  extracted Event parses without error and has ≥1 `source_message_ids`.
 - **Sensitivity exclusion.** L0-tagged sensitive threads (privileged/legal/HR/personal) are excluded
   from extraction and synthesis by default — same `sensitivity_mode=exclude` gate as clustering
   (AGENTS §3 #9).
-- **Cost control.** L3 calls are expensive. Gate behind explicit user actions; never batch. Add a
-  per-mailbox request log only if budget tracking is needed (ties to the §11 `synthesis_log`
-  decision).
+- **Cost control.** L3 calls are expensive. Gate behind explicit user actions; never batch. Do
+  not add a request log in S4; revisit in a future sprint if budget tracking is needed
+  (synthesis_log deferred — §11 #3, §6).
 - **Prompt caching.** Use the Anthropic SDK's `cache_control` on the context portion. Verify
   via `response.usage.cache_read_input_tokens > 0` on a repeat query.
 - **Model version pinning.** The Claude model id is **config, not code**. Changing it is a config
@@ -383,7 +383,7 @@ right drawer.
 
 ## 10. Eval / Definition of Done
 
-- [ ] Every `event` row has ≥1 `source_message_id` (DB CHECK enforces; **test it** — attempt an
+- [ ] Every `event` row has ≥1 `source_message_ids` (DB CHECK enforces; **test it** — attempt an
       empty insert, assert rejection).
 - [ ] "I'll send the contract" → extracted as `proposed`, never `outcome`. Fixture test.
 - [ ] A thread with discussion but no stated result → `proposed`/`did` events only, **no
