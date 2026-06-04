@@ -11,7 +11,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 class ThreadTfidf:
-    def __init__(self, thread_ids: list[str], docs: list[str]):
+    def __init__(
+        self, thread_ids: list[str], docs: list[str], ngram_range: tuple = (1, 2)
+    ):
         self._index = {tid: i for i, tid in enumerate(thread_ids)}
         # Guard the degenerate all-empty corpus: sklearn raises on an empty vocab.
         non_empty = [d for d in docs if d.strip()]
@@ -21,7 +23,7 @@ class ThreadTfidf:
             self._terms: list[str] = []
             return
         self._vec = TfidfVectorizer(
-            ngram_range=(1, 2),
+            ngram_range=ngram_range,
             lowercase=True,
             stop_words="english",
             token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z]+\b",
@@ -30,13 +32,15 @@ class ThreadTfidf:
         self._terms = list(self._vec.get_feature_names_out())
 
     @classmethod
-    def fit(cls, threads, messages_by_thread: dict) -> "ThreadTfidf":
+    def fit(
+        cls, threads, messages_by_thread: dict, ngram_range: tuple = (1, 2)
+    ) -> "ThreadTfidf":
         thread_ids, docs = [], []
         for th in sorted(threads, key=lambda t: t.id):
             msgs = messages_by_thread.get(th.id, [])
             thread_ids.append(th.id)
             docs.append(" ".join(m.clean_text for m in msgs))
-        return cls(thread_ids, docs)
+        return cls(thread_ids, docs, ngram_range=ngram_range)
 
     def top_terms(self, thread_id: str, k: int = 12) -> list[str]:
         if self._vec is None or thread_id not in self._index:

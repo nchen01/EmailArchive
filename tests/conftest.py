@@ -78,7 +78,7 @@ def build_cluster_inputs():
     return store, result, ctx
 
 
-def build_features(dim: int = 16):
+def build_features(dim: int = 64):
     """Build ThreadFeatures from the fixture with test embed + fake NLP."""
     from services.enrich.clustering.features import build_thread_features
     from services.enrich.clustering.labeling_tfidf import ThreadTfidf

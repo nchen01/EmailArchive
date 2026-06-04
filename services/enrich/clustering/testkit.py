@@ -13,14 +13,38 @@ import hashlib
 import numpy as np
 
 
-def make_test_embed(dim: int = 16):
-    """Return a deterministic ``str -> np.ndarray`` embedding function."""
+def make_test_embed(dim: int = 64):
+    """Return a deterministic ``str -> np.ndarray`` embedding function.
+
+    Unlike a pure SHA-of-the-whole-string (which makes even near-identical texts
+    orthogonal), this uses **feature hashing over lowercased word tokens**: two
+    texts that share vocabulary land close in cosine space, the way a real
+    sentence embedding would. Still fully deterministic and model-free, so the
+    eval and tests need no download (decision F), but the embedding component now
+    carries real topical signal at fixture scale.
+    """
+
+    def _bucket(tok: str) -> int:
+        h = hashlib.sha256(tok.encode()).digest()
+        return int.from_bytes(h[:4], "big") % dim
+
+    def _sign(tok: str) -> float:
+        h = hashlib.sha256((tok + "#sign").encode()).digest()
+        return 1.0 if (h[0] & 1) else -1.0
 
     def embed(text: str) -> np.ndarray:
-        b = hashlib.sha256(text.encode()).digest()
-        v = np.frombuffer(b[: dim * 2], dtype=np.int16).astype(np.float32)
+        v = np.zeros(dim, dtype=np.float32)
+        for tok in text.lower().split():
+            tok = "".join(ch for ch in tok if ch.isalnum())
+            if len(tok) < 3:
+                continue
+            v[_bucket(tok)] += _sign(tok)
         n = np.linalg.norm(v)
-        return (v / (n + 1e-9)).astype(np.float32)
+        if n == 0.0:  # empty / all-short text: deterministic fallback unit vector
+            v = np.zeros(dim, dtype=np.float32)
+            v[_bucket(text)] = 1.0
+            n = 1.0
+        return (v / n).astype(np.float32)
 
     return embed
 

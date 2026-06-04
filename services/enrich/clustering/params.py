@@ -20,6 +20,8 @@ class ClusteringParams:
     w_kw: float = 0.20
     w_temp: float = 0.10
     w_attach: float = 0.05
+    # keyword similarity metric: overlap coefficient (robust for short bags) vs jaccard
+    kw_overlap: bool = True
     # temporal affinity decay constant (days)
     tau_days: float = 14.0
     # blocking

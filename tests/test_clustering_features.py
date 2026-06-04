@@ -32,10 +32,10 @@ def test_participants_are_person_ids_of_real_contacts():
 
 
 def test_embeddings_normalized_and_float32():
-    _, _, _, feats = build_features(dim=16)
+    _, _, _, feats = build_features(dim=64)
     for f in feats:
         assert f.embedding.dtype == np.float32
-        assert f.embedding.shape == (16,)
+        assert f.embedding.shape == (64,)
         assert abs(float(np.linalg.norm(f.embedding)) - 1.0) < 1e-4
 
 

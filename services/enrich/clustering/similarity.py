@@ -19,6 +19,17 @@ def jaccard(a: frozenset, b: frozenset) -> float:
     return len(a & b) / len(a | b)
 
 
+def overlap_coeff(a: frozenset, b: frozenset) -> float:
+    """Szymkiewicz–Simpson overlap: |a∩b| / min(|a|,|b|).
+
+    More robust than Jaccard for short keyword bags where two threads of the same
+    project share only the few project-defining terms among many incidental ones.
+    """
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
+
+
 def weighted_jaccard(a, b, w: dict) -> float:
     """Participant Jaccard weighted by IDF (``w`` maps person_id -> idf)."""
     inter = sum(w.get(x, 1.0) for x in (a & b))
@@ -41,7 +52,11 @@ def thread_similarity(a, b, pidf: dict, params: ClusteringParams = PARAMS) -> fl
     w = params.weights()
     s_part = weighted_jaccard(a.participants, b.participants, pidf)
     s_emb = max(0.0, float(np.dot(a.embedding, b.embedding)))  # cosine; clamp negatives
-    s_kw = jaccard(a.keywords, b.keywords)
+    s_kw = (
+        overlap_coeff(a.keywords, b.keywords)
+        if params.kw_overlap
+        else jaccard(a.keywords, b.keywords)
+    )
     s_temp = temporal_affinity(
         a.t_start, a.t_end, b.t_start, b.t_end, params.tau_days
     )
