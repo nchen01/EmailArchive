@@ -37,8 +37,11 @@ export default function App() {
 
   const { projects, loading: projectsLoading, error: projectsError } =
     useProjects(mailboxId || null);
-  const { detail: projectDetail, loading: projectDetailLoading } =
-    useProjectDetail(mailboxId || null, selectedProjectId);
+  const {
+    detail: projectDetail,
+    loading: projectDetailLoading,
+    error: projectDetailError,
+  } = useProjectDetail(mailboxId || null, selectedProjectId);
 
   const toggleRole = (role: string) => {
     setActiveRoles((prev) => {
@@ -90,6 +93,7 @@ export default function App() {
             onSubmit={(e) => {
               e.preventDefault();
               setSelectedPersonId(null);
+              setSelectedProjectId(null);
               setMailboxId(mailboxInput.trim());
             }}
           >
@@ -109,7 +113,7 @@ export default function App() {
           </form>
         </div>
 
-        {data ? (
+        {activeTab === "network" && data ? (
           <div className="mt-3">
             <RoleLegend
               nodes={data.nodes}
@@ -136,19 +140,19 @@ export default function App() {
           </div>
         ) : null}
 
-        {mailboxId && loading ? (
+        {activeTab === "network" && mailboxId && loading ? (
           <div className="flex h-full items-center justify-center">
             <LoadingSpinner label="Loading network map…" />
           </div>
         ) : null}
 
-        {mailboxId && error && !loading ? (
+        {activeTab === "network" && mailboxId && error && !loading ? (
           <div className="mx-auto mt-8 max-w-lg px-4">
             <ErrorBanner message={error} onRetry={reload} />
           </div>
         ) : null}
 
-        {mailboxId && !loading && !error && !hasGraph ? (
+        {activeTab === "network" && mailboxId && !loading && !error && !hasGraph ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-slate-500">
             <div>
               <p className="text-lg font-medium text-slate-700">
@@ -193,20 +197,25 @@ export default function App() {
                   />
                 </aside>
                 <div className="flex-1 overflow-y-auto bg-slate-50">
-                  {selectedProjectId && projectDetail ? (
-                    <ProjectDetail detail={projectDetail} />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-slate-400 text-sm">
-                      {projects && projects.length > 0
-                        ? "Select a project to see details."
-                        : "No projects yet — run the clustering pipeline."}
-                    </div>
-                  )}
                   {projectDetailLoading && (
                     <div className="flex h-full items-center justify-center">
                       <LoadingSpinner label="Loading project…" />
                     </div>
                   )}
+                  {projectDetailError && !projectDetailLoading && (
+                    <div className="mx-auto mt-8 max-w-lg px-4">
+                      <ErrorBanner message={projectDetailError} />
+                    </div>
+                  )}
+                  {selectedProjectId && projectDetail && !projectDetailLoading ? (
+                    <ProjectDetail detail={projectDetail} />
+                  ) : !projectDetailLoading && !projectDetailError ? (
+                    <div className="flex h-full items-center justify-center text-slate-400 text-sm">
+                      {projects && projects.length > 0
+                        ? "Select a project to see details."
+                        : "No projects yet — run the clustering pipeline."}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}

@@ -129,24 +129,31 @@ email-archive/
       providers/                    #   base.py · fixture.py · gmail.py · msgraph.py (stub)
       normalize/                    #   address · threads · body · artifacts · noise · sensitivity
       params.py  store.py  pipeline.py
-    enrich/                         # L1  ✓ S1-S2
+    enrich/                         # L1  ✓ S1-S3
       identity.py  graph.py  roles.py  params.py  pipeline.py
-    api/                            # FastAPI  ✓ S2
+      clustering/                   # project clustering (spec 03)  ✓ S3
+        params.py  features.py  blocking.py  similarity.py  graph.py
+        communities.py  materialize.py  confidence.py  labeling.py
+        incremental.py  pipeline.py  testkit.py
+        eval/  metrics.py  run_eval.py
+    api/                            # FastAPI  ✓ S2-S3
       main.py  deps.py
-      routers/network_map.py
-      schemas/network_map.py
+      routers/network_map.py  routers/project_view.py
+      schemas/network_map.py  schemas/project_view.py
     retrieval/                      # L2 — not yet built (externally owned query router)
     synthesis/                      # L3 — not yet built
-  frontend/                         # React 18 + TypeScript + react-force-graph-2d  ✓ S2
+  frontend/                         # React 18 + TypeScript + react-force-graph-2d  ✓ S2-S3
     src/
-      api/        # client.ts + types.ts
-      components/ # NetworkMap · RoleLegend · ContactPanel
-      hooks/      # useNetworkMap · useContactDetail
+      api/        # client.ts + types.ts (network map + project view)
+      components/ # NetworkMap · RoleLegend · ContactPanel · ProjectList · ProjectDetail
+      hooks/      # useNetworkMap · useContactDetail · useProjects · useProjectDetail
       utils/      # roleColors.ts
   scripts/
-    dev_seed.py                     # seed fixture mailbox into DB; --serve starts uvicorn
-  tests/                            # 46 tests (38 pass without DB; 46 with)
-    test_l0_*.py   test_l1_*.py   test_db_roundtrip.py   test_api_network_map.py
+    dev_seed.py                     # seed fixture mailbox + clustering; --serve starts uvicorn
+    download_models.py              # download spaCy en_core_web_sm for production runs
+  tests/                            # 121 tests (DB-gated tests skip cleanly without DATABASE_URL)
+    test_l0_*.py   test_l1_*.py   test_clustering_*.py
+    test_db_roundtrip.py   test_api_network_map.py
 ```
 
 ## Conventions
@@ -174,7 +181,7 @@ email-archive/
 | S3 | Project clustering + project view surface | ✓ done | spec 03, spec 02 |
 | S4 | Event extraction + L3 grounded synthesis | **next** | spec 01 §7 |
 
-**Quick start (S1+S2 running):**
+**Quick start (S1+S2+S3 running):**
 ```bash
 # 1. Python deps (one time)
 pip install -e .[dev]      # app + all dev/test/api/db/gmail deps
@@ -193,7 +200,7 @@ cd frontend && npm install && VITE_MAILBOX_ID=<uuid> npm run dev  # UI on :5173
 
 # 4. Tests
 DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
-  pytest                                                      # 46 tests (8 skip without DB)
+  pytest                                                      # 121 tests (DB-gated skip without DATABASE_URL)
 ```
 
 ## Privacy guardrails (non-negotiable)

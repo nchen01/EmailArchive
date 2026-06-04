@@ -70,10 +70,10 @@ def persist_l0(store: IngestStore, mailbox_id: str, session: Session) -> None:
 def persist_l1(result: EnrichResult, mailbox_id: str, session: Session) -> None:
     """Upsert orgs, persons, identities, edges (+ clustering if present).
 
-    Idempotent on id / natural keys. Clustering rows are mailbox-scoped and a
-    re-cluster may change the project set, so existing project rows for the
-    mailbox are cleared before re-insert (project/member/assignment children
-    cascade on delete).
+    Idempotent on id / natural keys. Clustering uses a selective upsert:
+    only projects absent from the new result are deleted (their membership and
+    assignment children cascade); existing stable project rows are updated in
+    place so downstream FKs (e.g. future event.project_id) are never broken.
     """
     org_rows = [mappers.org_to_row(o, mailbox_id) for o in result.orgs]
     _upsert(session, orm.Org, org_rows, ["id"])
