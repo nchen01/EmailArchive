@@ -1,11 +1,14 @@
-"""L1 enrichment orchestrator (spec 01 §8): identity → graph → roles."""
+"""L1 enrichment orchestrator (spec 01 §8): identity → graph → roles → clustering."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 
-from ekc_schemas import Edge, Identity, Org, Person
+from ekc_schemas import ClusteringResult, Edge, Identity, Org, Person
 
+from .clustering.params import PARAMS as CLUSTER_PARAMS
+from .clustering.params import ClusteringParams
+from .clustering.pipeline import cluster_from_store
 from .graph import build_relationship_graph
 from .identity import resolve_identities
 from .params import EnrichParams
@@ -18,6 +21,7 @@ class EnrichResult:
     identities: list[Identity]
     orgs: list[Org]
     edges: list[Edge]
+    clustering: ClusteringResult | None = None  # None if < 2 clusterable threads
 
 
 def run_enrichment(
@@ -26,13 +30,69 @@ def run_enrichment(
     internal_domains: list[str],
     params: EnrichParams | None = None,
     now: datetime | None = None,
+    *,
+    threads=None,
+    embed_fn=None,
+    nlp=None,
+    cluster_params: ClusteringParams = CLUSTER_PARAMS,
+    prev_clustering: ClusteringResult | None = None,
 ) -> EnrichResult:
+    """Run L1 enrichment.
+
+    Clustering runs only when ``threads`` is supplied (the L0 thread records).
+    ``embed_fn`` and ``nlp`` are injectable; when omitted, the production loaders
+    are used (real embedding model + spaCy ``en_core_web_sm``, which raises a
+    clear error if the model is missing). Tests pass deterministic fakes.
+    """
     if params is None:
         params = EnrichParams()
     people, identities, orgs = resolve_identities(
         messages, owner_email, internal_domains, params
     )
     email_to_pid = {i.email: i.person_id for i in identities if i.person_id is not None}
-    edges  = build_relationship_graph(messages, owner_email, email_to_pid, params, now=now)
+    edges = build_relationship_graph(messages, owner_email, email_to_pid, params, now=now)
     people = infer_roles(people, messages, email_to_pid, internal_domains, params)
-    return EnrichResult(people=people, identities=identities, orgs=orgs, edges=edges)
+
+    clustering = None
+    if threads is not None:
+        clustering = _run_clustering(
+            threads, messages, email_to_pid, owner_email,
+            embed_fn=embed_fn, nlp=nlp, params=cluster_params,
+            prev_clustering=prev_clustering,
+        )
+
+    return EnrichResult(
+        people=people, identities=identities, orgs=orgs, edges=edges,
+        clustering=clustering,
+    )
+
+
+def _run_clustering(
+    threads, messages, email_to_pid, owner_email, *,
+    embed_fn, nlp, params, prev_clustering,
+):
+    """Build per-thread message map and cluster. Returns None if < 2 threads."""
+    by_thread: dict = {}
+    for m in messages:
+        by_thread.setdefault(m.thread_id, []).append(m)
+    clusterable = [t for t in threads if by_thread.get(t.id)]
+    if len(clusterable) < 2:
+        return None
+
+    owner_pid = email_to_pid.get(owner_email)
+    if owner_pid is None:
+        return None
+
+    if embed_fn is None:
+        from .clustering.embed import load_embed_fn
+
+        embed_fn = load_embed_fn()
+    if nlp is None:
+        from .clustering.nlp import load_nlp
+
+        nlp = load_nlp()
+
+    return cluster_from_store(
+        clusterable, by_thread, email_to_pid, owner_pid,
+        embed_fn=embed_fn, nlp=nlp, params=params, prev_result=prev_clustering,
+    )
