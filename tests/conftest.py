@@ -44,3 +44,55 @@ def run_full_ingest():
 
 def by_provider_id(store):
     return {m.provider_id: m for m in store.messages}
+
+
+# ── Clustering helpers (spec 03) ─────────────────────────────────────────────
+
+OWNER_EMAIL = "alex@acme.com"
+INTERNAL_DOMAINS = ["acme.com"]
+
+
+def build_cluster_inputs():
+    """Run L0 + L1 and return everything build_thread_features needs.
+
+    Returns ``(store, result, ctx)`` where ``ctx`` is a dict with keys
+    ``threads``, ``messages_by_thread``, ``email_to_person_id``,
+    ``owner_person_id``.
+    """
+    from services.enrich.pipeline import run_enrichment
+
+    store = run_full_ingest()
+    result = run_enrichment(store.messages, OWNER_EMAIL, INTERNAL_DOMAINS)
+    e2p = {i.email: i.person_id for i in result.identities if i.person_id is not None}
+
+    by_thread: dict[str, list] = {}
+    for m in store.messages:
+        by_thread.setdefault(m.thread_id, []).append(m)
+
+    ctx = {
+        "threads": store.threads,
+        "messages_by_thread": by_thread,
+        "email_to_person_id": e2p,
+        "owner_person_id": e2p[OWNER_EMAIL],
+    }
+    return store, result, ctx
+
+
+def build_features(dim: int = 16):
+    """Build ThreadFeatures from the fixture with test embed + fake NLP."""
+    from services.enrich.clustering.features import build_thread_features
+    from services.enrich.clustering.labeling_tfidf import ThreadTfidf
+    from services.enrich.clustering.testkit import FakeNlp, make_test_embed
+
+    store, result, ctx = build_cluster_inputs()
+    tfidf = ThreadTfidf.fit(ctx["threads"], ctx["messages_by_thread"])
+    feats = build_thread_features(
+        ctx["threads"],
+        ctx["messages_by_thread"],
+        ctx["email_to_person_id"],
+        ctx["owner_person_id"],
+        embed_fn=make_test_embed(dim),
+        nlp=FakeNlp(),
+        tfidf=tfidf,
+    )
+    return store, result, ctx, feats
