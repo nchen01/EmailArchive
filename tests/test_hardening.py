@@ -189,7 +189,7 @@ def test_write_audit_event_ingest_error_row():
     from services.db import models as orm
     from services.db.engine import SessionLocal
     from services.db.store import write_audit_event
-    from sqlalchemy import select
+    from sqlalchemy import delete, select
 
     session = SessionLocal()
     mbx = orm.Mailbox(
@@ -210,6 +210,8 @@ def test_write_audit_event_ingest_error_row():
         assert len(rows) == 2
         assert {r.action for r in rows} == {"ingest_start", "ingest_error"}
     finally:
+        # audit_log has no FK cascade (intentional, spec 04) — delete test rows explicitly.
+        session.execute(delete(orm.AuditLog).where(orm.AuditLog.mailbox_id == mid))
         session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
         session.commit()
         session.close()
@@ -221,7 +223,7 @@ def test_write_audit_event_appends_two_rows():
     from services.db import models as orm
     from services.db.engine import SessionLocal
     from services.db.store import write_audit_event
-    from sqlalchemy import select
+    from sqlalchemy import delete, select
 
     session = SessionLocal()
     mbx = orm.Mailbox(
@@ -245,6 +247,8 @@ def test_write_audit_event_appends_two_rows():
         finish = next(r for r in rows if r.action == "ingest_finish")
         assert finish.message_count == 42
     finally:
+        # audit_log has no FK cascade (intentional, spec 04) — delete test rows explicitly.
+        session.execute(delete(orm.AuditLog).where(orm.AuditLog.mailbox_id == mid))
         session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
         session.commit()
         session.close()
@@ -256,7 +260,7 @@ def test_audit_log_rows_are_not_updated():
     from services.db import models as orm
     from services.db.engine import SessionLocal
     from services.db.store import write_audit_event
-    from sqlalchemy import select
+    from sqlalchemy import delete, select
 
     session = SessionLocal()
     mbx = orm.Mailbox(
@@ -276,7 +280,44 @@ def test_audit_log_rows_are_not_updated():
         # Two separate rows, not one updated row.
         assert len(rows) == 2
     finally:
+        # audit_log has no FK cascade (intentional, spec 04) — delete test rows explicitly.
+        session.execute(delete(orm.AuditLog).where(orm.AuditLog.mailbox_id == mid))
         session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
+
+@requires_db
+def test_audit_log_rows_survive_mailbox_deletion():
+    """Deleting a mailbox must NOT delete its audit_log rows (spec 04 retention)."""
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+    from services.db.store import write_audit_event
+    from sqlalchemy import delete, select
+
+    session = SessionLocal()
+    mbx = orm.Mailbox(
+        provider="gmail", owner_email="retention-test@example.com",
+        embed_model="t", embed_dim=0, config={},
+    )
+    session.add(mbx)
+    session.commit()
+    mid = str(mbx.id)
+
+    try:
+        write_audit_event(session, mailbox_id=mid, actor="client:test", action="ingest_start")
+        write_audit_event(session, mailbox_id=mid, actor="client:test", action="ingest_finish", message_count=1)
+
+        # Delete the mailbox — audit rows must survive (no FK cascade, spec 04).
+        session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
+        session.commit()
+
+        rows = session.execute(
+            select(orm.AuditLog).where(orm.AuditLog.mailbox_id == mid)
+        ).scalars().all()
+        assert len(rows) == 2, "audit rows must be retained after mailbox deletion"
+    finally:
+        session.execute(delete(orm.AuditLog).where(orm.AuditLog.mailbox_id == mid))
         session.commit()
         session.close()
 

@@ -51,7 +51,7 @@ def upgrade() -> None:
         """
         CREATE TABLE audit_log (
           id            bigserial PRIMARY KEY,
-          mailbox_id    uuid NOT NULL,
+          mailbox_id    uuid NOT NULL,       -- no FK intentional: audit rows are retained after mailbox deletion (spec 04)
           actor         text NOT NULL,
           action        text NOT NULL,
           scope         text,
