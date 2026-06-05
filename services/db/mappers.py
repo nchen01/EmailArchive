@@ -19,13 +19,19 @@ from ekc_schemas import (
     Address,
     AttachmentRef,
     Edge,
+    Event,
+    EventType,
     Identity,
+    LabelSource,
     Message,
     Org,
     Person,
+    Project,
+    ProjectMember,
     Role,
     Sensitivity,
     Thread,
+    ThreadProjectAssignment,
 )
 
 from . import models as orm
@@ -238,4 +244,92 @@ def row_to_edge(row: orm.Edge) -> Edge:
         first_contact=row.first_contact,
         last_contact=row.last_contact,
         weight=float(row.weight),
+    )
+
+
+# ── Project / members / assignments (spec 03) ────────────────────────────────
+
+def project_to_row(project: Project, mailbox_id: str) -> dict:
+    return {
+        "id": project.id,
+        "mailbox_id": mailbox_id,
+        "label": project.label,
+        "label_source": project.label_source.value,
+        "start": project.start,
+        "end": project.end,
+        "confidence": project.confidence,
+        "debug": project.debug,
+    }
+
+
+def project_member_rows(project: Project) -> list[dict]:
+    return [
+        {
+            "project_id": project.id,
+            "person_id": m.person_id,
+            "involvement": m.involvement,
+            "message_count": m.message_count,
+        }
+        for m in project.members
+    ]
+
+
+def assignment_to_row(a: ThreadProjectAssignment) -> dict:
+    return {
+        "thread_id": a.thread_id,
+        "project_id": a.project_id,
+        "weight": a.weight,
+        "is_primary": a.is_primary,
+    }
+
+
+# ── Event (spec 01 §7, S4) ───────────────────────────────────────────────────
+
+def event_to_row(event: Event, mailbox_id: str) -> dict:
+    return {
+        "id": event.id,
+        "mailbox_id": mailbox_id,
+        "actor_person_id": event.actor_person_id,
+        "type": event.type.value,
+        "summary": event.summary,
+        "project_id": event.project_id,
+        "source_message_ids": list(event.source_message_ids),
+        "confidence": event.confidence,
+    }
+
+
+def row_to_event(row: orm.Event) -> Event:
+    return Event(
+        id=str(row.id),
+        actor_person_id=str(row.actor_person_id),
+        type=EventType(row.type),
+        summary=row.summary,
+        project_id=str(row.project_id) if row.project_id else None,
+        source_message_ids=list(row.source_message_ids),
+        confidence=float(row.confidence),
+    )
+
+
+def row_to_project(
+    row: orm.Project, members: list[orm.ProjectMember] | None = None
+) -> Project:
+    member_models = [
+        ProjectMember(
+            person_id=str(m.person_id),
+            involvement=float(m.involvement),
+            message_count=m.message_count,
+        )
+        for m in sorted(members or [], key=lambda m: (-float(m.involvement), str(m.person_id)))
+    ]
+    return Project(
+        id=str(row.id),
+        label=row.label,
+        label_source=LabelSource(row.label_source),
+        member_ids=[m.person_id for m in member_models],
+        members=member_models,
+        thread_ids=[],  # filled by the caller from assignment rows if needed
+        start=row.start,
+        end=row.end,
+        confidence=float(row.confidence),
+        debug=row.debug,
     )

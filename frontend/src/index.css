@@ -12,3 +12,92 @@ body,
 body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/* ── Project list (sidebar) ─────────────────────────────────────────── */
+.project-list { list-style: none; margin: 0; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.project-list-empty { padding: 1.5rem; color: #94a3b8; font-size: 0.875rem; text-align: center; }
+
+.project-card {
+  width: 100%; text-align: left; background: #fff;
+  border: 1px solid #e2e8f0; border-radius: 0.5rem;
+  padding: 0.75rem; cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.project-card:hover { border-color: #94a3b8; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.project-card.is-selected { border-color: #475569; box-shadow: 0 0 0 2px #475569; }
+
+.project-card-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.25rem; }
+.project-card-label { font-size: 0.875rem; font-weight: 600; color: #1e293b; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-card-state { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #fff; padding: 0.15rem 0.45rem; border-radius: 9999px; flex-shrink: 0; }
+.project-card-meta { font-size: 0.75rem; color: #64748b; display: flex; justify-content: space-between; margin-bottom: 0.4rem; }
+.project-card-confidence { height: 3px; background: #e2e8f0; border-radius: 9999px; overflow: hidden; }
+.project-card-confidence-bar { height: 100%; background: #475569; border-radius: 9999px; }
+
+/* ── Project detail (main panel) ────────────────────────────────────── */
+.project-detail { padding: 1.5rem; overflow-y: auto; height: 100%; }
+.project-detail-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.project-detail-header h2 { font-size: 1.125rem; font-weight: 700; color: #1e293b; margin: 0; flex: 1; }
+
+.project-state-pill { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 0.2rem 0.6rem; border-radius: 9999px; }
+.project-state-pill.state-active  { background: #dcfce7; color: #166534; }
+.project-state-pill.state-stale   { background: #f1f5f9; color: #64748b; }
+.project-confidence-pill { font-size: 0.75rem; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.2rem 0.5rem; border-radius: 0.25rem; }
+
+.project-metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: #475569; }
+
+.project-who-to-ask,
+.project-members,
+.project-threads { margin-bottom: 1.5rem; }
+.project-who-to-ask h3,
+.project-members h3,
+.project-threads h3 { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin: 0 0 0.5rem; }
+
+.project-who-to-ask ul,
+.project-members ul,
+.project-threads ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+
+.who-to-ask-chip { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; border-radius: 0.375rem; background: #f8fafc; font-size: 0.8125rem; }
+.role-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.who-to-ask-name { font-weight: 500; color: #1e293b; flex: 1; }
+.who-to-ask-role { font-size: 0.7rem; color: #94a3b8; }
+.who-to-ask-count { font-size: 0.7rem; color: #94a3b8; }
+
+.member-role-group { margin-bottom: 0.75rem; }
+.member-role-group h4 { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 0.25rem; }
+.member-row { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0.5rem; font-size: 0.8125rem; color: #334155; border-radius: 0.25rem; }
+.member-row:hover { background: #f1f5f9; }
+.member-count { font-size: 0.7rem; color: #94a3b8; }
+
+.thread-row { display: flex; flex-direction: column; padding: 0.4rem 0.5rem; border-radius: 0.375rem; }
+.thread-row:hover { background: #f1f5f9; }
+.thread-link { background: none; border: none; padding: 0; font-size: 0.8125rem; font-weight: 500; color: #1e293b; text-align: left; cursor: pointer; }
+.thread-link:hover { text-decoration: underline; }
+.thread-meta { font-size: 0.7rem; color: #94a3b8; margin-top: 0.1rem; }
+
+.muted { color: #94a3b8; font-size: 0.8125rem; }
+
+/* What's been done — activity panel (spec 02 §6) */
+.project-activity { margin-bottom: 1.5rem; }
+.project-activity h3 { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin: 0 0 0.5rem; }
+.activity-grade { margin-bottom: 0.75rem; }
+.activity-grade h4 { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 0.25rem; color: #475569; }
+.activity-grade-outcome h4 { color: #15803d; }
+.activity-grade-did h4 { color: #1d4ed8; }
+.activity-grade-proposed h4 { color: #b45309; }
+.activity-grade ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.activity-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.3rem 0.5rem; font-size: 0.8125rem; color: #334155; border-radius: 0.25rem; }
+.activity-row:hover { background: #f1f5f9; }
+.activity-summary { flex: 1; }
+.activity-citations { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.citation-chip { font-size: 0.65rem; color: #475569; background: #e2e8f0; padding: 0.1rem 0.35rem; border-radius: 0.25rem; }
+
+/* Generate summary (L3 synthesis) */
+.project-summary { margin-top: 0.75rem; }
+.generate-summary-btn { font-size: 0.8125rem; font-weight: 500; color: #fff; background: #1e293b; border: none; padding: 0.45rem 0.85rem; border-radius: 0.375rem; cursor: pointer; }
+.generate-summary-btn:hover { background: #334155; }
+.generate-summary-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+.summary-error { margin-top: 0.5rem; font-size: 0.8125rem; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; padding: 0.4rem 0.6rem; border-radius: 0.375rem; }
+.summary-result { margin-top: 0.5rem; font-size: 0.8125rem; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.375rem; padding: 0.5rem 0.65rem; }
+.summary-result ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.summary-claim { display: flex; flex-direction: column; gap: 0.25rem; }
+.claim-text { color: #1e293b; }

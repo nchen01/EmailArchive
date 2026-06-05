@@ -27,6 +27,8 @@ from sqlalchemy import select  # noqa: E402
 from services.db.engine import SessionLocal  # noqa: E402
 from services.db import models as orm  # noqa: E402
 from services.db.store import persist_l0, persist_l1  # noqa: E402
+from services.enrich.clustering.params import FIXTURE_PARAMS  # noqa: E402
+from services.enrich.clustering.testkit import FakeNlp, make_test_embed  # noqa: E402
 from services.enrich.pipeline import run_enrichment  # noqa: E402
 from services.ingest.params import IngestParams  # noqa: E402
 from services.ingest.pipeline import IngestConfig, run_ingest  # noqa: E402
@@ -72,15 +74,23 @@ def seed() -> str:
         cfg = IngestConfig(
             provider="fixture",
             mailbox_path=FIXTURE,
+            db_mailbox_id=mailbox_id,   # scope Message/Thread PKs to this mailbox
             owner_email=OWNER_EMAIL,
             internal_domains=INTERNAL_DOMAINS,
             params=params,
         )
         store = run_ingest(cfg)
-        persist_l0(store, mailbox_id, session)
+        persist_l0(store, mailbox_id, session, replace_snapshot=True)
 
+        # Clustering uses deterministic testkit fakes and FIXTURE_PARAMS (the same
+        # params that pass the eval gates), so the Projects tab shows meaningful
+        # multi-thread clusters, not near-all-singletons from production defaults.
         result = run_enrichment(
-            store.messages, owner_email=OWNER_EMAIL, internal_domains=INTERNAL_DOMAINS
+            store.messages, owner_email=OWNER_EMAIL, internal_domains=INTERNAL_DOMAINS,
+            threads=store.threads,
+            embed_fn=make_test_embed(),
+            nlp=FakeNlp(),
+            cluster_params=FIXTURE_PARAMS,
         )
         persist_l1(result, mailbox_id, session)
 
@@ -93,9 +103,11 @@ def seed() -> str:
             mbx.owner_person_id = owner_pid
             session.commit()
 
+        n_projects = len(result.clustering.projects) if result.clustering else 0
         print(f"Seeded mailbox_id={mailbox_id}")
         print(f"  messages={len(store.messages)} threads={len(store.threads)}")
         print(f"  people={len(result.people)} edges={len(result.edges)}")
+        print(f"  projects={n_projects}")
         return mailbox_id
     finally:
         session.close()

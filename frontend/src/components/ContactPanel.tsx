@@ -1,4 +1,9 @@
-import type { ContactDetail } from "../api/types";
+import { useEffect, useState } from "react";
+import {
+  fetchContactSummary,
+  SummariesNotConfiguredError,
+} from "../api/client";
+import type { ContactDetail, SynthesisResult } from "../api/types";
 import { roleColor, roleLabel } from "../utils/roleColors";
 import { LoadingSpinner } from "./LoadingSpinner";
 
@@ -8,6 +13,9 @@ interface ContactPanelProps {
   error: string | null;
   open: boolean;
   onClose: () => void;
+  /** Mailbox + person ids, needed to trigger L3 synthesis (spec 05 §3.4). */
+  mailboxId: string | null;
+  personId: string | null;
 }
 
 function formatDate(iso: string): string {
@@ -37,7 +45,40 @@ export function ContactPanel({
   error,
   open,
   onClose,
+  mailboxId,
+  personId,
 }: ContactPanelProps) {
+  // L3 "Ask about this contact" synthesis state.
+  const [summary, setSummary] = useState<SynthesisResult | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // Reset the synthesis result whenever the selected contact changes.
+  useEffect(() => {
+    setSummary(null);
+    setSummaryError(null);
+    setSummaryLoading(false);
+  }, [personId]);
+
+  const askAboutContact = async () => {
+    if (!mailboxId || !personId) return;
+    setSummaryLoading(true);
+    setSummaryError(null);
+    setSummary(null);
+    try {
+      const res = await fetchContactSummary(mailboxId, personId);
+      setSummary(res);
+    } catch (err) {
+      if (err instanceof SummariesNotConfiguredError) {
+        setSummaryError("Summaries are not configured.");
+      } else {
+        setSummaryError("Could not generate summary. Please try again.");
+      }
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   return (
     <aside
       className={`fixed right-0 top-0 z-20 flex h-full w-[380px] flex-col border-l border-slate-200 bg-white shadow-xl transition-transform duration-300 ${
@@ -176,16 +217,58 @@ export function ContactPanel({
               )}
             </div>
 
-            {/* Ask (deferred to S4) */}
-            <div className="pt-2">
+            {/* Ask about this contact (L3 synthesis, spec 05 §3.4) */}
+            <div className="space-y-2 pt-2">
               <button
                 type="button"
-                disabled
-                title="Coming in a future release"
-                className="w-full cursor-not-allowed rounded-md bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400"
+                onClick={askAboutContact}
+                disabled={summaryLoading || !mailboxId || !personId}
+                className="w-full rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                Ask about this contact
+                {summaryLoading ? "Asking…" : "Ask about this contact"}
               </button>
+
+              {summaryLoading ? (
+                <LoadingSpinner label="Summarizing…" />
+              ) : null}
+
+              {summaryError ? (
+                <div
+                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                  role="alert"
+                >
+                  {summaryError}
+                </div>
+              ) : null}
+
+              {summary && !summaryLoading ? (
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  {summary.claims.length === 0 ? (
+                    <p className="text-slate-400">
+                      {summary.state ?? "No evidenced activity in email."}
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {summary.claims.map((c, i) => (
+                        <li key={i}>
+                          <div>{c.text}</div>
+                          <div className="mt-0.5 flex flex-wrap gap-1">
+                            {c.source_message_ids.map((id) => (
+                              <span
+                                key={id}
+                                title={id}
+                                className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600"
+                              >
+                                {id}
+                              </span>
+                            ))}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

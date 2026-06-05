@@ -44,8 +44,58 @@ def _upsert(session: Session, model, rows: list[dict], index_elements: list[str]
     session.execute(stmt)
 
 
-def persist_l0(store: IngestStore, mailbox_id: str, session: Session) -> None:
-    """Upsert threads then messages (+ attachments). Idempotent on message_id_header."""
+def persist_l0(
+    store: IngestStore,
+    mailbox_id: str,
+    session: Session,
+    *,
+    replace_snapshot: bool = False,
+) -> None:
+    """Upsert threads then messages (+ attachments). Idempotent on message_id_header.
+
+    Default (``replace_snapshot=False``): pure upsert — adds or updates rows in
+    *store* and never deletes rows that are absent from the batch. This is the
+    correct semantics for incremental/partial sync (spec 00 §5, §13): a
+    historyId/delta run only contains changed messages, not the full mailbox.
+
+    ``replace_snapshot=True``: before upserting, delete any existing
+    thread/message rows for this mailbox whose PK does not appear in *store*.
+    Use this only for:
+      - Full re-ingest / dev seed (all messages present in the store).
+      - Legacy-ID upgrade (unscoped → scoped db_mailbox_id): the upsert cannot
+        change PKs, so stale rows must be removed first or attachment FKs break.
+    The thread→message→message_attachment CASCADE chain handles child cleanup.
+    """
+    from sqlalchemy import delete, select
+
+    if replace_snapshot:
+        # ── Stale thread removal ─────────────────────────────────────────────
+        new_thread_ids = {t.id for t in store.threads}
+        stale_thr_ids = [
+            row
+            for (row,) in session.execute(
+                select(orm.Thread.id).where(orm.Thread.mailbox_id == mailbox_id)
+            ).all()
+            if row not in new_thread_ids
+        ]
+        if stale_thr_ids:
+            # CASCADE: thread → message → message_attachment
+            session.execute(delete(orm.Thread).where(orm.Thread.id.in_(stale_thr_ids)))
+
+        # ── Stale message removal (belt-and-suspenders for edge cases) ───────
+        new_msg_ids = {m.id for m in store.messages}
+        stale_msg_ids = [
+            row
+            for (row,) in session.execute(
+                select(orm.Message.id).where(orm.Message.mailbox_id == mailbox_id)
+            ).all()
+            if row not in new_msg_ids
+        ]
+        if stale_msg_ids:
+            # CASCADE: message → message_attachment
+            session.execute(delete(orm.Message).where(orm.Message.id.in_(stale_msg_ids)))
+
+    # ── Upserts ───────────────────────────────────────────────────────────────
     thread_rows = [mappers.thread_to_row(t, mailbox_id) for t in store.threads]
     _upsert(session, orm.Thread, thread_rows, ["id"])
 
@@ -68,7 +118,13 @@ def persist_l0(store: IngestStore, mailbox_id: str, session: Session) -> None:
 
 
 def persist_l1(result: EnrichResult, mailbox_id: str, session: Session) -> None:
-    """Upsert orgs, persons, identities, edges. Idempotent on id / natural keys."""
+    """Upsert orgs, persons, identities, edges (+ clustering if present).
+
+    Idempotent on id / natural keys. Clustering uses a selective upsert:
+    only projects absent from the new result are deleted (their membership and
+    assignment children cascade); existing stable project rows are updated in
+    place so downstream FKs (e.g. future event.project_id) are never broken.
+    """
     org_rows = [mappers.org_to_row(o, mailbox_id) for o in result.orgs]
     _upsert(session, orm.Org, org_rows, ["id"])
 
@@ -81,4 +137,107 @@ def persist_l1(result: EnrichResult, mailbox_id: str, session: Session) -> None:
     edge_rows = [mappers.edge_to_row(e, mailbox_id) for e in result.edges]
     _upsert(session, orm.Edge, edge_rows, ["mailbox_id", "person_id"])
 
+    if result.clustering is not None:
+        _persist_clustering(result.clustering, mailbox_id, session)
+
+    # Always call persist_events when extraction ran (even if no events were
+    # produced): processed_headers is non-empty iff extract_fn was supplied,
+    # and we must delete stale Events for those threads regardless.
+    if result.event_processed_headers:
+        persist_events(
+            result.events, mailbox_id, session,
+            processed_headers=result.event_processed_headers,
+        )
+
     session.commit()
+
+
+def persist_events(
+    events: list,
+    mailbox_id: str,
+    session: Session,
+    *,
+    processed_headers: list[str],
+) -> None:
+    """Persist Events via scoped delete-and-reinsert (S4 guide §4, D10).
+
+    The delete scope is ``processed_headers`` — ALL message_id_header values
+    from threads that extraction ran on (including threads that produced zero
+    Events). This ensures stale Events are removed even when re-extraction
+    yields nothing or cites different messages.
+
+    The ``ix_event_srcs`` GIN index covers the ``&&`` overlap efficiently.
+    Safe for incremental sync: only clears Events whose source messages are
+    in the processed batch; untouched threads' Events are left intact.
+    """
+    from sqlalchemy import delete
+
+    if processed_headers:
+        session.execute(
+            delete(orm.Event).where(
+                orm.Event.mailbox_id == mailbox_id,
+                orm.Event.source_message_ids.overlap(processed_headers),  # SQL: &&
+            )
+        )
+
+    if events:
+        rows = [mappers.event_to_row(e, mailbox_id) for e in events]
+        # IDs are fresh uuid4 per run, so a plain insert is correct after the delete.
+        _upsert(session, orm.Event, rows, ["id"])
+    session.commit()
+
+
+def _persist_clustering(clustering, mailbox_id: str, session: Session) -> None:
+    """Upsert the clustering result; only delete projects that disappeared.
+
+    Project IDs are stable across re-clusters (uuid5 + carry_over_ids), so we
+    must not delete-all-then-reinsert: that would break any future FK that points
+    at project.id (e.g. event.project_id with ON DELETE SET NULL).  Instead:
+
+    1. Delete only projects absent from the new result (cascade removes their
+       memberships and assignments automatically via ON DELETE CASCADE).
+    2. Upsert all current projects (stable IDs survive unchanged).
+    3. Delete + reinsert memberships and assignments for current projects, because
+       involvement weights may have changed even when the project ID is the same.
+    """
+    from sqlalchemy import delete, select
+
+    new_project_ids = {p.id for p in clustering.projects}
+
+    existing_ids = set(
+        session.execute(
+            select(orm.Project.id).where(orm.Project.mailbox_id == mailbox_id)
+        ).scalars()
+    )
+    removed_ids = existing_ids - new_project_ids
+    if removed_ids:
+        # ON DELETE CASCADE handles ThreadProjectAssignment + ProjectMember rows.
+        session.execute(delete(orm.Project).where(orm.Project.id.in_(removed_ids)))
+
+    # Upsert projects — insert new ones, update label/confidence/span on existing.
+    project_rows = [mappers.project_to_row(p, mailbox_id) for p in clustering.projects]
+    _upsert(session, orm.Project, project_rows, ["id"])
+
+    # Refresh memberships and assignments for all current projects.
+    # Delete-then-reinsert is safe here: these child rows carry no downstream FKs.
+    if new_project_ids:
+        session.execute(
+            delete(orm.ProjectMember).where(
+                orm.ProjectMember.project_id.in_(new_project_ids)
+            )
+        )
+        session.execute(
+            delete(orm.ThreadProjectAssignment).where(
+                orm.ThreadProjectAssignment.project_id.in_(new_project_ids)
+            )
+        )
+
+    member_rows: list[dict] = []
+    for p in clustering.projects:
+        member_rows.extend(mappers.project_member_rows(p))
+    _upsert(session, orm.ProjectMember, member_rows, ["project_id", "person_id"])
+
+    assignment_rows = [mappers.assignment_to_row(a) for a in clustering.assignments]
+    _upsert(
+        session, orm.ThreadProjectAssignment, assignment_rows, ["thread_id", "project_id"]
+    )

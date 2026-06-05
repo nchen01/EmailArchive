@@ -170,27 +170,36 @@ Where summaries get generated — and where the grounding discipline lives.
 
 ## 8. MVP cut & sequencing
 
-**Implemented (S1–S2):**
-- Single-mailbox ingest via `FixtureProvider` (fixture-driven) and `GmailProvider` (real OAuth).
-  Thread reconstruction, address normalization, deduplication, noise filtering, sensitivity tagging.
-- Identity resolution (domain-blocked fuzzy name merge), relationship graph with weighted edges.
-- Role inference — rules-based v1 (internal/external split + keyword signals).
-- PostgreSQL 16 + pgvector persistence via Alembic migrations + SQLAlchemy mappers.
-- Network-map surface: FastAPI `GET /api/network-map/{mailbox_id}` + contact detail endpoint.
-  React 18 + `react-force-graph-2d` frontend with role-colored nodes, legend toggles, contact drawer.
+**Implemented (S0–S4, complete):**
+- Single-mailbox ingest (`FixtureProvider` + `GmailProvider`): thread reconstruction, address
+  normalization, deduplication, noise filtering, sensitivity tagging.
+- Identity resolution, relationship graph, role inference (rules-based v1).
+- PostgreSQL 16 + pgvector persistence (Alembic migrations 0001–0005, SQLAlchemy mappers).
+- Project clustering: Leiden community detection, soft membership, c-TF-IDF labeling, incremental
+  ID carry-over. Eval: extended-BCubed F1 ≥ 0.75.
+- Event extraction: per-thread, LLM-backed via injectable `extract_fn`, proposed/did/outcome
+  typed, citation-enforced. (D10 — L1 exception to the L3-only LLM rule.)
+- L3 synthesis: project "What's been done" + contact "Ask about this contact" — grounded,
+  cited, Pydantic-validated against allowed message_id_headers.
+- Surfaces: network map (S2), project view with activity panel (S3–S4), synthesis buttons (S4).
+- 138 tests passing. Frontend build clean. `python scripts/dev_seed.py` seeds all layers.
 
-**Next (S3):**
-- Project clustering (spec 03, tickets 3.1–3.11): thread-similarity graph, community detection,
-  overlapping soft assignment, c-TF-IDF labeling.
-- Project view surface (spec 02): members, timeline, derived state, "what's been done" panel.
+**Implemented (S5, complete):**
+- **Cover-for-me query** (implementation-plan §6.3, D11). `POST /api/cover-for-me/{mailbox_id}`.
+  Word-boundary entity detection against Person names and Project labels already in Postgres.
+  Routes to `synthesize_project` / `synthesize_contact` (reusing S4); citation allow-list
+  enforced (invalid headers filtered post-model). "Insufficient structured evidence" fallback
+  when no entity matches — never bluffs. Third "Cover for Me" tab in the frontend. 148 tests.
 
 **Deferred:**
-- Accomplishment summaries / cover-for-me query (needs event extraction, S4).
-- Multi-mailbox, the offboarding motion, cross-channel (Slack/docs) ingestion.
-- L2 retrieval layer (externally owned query router; `message_embedding` table deferred until
-  embedding model dimension is chosen — see spec 04 ticket 4.5).
-- M365 provider (stub now; drops in when needed — D2).
-- Object store for raw MIME (`raw_uri = None` until production deployment — D6).
+- **L2 retrieval** (`message_embedding` table, spec 04 ticket 4.5): needs embedding model and
+  dimension choice. Deferred; `message_embedding` remains unbuilt. When L2 lands, cover-for-me
+  can be upgraded from L1-only to full hybrid retrieval without surface changes.
+- **Multi-mailbox, offboarding motion, cross-channel ingestion** — v2 product scope.
+- **M365 provider** — stub now; drops in without pipeline changes (D2).
+- **Object store for raw MIME** — `raw_uri = None` until production deployment (D6).
+- **Redis queue, full OAuth/secrets manager, OTel** — needed before real customer mailboxes;
+  not needed for a controlled demo against a test inbox.
 
 **Plug-in point:** the existing RAG query pipeline maps onto **Layer 2** and parts of
 the project-clustering retrieval in **Layer 1**. `// TODO: confirm which signals the
@@ -210,6 +219,6 @@ current pipeline already extracts and where it slots in.`
 - **Retention** after a coverage period ends: `retention_days` param in `IngestParams` (wired in
   params, not yet enforced in a scheduled job).
 - **Embedding model + dimension:** deferred; gates spec 04 ticket 4.5 (`message_embedding` HNSW
-  index) and L2 retrieval. Decide before S4.
+  index) and L2 retrieval. Decide before implementing L2 / full hybrid retrieval.
 - **Data-subject deletion semantics** for third-party content inside shared threads — needs a
   product + legal decision (spec 04 §11, §13).

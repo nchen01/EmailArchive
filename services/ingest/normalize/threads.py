@@ -108,11 +108,24 @@ def _norm_subject(subject: str) -> str:
     return s.strip().lower()
 
 
-def _message_uuid(message_id_header: str) -> str:
+def _message_uuid(message_id_header: str, db_mailbox_id: str = "") -> str:
+    """Stable Message PK.
+
+    When ``db_mailbox_id`` is provided (real DB persisted run), the ID is
+    scoped to that mailbox so that two mailboxes containing the same RFC
+    Message-ID produce different PKs and can coexist without collision.
+    When empty (in-memory fixture/test runs) the legacy scheme is used so
+    existing in-memory tests need no changes.
+    """
+    if db_mailbox_id:
+        return str(uuid.uuid5(_NS, f"msg:{db_mailbox_id}:{message_id_header}"))
     return str(uuid.uuid5(_NS, "msg:" + message_id_header))
 
 
-def _thread_uuid(root_mid: str) -> str:
+def _thread_uuid(root_mid: str, db_mailbox_id: str = "") -> str:
+    """Stable Thread PK — same mailbox-scoping rationale as _message_uuid."""
+    if db_mailbox_id:
+        return str(uuid.uuid5(_NS, f"thread:{db_mailbox_id}:{root_mid}"))
     return str(uuid.uuid5(_NS, root_mid))
 
 
@@ -121,6 +134,7 @@ def reconstruct(
     raws: list[RawMessage],
     owner_email: str,
     params: IngestParams,
+    db_mailbox_id: str = "",
 ) -> tuple[list[Message], list[Thread]]:
     uf = UnionFind()
     mid_of: dict[str, str] = {}          # provider_id -> normalized mid
@@ -162,7 +176,7 @@ def reconstruct(
         decorated = sorted(
             group_raws, key=lambda r: (_parse_ts(r.headers.get("Date", "")), mid_of[r.provider_id])
         )
-        thread_id = _thread_uuid(root)
+        thread_id = _thread_uuid(root, db_mailbox_id)
         thread_messages: list[Message] = []
         provider_thread_ids: list[str] = []
         participants: set[str] = set()
@@ -184,7 +198,7 @@ def reconstruct(
             sensitivity = tag_sensitivity(subject, clean_text, sender.email, params)
 
             msg = Message(
-                id=_message_uuid(mid),
+                id=_message_uuid(mid, db_mailbox_id),
                 message_id_header=mid,
                 provider_id=r.provider_id,
                 thread_id=thread_id,

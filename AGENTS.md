@@ -16,9 +16,9 @@ exist; your job is to realize them faithfully, not to redesign them. **Read befo
 | Spec | Covers | Status |
 |---|---|---|
 | `00-l0-ingest.md` | L0 ingest & normalization (deep dive) | ✓ implemented (S1) |
-| `01-layer1-enrichment.md` | L1: identity (§3), graph (§4), roles (§5), clustering (§6), events (§7) | §3–§5 done (S1–S2); §6–§7 next (S3–S4) |
-| `02-project-view.md` | Project-view surface + its API contract | → S3 |
-| `03-project-clustering.md` | Deep dive of L1 §6 (build-ready) | → S3 |
+| `01-layer1-enrichment.md` | L1: identity (§3), graph (§4), roles (§5), clustering (§6), events (§7) | ✓ all sections done (S1–S4) |
+| `02-project-view.md` | Project-view surface + its API contract | ✓ implemented (S3–S4) |
+| `03-project-clustering.md` | Deep dive of L1 §6 (build-ready) | ✓ implemented (S3) |
 | `04-storage-schema.md` | Postgres + pgvector schema & migrations | ✓ implemented (S2, migrations 0001–0005) |
 | `05-network-map.md` | Network-map surface + API contract | ✓ implemented (S2) |
 
@@ -77,18 +77,22 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   0001–0005 (`alembic/versions/`) + SQLAlchemy mappers (`services/db/`) + FastAPI network-map
   endpoints (`services/api/`, spec 05) + React frontend (`frontend/`). 46 passing tests.
   DB runs via Docker Compose (`docker-compose.yml`). Seed with `python scripts/dev_seed.py`.
-- **S3 — next** — project clustering (spec 03, tickets 3.1–3.11) + project view surface
-  (spec 02, `@sprint S3`). Entry point: spec 03 §1 scope.
-- **S4** — event extraction (spec 01 §7) + L3 grounded synthesis.
+- **S3 ✓** — project clustering (spec 03) + project view surface (spec 02). 124 tests.
+- **S4 ✓** — event extraction (spec 01 §7) + L3 synthesis (project summary, contact summary).
+  138 tests. `services/enrich/events/`, `services/synthesis/`.
+- **S5 ✓** — bounded L1-only cover-for-me query (D11). `POST /api/cover-for-me/{mailbox_id}`.
+  Routes over Person, Project, Event, Edge, Thread in the DB; word-boundary entity detection;
+  citation allow-list enforced; "insufficient structured evidence" on no match. 148 tests.
+  **All three MVP surfaces are now shipped.** Next: production hardening or L2 retrieval.
 
 ## 6. Known gaps — flag, don't fake
 
 - **L2 retrieval** is intentionally *not* specced here; an existing query router owns it. Integrate
   against it; do not build a retrieval layer. The `message_embedding` table (spec 04 ticket 4.5,
   pgvector HNSW) is deferred until the embedding model is chosen.
-- **L3 synthesis / grounding spec** is not written. The contract (cite-or-don't-claim; proposed/did/
-  outcome grading) lives in `implementation-plan.md` §4 and spec 01 §7, but the L3 *mechanism* is
-  unspecified. Do not build it until the spec exists.
+- **L3 synthesis** — `services/synthesis/` is built (S4): project "What's been done" and contact
+  "Ask about this contact", both citation-validated. The **cover-for-me free-text query** (S5,
+  D11) is the remaining L3 surface; it routes over L1 structured objects, not L2 vector retrieval.
 - **Role inference** (spec 01 §5, `services/enrich/roles.py`) is a rules-based v1. It correctly
   classifies all fixture contacts but is not a learned classifier. Upgrade path: labeled data →
   small classifier, logged in the spec.

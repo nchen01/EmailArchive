@@ -32,6 +32,24 @@ api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
 ]
+# Clustering (L1 spec 03). spaCy is here; the en_core_web_sm *model* is NOT a
+# pip dep — download it via scripts/download_models.py or `python -m spacy download`.
+clustering = [
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "scikit-learn>=1.5",
+    "spacy>=3.7",
+    "sentence-transformers>=3.0",
+    "hnswlib>=0.8",
+    "python-igraph>=0.11",
+    "leidenalg>=0.10",
+]
+# Synthesis (L3 + event extraction, spec 01 §7 / implementation-plan §4, S4).
+# The Anthropic key is read from ANTHROPIC_API_KEY (D6) — never the DB or logs.
+synthesis = [
+    "anthropic>=0.40",
+    "instructor>=1.3",
+]
 # test: everything pytest needs to *collect and run the full suite*.
 # db/api deps are included because tests import them at collection time;
 # a bare pip install -e .[test] must work in CI without hidden extras.
@@ -44,10 +62,24 @@ test = [
     "psycopg2-binary>=2.9",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "scikit-learn>=1.5",
+    # spacy library (not the model — download via scripts/download_models.py)
+    "spacy>=3.7",
+    "python-igraph>=0.11",
+    "leidenalg>=0.10",
+    # Synthesis deps — tests import them at collection time (S4 Track B).
+    "anthropic>=0.40",
+    "instructor>=1.3",
+    # hnswlib is NOT here: requires MS C++ Build Tools on Windows and fails to
+    # build without them.  blocking.py falls back to scikit-learn NearestNeighbors
+    # automatically, so the full test suite passes without hnswlib.
+    # Add pip install .[clustering] on Linux/prod where hnswlib builds cleanly.
 ]
 # dev: one-shot local-development install (test suite + Gmail provider).
 # Python extras cannot reference sibling extras portably, so deps are listed
-# explicitly. Use: pip install -e packages/ && pip install -e .[dev]
+# explicitly. Use: pip install -r requirements.txt
 dev = [
     "pytest>=8.0",
     "pytest-timeout>=2.1",
@@ -59,6 +91,16 @@ dev = [
     "uvicorn[standard]>=0.30",
     "google-api-python-client>=2.100",
     "google-auth>=2.20",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "scikit-learn>=1.5",
+    "spacy>=3.7",
+    "python-igraph>=0.11",
+    "leidenalg>=0.10",
+    # Synthesis deps (S4 Track B).
+    "anthropic>=0.40",
+    "instructor>=1.3",
+    # hnswlib excluded — see test extra comment above.
 ]
 
 [tool.setuptools.packages.find]

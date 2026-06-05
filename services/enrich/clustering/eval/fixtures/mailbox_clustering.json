@@ -1,0 +1,8 @@
+{
+  "_comment": "Eval fixture wrapper (spec 03 §18). To avoid duplicating mailbox data, the eval references the shared repo fixtures rather than re-embedding them. run_eval.py loads fixtures/mailbox.json + fixtures/gold/{threads,projects}.json directly.",
+  "source": "../../../../../fixtures/mailbox.json",
+  "gold_threads": "../../../../../fixtures/gold/threads.json",
+  "gold_projects": "../../../../../fixtures/gold/projects.json",
+  "owner_email": "alex@acme.com",
+  "internal_domains": ["acme.com"]
+}

@@ -1,4 +1,22 @@
-import type { ContactDetail, NetworkMapData } from "./types";
+import type {
+  ContactDetail,
+  CoverForMeResponse,
+  NetworkMapData,
+  ProjectDetailData,
+  ProjectListData,
+  SynthesisResult,
+} from "./types";
+
+/**
+ * Thrown when synthesis is unavailable because the Anthropic key is not
+ * configured (HTTP 503). The UI shows a "Summaries not configured" message.
+ */
+export class SummariesNotConfiguredError extends Error {
+  constructor(message = "Summaries are not configured") {
+    super(message);
+    this.name = "SummariesNotConfiguredError";
+  }
+}
 
 // Empty string in dev: requests hit Vite, which proxies /api -> FastAPI.
 // Override with VITE_API_URL for non-proxied deployments.
@@ -13,6 +31,46 @@ async function getJson<T>(url: string): Promise<T> {
       detail = body?.detail ? `: ${body.detail}` : "";
     } catch {
       // non-JSON error body; ignore
+    }
+    throw new Error(`Request failed (${res.status})${detail}`);
+  }
+  return (await res.json()) as T;
+}
+
+async function postJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, { method: "POST" });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail ? `: ${body.detail}` : "";
+    } catch {
+      // non-JSON error body; ignore
+    }
+    if (res.status === 503) {
+      throw new SummariesNotConfiguredError();
+    }
+    throw new Error(`Request failed (${res.status})${detail}`);
+  }
+  return (await res.json()) as T;
+}
+
+async function postJsonBody<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const errBody = await res.json();
+      detail = errBody?.detail ? `: ${errBody.detail}` : "";
+    } catch {
+      // non-JSON error body; ignore
+    }
+    if (res.status === 503) {
+      throw new SummariesNotConfiguredError();
     }
     throw new Error(`Request failed (${res.status})${detail}`);
   }
@@ -46,4 +104,55 @@ export async function fetchContactDetail(
     mailboxId,
   )}/contact/${encodeURIComponent(personId)}`;
   return getJson<ContactDetail>(url);
+}
+
+export async function fetchProjects(
+  mailboxId: string,
+): Promise<ProjectListData> {
+  const url = `${API_BASE}/api/projects/${encodeURIComponent(mailboxId)}`;
+  return getJson<ProjectListData>(url);
+}
+
+export async function fetchProjectDetail(
+  mailboxId: string,
+  projectId: string,
+): Promise<ProjectDetailData> {
+  const url = `${API_BASE}/api/projects/${encodeURIComponent(
+    mailboxId,
+  )}/${encodeURIComponent(projectId)}`;
+  return getJson<ProjectDetailData>(url);
+}
+
+/** Trigger "What's been done" L3 synthesis for a project (spec 02 §6). */
+export async function fetchProjectSummary(
+  mailboxId: string,
+  projectId: string,
+): Promise<SynthesisResult> {
+  const url = `${API_BASE}/api/synthesis/${encodeURIComponent(
+    mailboxId,
+  )}/project/${encodeURIComponent(projectId)}`;
+  return postJson<SynthesisResult>(url);
+}
+
+/** Trigger "Ask about this contact" L3 synthesis (spec 05 §3.4). */
+export async function fetchContactSummary(
+  mailboxId: string,
+  personId: string,
+): Promise<SynthesisResult> {
+  const url = `${API_BASE}/api/synthesis/${encodeURIComponent(
+    mailboxId,
+  )}/contact/${encodeURIComponent(personId)}`;
+  return postJson<SynthesisResult>(url);
+}
+
+/**
+ * Cover-for-me query (S5, D11): a bounded natural-language question routed over
+ * structured L1 data, answered with a cited SynthesisResult.
+ */
+export async function fetchCoverForMe(
+  mailboxId: string,
+  query: string,
+): Promise<CoverForMeResponse> {
+  const url = `${API_BASE}/api/cover-for-me/${encodeURIComponent(mailboxId)}`;
+  return postJsonBody<CoverForMeResponse>(url, { query });
 }
