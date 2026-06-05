@@ -53,9 +53,14 @@ def run_ingest(cfg: IngestConfig) -> IngestStore:
     provider.authorize({})
 
     if cfg.since_token is not None or cfg.max_messages is not None:
-        ids = list(provider.list_ids(cfg.since_token))
+        import itertools
+        id_stream = provider.list_ids(cfg.since_token)
+        # islice stops the generator at max_messages without ever enumerating
+        # the full mailbox — the provider never paginates beyond the cap.
         if cfg.max_messages is not None:
-            ids = ids[: cfg.max_messages]
+            ids = list(itertools.islice(id_stream, cfg.max_messages))
+        else:
+            ids = list(id_stream)
         raws = [provider.fetch(id_) for id_ in ids]
     else:
         raws = list(provider.fetch_all())

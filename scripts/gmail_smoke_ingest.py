@@ -1,64 +1,59 @@
 """Controlled Gmail smoke ingest — real-mailbox runner (production-hardening-demo).
 
-Runs the full L0→L1 pipeline against a real Gmail mailbox. Designed for a
-controlled demo on a single test or personal mailbox before any customer data.
+Runs L0 ingest + L1 identity/graph/role enrichment against a real Gmail mailbox.
+Designed for a controlled demo or test on a single mailbox before any customer data.
+
+NOTE: Project clustering is NOT run by this script. Clustering requires a
+production embedding model (deferred, D11/spec 04 ticket 4.5). This runner
+produces identity resolution, relationship graph, and role inference only.
 
 BEFORE RUNNING
 --------------
 1. Create a Google Cloud project, enable the Gmail API, create OAuth credentials
-   (Desktop app or Service Account).
-2. Run the OAuth consent flow to obtain a token with the gmail.readonly scope.
-   Store the resulting token JSON in the environment variable (never on disk):
+   (Desktop app). Run the OAuth consent flow to obtain a token with the
+   gmail.readonly scope. Store the result as JSON in an env var (never on disk):
 
-     export GMAIL_TOKEN_<mailbox_id>='{"token": "...", "refresh_token": "...",
+     export GMAIL_TOKEN='{"token": "ya29...", "refresh_token": "1//0g...",
        "token_uri": "https://oauth2.googleapis.com/token",
-       "client_id": "...", "client_secret": "...",
+       "client_id": "<id>.apps.googleusercontent.com",
+       "client_secret": "<secret>",
        "scopes": ["https://www.googleapis.com/auth/gmail.readonly"]}'
 
-   The mailbox_id here is the DB UUID returned by this script on first run.
-   On first run you can use any placeholder; the script will create the mailbox
-   row and print the UUID to re-use.
+   On subsequent runs with a known mailbox UUID:
+     export GMAIL_TOKEN_<uuid>='...'
 
-3. The token string must never appear in DB, logs, or stdout.  The script reads
-   it only from the env var and passes it to Google's SDK at runtime.
+2. Tokens are read only from env vars. They are NEVER written to the DB,
+   logs, or stdout. The audit trail logs the OAuth subject (client_id prefix),
+   not the token value.
 
 OAUTH SCOPE
 -----------
-Only `https://www.googleapis.com/auth/gmail.readonly` is requested.  The scope
-is single-mailbox, read-only.  No write, delete, or send permissions are used.
+Only gmail.readonly is requested. Single mailbox. No write/delete/send.
 
 USAGE
 -----
-  # Smoke-check: fetch one message, normalize, print, persist nothing.
-  python scripts/gmail_smoke_ingest.py \\
-      --owner-email you@example.com \\
-      --confirm --smoke-check
+  # Smoke-check: fetch one message, print metadata, persist nothing.
+  python scripts/gmail_smoke_ingest.py --owner-email you@example.com --confirm --smoke-check
 
-  # First full run (creates a mailbox row; prints its UUID for future runs).
-  python scripts/gmail_smoke_ingest.py \\
-      --owner-email you@example.com \\
-      --max-messages 200 \\
-      --confirm
+  # First run (prints the mailbox UUID; default cap 200):
+  python scripts/gmail_smoke_ingest.py --owner-email you@example.com --max-messages 200 --confirm
 
-  # Incremental run (uses stored historyId automatically).
-  python scripts/gmail_smoke_ingest.py \\
-      --mailbox-id <uuid> \\
-      --owner-email you@example.com \\
-      --confirm
+  # Dry-run: fetch + normalize + print summary, persist nothing.
+  python scripts/gmail_smoke_ingest.py --owner-email you@example.com --dry-run --confirm
 
-  # Dry-run: fetch + normalize, print summary, persist nothing.
-  python scripts/gmail_smoke_ingest.py \\
-      --owner-email you@example.com \\
-      --max-messages 50 \\
-      --confirm --dry-run
+  # Incremental (uses stored historyId automatically):
+  python scripts/gmail_smoke_ingest.py --mailbox-id <uuid> --owner-email you@example.com --confirm
+
+  # Show raw body excerpt in smoke-check (opt-in):
+  python scripts/gmail_smoke_ingest.py --owner-email you@example.com --confirm --smoke-check --show-body
 """
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import sys
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -86,28 +81,49 @@ structlog.configure(
 log = structlog.get_logger()
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+# ── helpers ───────────────────────────────────────────────────────────────────
 
-def _get_token_env(mailbox_id: str) -> dict:
-    """Read the Gmail token JSON from GMAIL_TOKEN_<mailbox_id>.
+def _get_token_dict(mailbox_id: str) -> dict:
+    """Read the Gmail token JSON from GMAIL_TOKEN_<mailbox_id> or GMAIL_TOKEN.
 
-    The token is read from the environment and kept in memory only — it is never
-    written to the DB, logs, or stdout.
+    The token is kept in memory only — never written to DB, logs, or stdout.
     """
-    key = f"GMAIL_TOKEN_{mailbox_id}"
-    raw = os.environ.get(key)
-    if not raw:
-        # Also try the generic key for first runs before the UUID is known.
-        raw = os.environ.get("GMAIL_TOKEN")
+    raw = os.environ.get(f"GMAIL_TOKEN_{mailbox_id}") or os.environ.get("GMAIL_TOKEN")
     if not raw:
         sys.exit(
-            f"ERROR: Set {key} (or GMAIL_TOKEN) to the OAuth token JSON.\n"
-            "See the docstring at the top of this script for the required format."
+            f"ERROR: Set GMAIL_TOKEN_{mailbox_id} (or GMAIL_TOKEN) to the OAuth token JSON.\n"
+            "See the docstring at the top of this script for the required format.\n"
+            "Required fields: token, refresh_token, token_uri, client_id, client_secret, scopes."
         )
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
-        sys.exit(f"ERROR: {key} is not valid JSON: {exc}")
+        sys.exit(f"ERROR: token env var is not valid JSON: {exc}")
+
+
+def _build_credentials(token_dict: dict):
+    """Construct a google.oauth2.credentials.Credentials from the token dict."""
+    from google.oauth2.credentials import Credentials
+    required = {"token", "refresh_token", "token_uri", "client_id", "client_secret"}
+    missing = required - token_dict.keys()
+    if missing:
+        sys.exit(f"ERROR: token JSON is missing required fields: {missing}")
+    if "gmail.readonly" not in " ".join(token_dict.get("scopes", [])):
+        log.warning("scope_check", warning="gmail.readonly not found in scopes list")
+    return Credentials(
+        token=token_dict["token"],
+        refresh_token=token_dict["refresh_token"],
+        token_uri=token_dict["token_uri"],
+        client_id=token_dict["client_id"],
+        client_secret=token_dict["client_secret"],
+        scopes=token_dict.get("scopes", ["https://www.googleapis.com/auth/gmail.readonly"]),
+    )
+
+
+def _oauth_subject(token_dict: dict) -> str:
+    """A safe, non-secret identifier for audit logging (not the token itself)."""
+    cid = token_dict.get("client_id", "unknown")
+    return f"client:{cid[:20]}"
 
 
 def _get_or_create_mailbox(session, owner_email: str, mailbox_id_arg: str | None) -> str:
@@ -118,15 +134,14 @@ def _get_or_create_mailbox(session, owner_email: str, mailbox_id_arg: str | None
         mbx = session.get(orm.Mailbox, mailbox_id_arg)
         if mbx is None:
             sys.exit(f"ERROR: No mailbox with id={mailbox_id_arg} in the database.")
-        log.info("using_existing_mailbox", mailbox_id=mailbox_id_arg, owner=owner_email)
+        log.info("using_existing_mailbox", mailbox_id=mailbox_id_arg)
         return mailbox_id_arg
 
-    # Look for an existing mailbox with this owner.
     existing = session.execute(
         select(orm.Mailbox).where(orm.Mailbox.owner_email == owner_email)
     ).scalars().first()
     if existing:
-        log.info("reusing_existing_mailbox", mailbox_id=str(existing.id), owner=owner_email)
+        log.info("reusing_existing_mailbox", mailbox_id=str(existing.id))
         return str(existing.id)
 
     mbx = orm.Mailbox(
@@ -139,37 +154,37 @@ def _get_or_create_mailbox(session, owner_email: str, mailbox_id_arg: str | None
     )
     session.add(mbx)
     session.commit()
-    log.info("created_mailbox", mailbox_id=str(mbx.id), owner=owner_email)
+    log.info("created_mailbox", mailbox_id=str(mbx.id))
     return str(mbx.id)
 
 
-def _get_oauth_subject(token_dict: dict) -> str:
-    """Extract the OAuth subject for audit logging (email, not token value)."""
-    # google-auth may expose the email in id_token or as a hint — use client_id
-    # prefix as a fallback identifier that doesn't leak the token.
-    return token_dict.get("client_email") or f"client:{token_dict.get('client_id', 'unknown')[:12]}"
+# ── smoke check ───────────────────────────────────────────────────────────────
 
+def _smoke_check(provider, owner_email: str, show_body: bool) -> None:
+    """Fetch exactly one message, print sanitized metadata. Persist nothing.
 
-# ── smoke check ──────────────────────────────────────────────────────────────
-
-def _smoke_check(provider, owner_email: str) -> None:
-    """Fetch exactly one message, normalize, print sanitized metadata, persist nothing."""
-    log.info("smoke_check_start", fetching="one message")
-    ids = list(provider.list_ids(None))
+    Uses islice so the provider never paginates past the first result.
+    Body excerpt is opt-in (--show-body) to avoid leaking third-party content.
+    """
+    log.info("smoke_check_start")
+    ids = list(itertools.islice(provider.list_ids(None), 1))
     if not ids:
         log.info("smoke_check_result", status="mailbox_empty")
         return
+
     raw = provider.fetch(ids[0])
+
     from services.ingest.normalize.address import parse_addresses
     from services.ingest.normalize.body import clean_body_from_raw
     from services.ingest.normalize.noise import is_noise
     from services.ingest.params import IngestParams
+
     params = IngestParams()
-    sender_raw = raw.headers.get("From", "")
-    senders = parse_addresses(sender_raw)
+    senders = parse_addresses(raw.headers.get("From", ""))
     sender_email = senders[0].email if senders else "(unknown)"
     clean_text = clean_body_from_raw(raw, sender_email, params.clean_text_max_chars)
     noise = is_noise(raw, sender_email)
+
     log.info(
         "smoke_check_result",
         provider_id=raw.provider_id,
@@ -181,47 +196,43 @@ def _smoke_check(provider, owner_email: str) -> None:
         mime_parts=[p.type for p in raw.mime_parts],
         attachment_count=len(raw.precomputed_attachments),
     )
-    print("\n--- Normalized body (first 500 chars) ---")
-    print(clean_text[:500])
-    print("--- End ---")
+
+    if show_body:
+        print("\n--- Normalized body excerpt (first 200 chars; opt-in via --show-body) ---")
+        print(clean_text[:200])
+        print("--- End ---")
+    else:
+        print(f"\nSmoke check OK. {len(clean_text)} chars of clean text. Pass --show-body to see excerpt.")
 
 
-# ── main ─────────────────────────────────────────────────────────────────────
+# ── main ──────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Controlled Gmail smoke ingest — real-mailbox runner.",
+        description="Controlled Gmail smoke ingest (L0 + L1 identity/graph/roles).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--owner-email", required=True, help="Gmail address of the mailbox owner.")
-    p.add_argument("--mailbox-id", default=None, help="Existing DB mailbox UUID (optional).")
+    p.add_argument("--owner-email", required=True)
+    p.add_argument("--mailbox-id", default=None)
+    p.add_argument("--internal-domains", nargs="*", default=[])
     p.add_argument(
-        "--internal-domains", nargs="*", default=[],
-        help="Domains treated as 'internal' for role inference (e.g. acme.com)."
+        "--max-messages", type=int, default=200,
+        help="Hard cap on messages fetched per run (default 200). "
+             "If Gmail has more messages than the cap, the sync token is NOT saved "
+             "to avoid marking an incomplete snapshot as incremental-ready.",
     )
-    p.add_argument(
-        "--max-messages", type=int, default=500,
-        help="Hard cap on messages fetched per run (default 500; prevents accidental 50k runs).",
-    )
-    p.add_argument(
-        "--since-token", default=None,
-        help="Gmail historyId for incremental fetch. If omitted, uses stored token from sync_state.",
-    )
-    p.add_argument(
-        "--dry-run", action="store_true",
-        help="Fetch and normalize but do NOT persist to the database.",
-    )
-    p.add_argument(
-        "--smoke-check", action="store_true",
-        help="Fetch exactly one message, normalize, print sanitized metadata, persist nothing.",
-    )
+    p.add_argument("--since-token", default=None)
+    p.add_argument("--dry-run", action="store_true",
+                   help="Fetch + normalize + print, persist nothing. Audit log is still written.")
+    p.add_argument("--smoke-check", action="store_true",
+                   help="Fetch one message, print metadata, persist nothing. Audit log is still written.")
+    p.add_argument("--show-body", action="store_true",
+                   help="In --smoke-check mode, print a short body excerpt (opt-in; may show personal content).")
     p.add_argument(
         "--confirm", action="store_true",
-        help=(
-            "Required. Confirms you hold authorization to access this mailbox "
-            "and that third-party personal data will be processed per the project's "
-            "privacy policy (implementation-plan.md §7)."
-        ),
+        help="Required. Acknowledges authorization to access this mailbox and "
+             "that third-party personal data will be processed per the project's "
+             "privacy policy (implementation-plan.md §7).",
     )
     return p.parse_args()
 
@@ -237,10 +248,11 @@ def main() -> None:
             "the project's privacy guidelines (see docs/implementation-plan.md §7)."
         )
 
-    # Read token from env — never printed or logged.
+    # ── Token handling (never logged) ──────────────────────────────────────
     mailbox_id_for_token = args.mailbox_id or "default"
-    token_dict = _get_token_env(mailbox_id_for_token)
-    oauth_subject = _get_oauth_subject(token_dict)
+    token_dict = _get_token_dict(mailbox_id_for_token)
+    creds = _build_credentials(token_dict)
+    actor = _oauth_subject(token_dict)
 
     from services.db.engine import SessionLocal
     from services.db.store import (
@@ -255,7 +267,6 @@ def main() -> None:
     try:
         mailbox_id = _get_or_create_mailbox(session, args.owner_email, args.mailbox_id)
 
-        # Determine since_token: CLI flag > stored sync_state > None (full fetch).
         since_token = args.since_token
         if since_token is None and not args.smoke_check:
             since_token = load_sync_token(session, mailbox_id)
@@ -264,62 +275,60 @@ def main() -> None:
             else:
                 log.info("full_fetch", reason="no stored sync token")
 
-        # Build and authorize the Gmail provider.
+        # ── Build provider ─────────────────────────────────────────────────
         from services.ingest.params import IngestParams
         from services.ingest.providers.gmail import GmailProvider
-        from google.oauth2.credentials import Credentials
 
-        creds = Credentials(
-            token=token_dict.get("token"),
-            refresh_token=token_dict.get("refresh_token"),
-            token_uri=token_dict.get("token_uri", "https://oauth2.googleapis.com/token"),
-            client_id=token_dict.get("client_id"),
-            client_secret=token_dict.get("client_secret"),
-            scopes=token_dict.get("scopes", ["https://www.googleapis.com/auth/gmail.readonly"]),
-        )
-        ingest_params = IngestParams(
-            legal_domains=[],
-            hr_senders=[],
-        )
+        ingest_params = IngestParams(legal_domains=[], hr_senders=[])
         provider = GmailProvider(ingest_params, args.owner_email)
         provider.authorize({"credentials": creds})
 
-        # ── Smoke check path ──────────────────────────────────────────────
-        if args.smoke_check:
-            _smoke_check(provider, args.owner_email)
-            return
-
-        # ── Write audit start BEFORE any data is read (spec 00 §12) ──────
+        # ── Audit start — written BEFORE any Gmail data access ─────────────
+        # This applies to ALL paths including --dry-run and --smoke-check,
+        # because all modes read real mailbox data (spec 00 §12 / §16).
         started_at = datetime.now(timezone.utc)
-        if not args.dry_run:
+        write_audit_event(
+            session,
+            mailbox_id=mailbox_id,
+            actor=actor,
+            action="ingest_start",
+            scope="gmail.readonly",
+            started_at=started_at,
+        )
+        log.info("audit_start_written", actor=actor)
+
+        # ── Smoke check ────────────────────────────────────────────────────
+        if args.smoke_check:
+            _smoke_check(provider, args.owner_email, show_body=args.show_body)
             write_audit_event(
                 session,
                 mailbox_id=mailbox_id,
-                actor=oauth_subject,
-                action="ingest_start",
+                actor=actor,
+                action="ingest_finish",
                 scope="gmail.readonly",
+                message_count=1,
                 started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
             )
-            log.info("audit_start_written", actor=oauth_subject, action="ingest_start")
+            return
 
-        # ── Fetch and normalize ───────────────────────────────────────────
-        log.info("fetch_start", max_messages=args.max_messages, since_token=since_token)
-
-        ids = list(provider.list_ids(since_token))
-        total_available = len(ids)
-        ids = ids[: args.max_messages]
-        log.info("ids_fetched", available=total_available, capped_to=len(ids))
+        # ── Fetch — islice stops the stream at max_messages ────────────────
+        log.info("fetch_start", max_messages=args.max_messages, since_token=bool(since_token))
+        id_stream = provider.list_ids(since_token)
+        ids = list(itertools.islice(id_stream, args.max_messages))
+        hit_cap = len(ids) >= args.max_messages
+        log.info("ids_fetched", count=len(ids), hit_cap=hit_cap)
 
         raws = [provider.fetch(id_) for id_ in ids]
         new_sync_token = provider.sync_token()
 
+        # ── Normalize ─────────────────────────────────────────────────────
         from services.ingest.normalize.threads import reconstruct
         from services.ingest.store import persist as ingest_persist
 
         messages, threads = reconstruct(raws, args.owner_email, ingest_params, mailbox_id)
         store = ingest_persist(messages, threads)
 
-        # Noise / sensitivity distribution for observability.
         noise_count = sum(1 for m in store.messages if m.noise)
         sensitivity_counts: dict[str, int] = {}
         for m in store.messages:
@@ -334,44 +343,46 @@ def main() -> None:
             sensitivity=sensitivity_counts,
         )
 
+        # ── Dry-run exit ───────────────────────────────────────────────────
         if args.dry_run:
-            log.info(
-                "dry_run_summary",
-                messages=len(store.messages),
-                threads=len(store.threads),
-                noise=noise_count,
-                sensitivity=sensitivity_counts,
-                sync_token=new_sync_token,
-                persisted=False,
+            write_audit_event(
+                session,
+                mailbox_id=mailbox_id,
+                actor=actor,
+                action="ingest_finish",
+                scope="gmail.readonly",
+                message_count=len(store.messages),
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
             )
-            print(f"\nDry-run complete — {len(store.messages)} messages normalized, nothing persisted.")
+            print(
+                f"\nDry-run complete — {len(store.messages)} messages normalized, "
+                f"{noise_count} noise-flagged. Nothing persisted."
+            )
             return
 
-        # ── Persist L0 ───────────────────────────────────────────────────
+        # ── Persist L0 ─────────────────────────────────────────────────────
         persist_l0(store, mailbox_id, session, replace_snapshot=False)
         log.info("l0_persisted", messages=len(store.messages), threads=len(store.threads))
 
-        # ── Enrich L1 ────────────────────────────────────────────────────
+        # ── Enrich L1 (identity + graph + roles; clustering deferred) ──────
+        # Clustering requires a production embedding model (D11, spec 04
+        # ticket 4.5). This runner does NOT run clustering.
         from services.enrich.params import EnrichParams
         from services.enrich.pipeline import run_enrichment
 
-        enrich_params = EnrichParams()
         result = run_enrichment(
             store.messages,
             owner_email=args.owner_email,
             internal_domains=args.internal_domains,
-            params=enrich_params,
+            params=EnrichParams(),
+            # threads intentionally omitted → clustering + event extraction skipped
         )
         persist_l1(result, mailbox_id, session)
-        log.info(
-            "l1_persisted",
-            people=len(result.people),
-            edges=len(result.edges),
-        )
+        log.info("l1_persisted", people=len(result.people), edges=len(result.edges))
 
-        # Update owner_person_id if resolved.
+        # Update owner_person_id.
         from services.db import models as orm
-        from sqlalchemy import select
         owner_pid = next(
             (i.person_id for i in result.identities if i.email == args.owner_email.lower()),
             None,
@@ -382,37 +393,47 @@ def main() -> None:
                 mbx.owner_person_id = owner_pid
                 session.commit()
 
-        # ── Save sync token ───────────────────────────────────────────────
-        save_sync_token(session, mailbox_id, new_sync_token)
-        log.info("sync_token_saved", token_preview=new_sync_token[:12] + "...")
+        # ── Sync token: only save when the run was NOT capped ─────────────
+        # If len(ids) == max_messages the run may have stopped mid-mailbox.
+        # Saving a historyId in that state would cause the next incremental
+        # run to skip un-fetched messages.
+        if hit_cap:
+            log.warning(
+                "sync_token_not_saved",
+                reason="run hit --max-messages cap; snapshot may be incomplete",
+                hint="re-run without --max-messages (or with a higher cap) to save the token",
+            )
+        else:
+            save_sync_token(session, mailbox_id, new_sync_token)
+            log.info("sync_token_saved", preview=new_sync_token[:16] + "...")
 
-        # ── Write audit finish ────────────────────────────────────────────
+        # ── Audit finish ───────────────────────────────────────────────────
         write_audit_event(
             session,
             mailbox_id=mailbox_id,
-            actor=oauth_subject,
+            actor=actor,
             action="ingest_finish",
             scope="gmail.readonly",
             message_count=len(store.messages),
-            sync_token=new_sync_token,
+            sync_token=new_sync_token if not hit_cap else None,
             started_at=started_at,
             finished_at=datetime.now(timezone.utc),
         )
 
-        # ── Print summary ─────────────────────────────────────────────────
         print(f"""
 ╔══════════════════════════════════════════════════════╗
 ║  Gmail Smoke Ingest — Complete                       ║
 ╠══════════════════════════════════════════════════════╣
-  mailbox_id   : {mailbox_id}
-  owner        : {args.owner_email}
-  messages     : {len(store.messages)} ({noise_count} noise-flagged)
-  threads      : {len(store.threads)}
-  sensitivity  : {sensitivity_counts}
-  people       : {len(result.people)}
-  edges        : {len(result.edges)}
-  sync_token   : {new_sync_token[:16]}...
-  persisted    : YES
+  mailbox_id      : {mailbox_id}
+  owner           : {args.owner_email}
+  messages        : {len(store.messages)} ({noise_count} noise-flagged)
+  threads         : {len(store.threads)}
+  sensitivity     : {sensitivity_counts}
+  people          : {len(result.people)}
+  edges           : {len(result.edges)}
+  clustering      : deferred (no embedding model configured)
+  sync_token      : {"NOT saved (capped run)" if hit_cap else new_sync_token[:16] + "..."}
+  persisted       : YES (L0 + L1 identity/graph/roles)
 ╚══════════════════════════════════════════════════════╝
 """)
 
