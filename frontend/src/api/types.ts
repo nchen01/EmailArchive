@@ -139,3 +139,15 @@ export interface SynthesisResult {
   usage: Record<string, number>;
   state: string | null;
 }
+
+// ── Cover-for-me query (S5, D11) ─────────────────────────────────────────────
+
+export interface CoverForMeRequest {
+  query: string;
+}
+
+export interface CoverForMeResponse {
+  query: string;
+  routed_to: string | null; // "person:<name>" | "project:<label>" | null
+  result: SynthesisResult;
+}

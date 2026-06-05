@@ -1,5 +1,6 @@
 import type {
   ContactDetail,
+  CoverForMeResponse,
   NetworkMapData,
   ProjectDetailData,
   ProjectListData,
@@ -43,6 +44,28 @@ async function postJson<T>(url: string): Promise<T> {
     try {
       const body = await res.json();
       detail = body?.detail ? `: ${body.detail}` : "";
+    } catch {
+      // non-JSON error body; ignore
+    }
+    if (res.status === 503) {
+      throw new SummariesNotConfiguredError();
+    }
+    throw new Error(`Request failed (${res.status})${detail}`);
+  }
+  return (await res.json()) as T;
+}
+
+async function postJsonBody<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const errBody = await res.json();
+      detail = errBody?.detail ? `: ${errBody.detail}` : "";
     } catch {
       // non-JSON error body; ignore
     }
@@ -120,4 +143,16 @@ export async function fetchContactSummary(
     mailboxId,
   )}/contact/${encodeURIComponent(personId)}`;
   return postJson<SynthesisResult>(url);
+}
+
+/**
+ * Cover-for-me query (S5, D11): a bounded natural-language question routed over
+ * structured L1 data, answered with a cited SynthesisResult.
+ */
+export async function fetchCoverForMe(
+  mailboxId: string,
+  query: string,
+): Promise<CoverForMeResponse> {
+  const url = `${API_BASE}/api/cover-for-me/${encodeURIComponent(mailboxId)}`;
+  return postJsonBody<CoverForMeResponse>(url, { query });
 }

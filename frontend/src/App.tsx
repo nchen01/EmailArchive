@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ContactPanel } from "./components/ContactPanel";
+import { CoverForMe } from "./components/CoverForMe";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { NetworkMap } from "./components/NetworkMap";
@@ -12,7 +13,13 @@ import { useProjectDetail } from "./hooks/useProjectDetail";
 import { useProjects } from "./hooks/useProjects";
 import { ROLE_COLORS } from "./utils/roleColors";
 
-type ViewTab = "network" | "projects";
+type ViewTab = "network" | "projects" | "cover";
+
+const TAB_LABELS: Record<ViewTab, string> = {
+  network: "Network Map",
+  projects: "Projects",
+  cover: "Cover for Me",
+};
 
 const ENV_MAILBOX_ID = import.meta.env.VITE_MAILBOX_ID ?? "";
 
@@ -61,18 +68,18 @@ export default function App() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex rounded-md border border-slate-200 overflow-hidden">
-              {(["network", "projects"] as ViewTab[]).map((tab) => (
+              {(["network", "projects", "cover"] as ViewTab[]).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1 text-sm font-medium capitalize transition-colors ${
+                  className={`px-3 py-1 text-sm font-medium transition-colors ${
                     activeTab === tab
                       ? "bg-slate-800 text-white"
                       : "bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  {tab === "network" ? "Network Map" : "Projects"}
+                  {TAB_LABELS[tab]}
                 </button>
               ))}
             </div>
@@ -223,6 +230,13 @@ export default function App() {
               </div>
             )}
           </>
+        ) : null}
+
+        {/* Cover-for-me view (S5) */}
+        {activeTab === "cover" && mailboxId ? (
+          <div className="w-full overflow-y-auto bg-slate-50">
+            <CoverForMe mailboxId={mailboxId} />
+          </div>
         ) : null}
       </main>
 
