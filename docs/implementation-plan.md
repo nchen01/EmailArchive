@@ -189,7 +189,7 @@ Where summaries get generated — and where the grounding discipline lives.
   Word-boundary entity detection against Person names and Project labels already in Postgres.
   Routes to `synthesize_project` / `synthesize_contact` (reusing S4); citation allow-list
   enforced (invalid headers filtered post-model). "Insufficient structured evidence" fallback
-  when no entity matches — never bluffs. Third "Cover for Me" tab in the frontend. 147 tests.
+  when no entity matches — never bluffs. Third "Cover for Me" tab in the frontend. 148 tests.
 
 **Deferred:**
 - **L2 retrieval** (`message_embedding` table, spec 04 ticket 4.5): needs embedding model and

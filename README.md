@@ -208,7 +208,7 @@ cd frontend && npm install && VITE_MAILBOX_ID=<uuid> npm run dev  # UI on :5173
 
 # 4. Tests
 DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
-  pytest                                                      # 147 tests (DB-gated tests skip without DATABASE_URL)
+  pytest                                                      # 148 tests (DB-gated tests skip without DATABASE_URL)
 ```
 
 ## Privacy guardrails (non-negotiable)

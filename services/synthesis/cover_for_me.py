@@ -163,7 +163,7 @@ def _who_to_ask_for_project(
         role = person.role  # ORM column is a plain string, not an enum
         claims.append(
             SynthesisClaim(
-                text=f"Ask {name} ({role}) — {m.message_count} messages in this project.",
+                text=f"Ask {name} ({role}) — citable project participation found.",
                 source_message_ids=cited_headers,
             )
         )

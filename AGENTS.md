@@ -82,7 +82,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   138 tests. `services/enrich/events/`, `services/synthesis/`.
 - **S5 ✓** — bounded L1-only cover-for-me query (D11). `POST /api/cover-for-me/{mailbox_id}`.
   Routes over Person, Project, Event, Edge, Thread in the DB; word-boundary entity detection;
-  citation allow-list enforced; "insufficient structured evidence" on no match. 147 tests.
+  citation allow-list enforced; "insufficient structured evidence" on no match. 148 tests.
   **All three MVP surfaces are now shipped.** Next: production hardening or L2 retrieval.
 
 ## 6. Known gaps — flag, don't fake
