@@ -277,6 +277,32 @@ def test_citation_filtering_drops_invalid(seeded, monkeypatch):
 
 
 @requires_db
+def test_who_to_ask_about_project_no_key_needed(seeded, no_api_key):
+    """'who do I ask about <project>?' is pure L1 — no API key, always 200.
+
+    D11 says cover-for-me answers both "who do I ask about X?" (Person / Edge /
+    Role) and "what's the state of project Z?" (Project / Event / Thread).
+    The who-to-ask path must NOT call the model; the state path does.
+    This test proves the routing distinction: WHO_ASK + project → 200 even
+    without a key, while 'state of' + project → 503 without a key.
+    """
+    client, mailbox_id, result, _ = seeded
+    label = _a_project_label(result)
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": f"who do I ask about {label}?"},
+    )
+    # Pure L1 — should never hit the model or the key check.
+    assert r.status_code == 200, f"Expected 200 but got {r.status_code}: {r.json()}"
+    body = r.json()
+    assert (body["routed_to"] or "").startswith("project:")
+    # Claims are L1-cited contacts, or empty if no citable evidence.
+    # Either way, NOT a 503.
+    assert "claims" in body["result"]
+
+
+@requires_db
 def test_word_boundary_no_false_match(seeded):
     """A short token that is a substring of a longer word must not trigger a route.
 

@@ -13,6 +13,7 @@ without ever calling the model.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -24,9 +25,12 @@ from services.db import mappers
 from services.db import models as orm
 
 from .contact_summary import synthesize_contact
-from .contracts import SynthesisResult
+from .contracts import SynthesisClaim, SynthesisResult
 from .params import PARAMS, SynthesisParams
 from .project_summary import synthesize_project
+
+# Intent signal: "who do I ask / who owns / who handles ..."
+_WHO_ASK = re.compile(r"who\s+(do\s+i\s+ask|owns?|handles?|is\s+responsible)", re.I)
 
 
 def synthesize_cover_for_me(
@@ -49,9 +53,16 @@ def synthesize_cover_for_me(
     stay offline. With neither entity matched, no model call is made.
     """
     if matched_project is not None:
-        result = _project_state(
-            matched_project, db=db, mailbox_id=mailbox_id, synth_fn=synth_fn, params=params
-        )
+        if _WHO_ASK.search(query):
+            # "Who do I ask about X?" → pure L1 who-to-ask (no model call).
+            result = _who_to_ask_for_project(
+                matched_project, db=db, mailbox_id=mailbox_id, params=params
+            )
+        else:
+            # "What's the state of X?" → project-state synthesis.
+            result = _project_state(
+                matched_project, db=db, mailbox_id=mailbox_id, synth_fn=synth_fn, params=params
+            )
         return result, f"project:{matched_project.label}"
 
     if matched_person is not None:
@@ -73,6 +84,99 @@ def synthesize_cover_for_me(
         ),
         None,
     )
+
+
+# ── who to ask about a project (pure L1, no model call) ─────────────────────
+
+def _who_to_ask_for_project(
+    project: Project,
+    *,
+    db: Session,
+    mailbox_id: str,
+    params: SynthesisParams,
+    top_n: int = 3,
+) -> SynthesisResult:
+    """Return the top contacts for a project, cited by messages they sent.
+
+    Pure L1 — deterministic, no model call (D11). Each claim names a contact
+    and is grounded by a message_id_header from a message they sent inside
+    one of the project's threads.
+    """
+    member_rows = db.execute(
+        select(orm.ProjectMember)
+        .where(orm.ProjectMember.project_id == project.id)
+        .order_by(orm.ProjectMember.involvement.desc())
+        .limit(top_n)
+    ).scalars().all()
+
+    if not member_rows:
+        return SynthesisResult(
+            claims=[],
+            model=params.model,
+            usage={},
+            state="insufficient structured evidence — project has no members",
+        )
+
+    thread_ids = [
+        tid
+        for (tid,) in db.execute(
+            select(orm.ThreadProjectAssignment.thread_id).where(
+                orm.ThreadProjectAssignment.project_id == project.id
+            )
+        )
+    ]
+
+    claims: list[SynthesisClaim] = []
+    for m in member_rows:
+        person = db.get(orm.Person, m.person_id)
+        if not person:
+            continue
+
+        person_emails = [
+            e
+            for (e,) in db.execute(
+                select(orm.Identity.email).where(
+                    orm.Identity.mailbox_id == mailbox_id,
+                    orm.Identity.person_id == m.person_id,
+                )
+            )
+        ] or [person.canonical_email]
+
+        # Citations: messages this person sent inside the project's threads.
+        cited_headers: list[str] = []
+        if thread_ids:
+            cited_headers = [
+                h
+                for (h,) in db.execute(
+                    select(orm.Message.message_id_header).where(
+                        orm.Message.mailbox_id == mailbox_id,
+                        orm.Message.thread_id.in_(thread_ids),
+                        orm.Message.sender_email.in_(person_emails),
+                    ).limit(3)
+                )
+            ]
+
+        if not cited_headers:
+            continue  # precision over recall: skip if no citable evidence
+
+        name = person.names[0] if person.names else person.canonical_email
+        role = person.role  # ORM column is a plain string, not an enum
+        claims.append(
+            SynthesisClaim(
+                text=f"Ask {name} ({role}) — {m.message_count} messages in this project.",
+                source_message_ids=cited_headers,
+            )
+        )
+
+    if not claims:
+        return SynthesisResult(
+            claims=[],
+            model=params.model,
+            usage={},
+            state="insufficient structured evidence — no citable messages from project members",
+        )
+
+    return SynthesisResult(claims=claims, model=params.model, usage={})
 
 
 # ── project state (reuse synthesize_project) ─────────────────────────────────

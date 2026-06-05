@@ -166,13 +166,21 @@ async def cover_for_me_endpoint(
 
     matched_person, matched_project = _route(body.query, db, mailbox_id)
 
-    # No entity matched → fallback result; no model call, no key check (D11).
+    # No entity matched → fallback result; no model call, no key check.
     if matched_person is None and matched_project is None:
         result, routed_to = synthesize_cover_for_me(
             body.query, None, None, db=db, mailbox_id=mailbox_id, synth_fn=None
         )
         return CoverForMeResponse(query=body.query, routed_to=routed_to, result=result)
 
+    # "Who do I ask about <project>?" → pure L1 who-to-ask; no model, no key check.
+    if matched_project is not None and WHO_ASK.search(body.query):
+        result, routed_to = synthesize_cover_for_me(
+            body.query, None, matched_project, db=db, mailbox_id=mailbox_id, synth_fn=None
+        )
+        return CoverForMeResponse(query=body.query, routed_to=routed_to, result=result)
+
+    # State/person synthesis → model call required.
     try:
         synth_fn = make_anthropic_synth_fn(PARAMS)
     except MissingApiKeyError as exc:
