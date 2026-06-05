@@ -40,6 +40,20 @@ class RecentThreadOut(BaseModel):
     last: datetime
 
 
+class ActivityItemOut(BaseModel):
+    """An Event row rendered into the project ``activity`` panel (spec 02 §5/§6).
+
+    Derived from ``ekc_schemas.Event``. Hard invariant: every item ships >=1
+    ``source_message_ids`` (the DB CHECK guarantees it; asserted at this
+    boundary too).
+    """
+    type: str  # proposed | did | outcome
+    summary: str
+    actor_person_id: str
+    source_message_ids: list[str] = Field(..., min_length=1)
+    confidence: float
+
+
 class ProjectSummaryOut(BaseModel):
     """List-view row: enough to render a card."""
     id: str
@@ -67,4 +81,4 @@ class ProjectDetailOut(BaseModel):
     who_to_ask: list[WhoToAsk]
     members: list[ProjectMemberOut]
     recent_threads: list[RecentThreadOut]
-    activity: list[dict] = Field(default_factory=list)  # @sprint S4 — Events deferred
+    activity: list[ActivityItemOut] = Field(default_factory=list)  # S4 — from event table

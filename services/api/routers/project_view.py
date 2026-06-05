@@ -19,6 +19,7 @@ from services.db import models as orm
 
 from ..deps import get_db
 from ..schemas.project_view import (
+    ActivityItemOut,
     ProjectDetailOut,
     ProjectListOut,
     ProjectMemberOut,
@@ -29,6 +30,10 @@ from ..schemas.project_view import (
 )
 
 router = APIRouter(tags=["project-view"])
+
+# Epistemic grade ordering for the activity panel: outcome > did > proposed
+# (spec 02 §6). Lower rank renders first.
+_GRADE_RANK = {"outcome": 0, "did": 1, "proposed": 2}
 
 # Fixed reference "now" for deterministic state derivation (mirrors the L1 graph
 # module default). A real deployment would inject wall-clock per request.
@@ -62,6 +67,68 @@ def project_state(thread_ends: list[datetime], now: datetime = _DEFAULT_NOW) -> 
 
 def _person_name(person: orm.Person) -> str:
     return person.names[0] if person.names else person.canonical_email
+
+
+def _activity_for_project(
+    db: Session, mailbox_id: str, project_id: str
+) -> list[ActivityItemOut]:
+    """Build the ordered activity panel from the ``event`` table (spec 02 §6).
+
+    Ordered by epistemic grade (outcome > did > proposed) then by the MAX cited
+    message timestamp. The timestamp is derived by unnesting every
+    ``event.source_message_ids`` (an Event may cite several messages — not just
+    ``[0]``) and joining each to ``message.message_id_header`` within the
+    mailbox, taking ``MAX(message.ts)`` per Event.
+    """
+    events = list(
+        db.execute(
+            select(orm.Event).where(
+                orm.Event.mailbox_id == mailbox_id,
+                orm.Event.project_id == project_id,
+            )
+        ).scalars()
+    )
+    if not events:
+        return []
+
+    # MAX cited ts per event: map each citation header -> message.ts, take max.
+    all_headers = sorted({h for e in events for h in e.source_message_ids})
+    header_ts: dict[str, datetime] = {}
+    if all_headers:
+        for header, ts in db.execute(
+            select(orm.Message.message_id_header, orm.Message.ts).where(
+                orm.Message.mailbox_id == mailbox_id,
+                orm.Message.message_id_header.in_(all_headers),
+            )
+        ):
+            header_ts[header] = ts
+
+    _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    def _max_ts(e: orm.Event) -> datetime:
+        cited = [header_ts[h] for h in e.source_message_ids if h in header_ts]
+        return max((_aware(t) for t in cited), default=_EPOCH)
+
+    ordered = sorted(
+        events,
+        key=lambda e: (_GRADE_RANK.get(e.type, 99), -_max_ts(e).timestamp()),
+    )
+
+    items: list[ActivityItemOut] = []
+    for e in ordered:
+        # Hard invariant (spec 02 §5): every activity item ships >=1 citation.
+        if not e.source_message_ids:
+            continue
+        items.append(
+            ActivityItemOut(
+                type=e.type,
+                summary=e.summary,
+                actor_person_id=str(e.actor_person_id),
+                source_message_ids=list(e.source_message_ids),
+                confidence=float(e.confidence),
+            )
+        )
+    return items
 
 
 @router.get("/projects/{mailbox_id}", response_model=ProjectListOut)
@@ -225,5 +292,5 @@ async def get_project_detail(
         who_to_ask=who_to_ask,
         members=member_outs,
         recent_threads=recent,
-        activity=[],  # S4
+        activity=_activity_for_project(db, mailbox_id, project_id),
     )

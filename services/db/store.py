@@ -140,6 +140,41 @@ def persist_l1(result: EnrichResult, mailbox_id: str, session: Session) -> None:
     if result.clustering is not None:
         _persist_clustering(result.clustering, mailbox_id, session)
 
+    if result.events:
+        persist_events(result.events, mailbox_id, session)
+
+    session.commit()
+
+
+def persist_events(events: list, mailbox_id: str, session: Session) -> None:
+    """Persist Events via scoped delete-and-reinsert (S4 guide §4, D10).
+
+    Re-running enrichment must not double Events, and a content-key upsert is
+    unreliable because the LLM may vary ``summary`` across runs. Instead, for the
+    batch being (re-)processed, delete every existing event whose
+    ``source_message_ids`` overlaps the citations of the new batch, then insert
+    fresh rows. The ``ix_event_srcs`` GIN index covers the ``&&`` overlap.
+
+    This only clears Events whose source messages are in the current batch,
+    leaving Events from untouched threads intact — safe for incremental sync.
+    """
+    from sqlalchemy import delete
+
+    if not events:
+        return
+
+    headers = sorted({h for e in events for h in e.source_message_ids})
+    if headers:
+        session.execute(
+            delete(orm.Event).where(
+                orm.Event.mailbox_id == mailbox_id,
+                orm.Event.source_message_ids.overlap(headers),  # SQL: &&
+            )
+        )
+
+    rows = [mappers.event_to_row(e, mailbox_id) for e in events]
+    # IDs are fresh uuid4 per run, so a plain insert is correct after the delete.
+    _upsert(session, orm.Event, rows, ["id"])
     session.commit()
 
 

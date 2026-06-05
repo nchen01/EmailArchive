@@ -19,6 +19,8 @@ from ekc_schemas import (
     Address,
     AttachmentRef,
     Edge,
+    Event,
+    EventType,
     Identity,
     LabelSource,
     Message,
@@ -279,6 +281,33 @@ def assignment_to_row(a: ThreadProjectAssignment) -> dict:
         "weight": a.weight,
         "is_primary": a.is_primary,
     }
+
+
+# ── Event (spec 01 §7, S4) ───────────────────────────────────────────────────
+
+def event_to_row(event: Event, mailbox_id: str) -> dict:
+    return {
+        "id": event.id,
+        "mailbox_id": mailbox_id,
+        "actor_person_id": event.actor_person_id,
+        "type": event.type.value,
+        "summary": event.summary,
+        "project_id": event.project_id,
+        "source_message_ids": list(event.source_message_ids),
+        "confidence": event.confidence,
+    }
+
+
+def row_to_event(row: orm.Event) -> Event:
+    return Event(
+        id=str(row.id),
+        actor_person_id=str(row.actor_person_id),
+        type=EventType(row.type),
+        summary=row.summary,
+        project_id=str(row.project_id) if row.project_id else None,
+        source_message_ids=list(row.source_message_ids),
+        confidence=float(row.confidence),
+    )
 
 
 def row_to_project(
