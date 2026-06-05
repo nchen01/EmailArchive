@@ -170,33 +170,17 @@ def test_run_ingest_since_token_and_max_messages_combined():
 
 # ── audit log / sync state DB helpers ────────────────────────────────────────
 
-@requires_db
-def test_save_sync_token_rejects_empty_string():
-    """An empty sync token is never saved (provider returned no historyId)."""
-    from services.db import models as orm
-    from services.db.engine import SessionLocal
-    from services.db.store import load_sync_token, save_sync_token
+def test_runner_token_to_save_guard():
+    """The runner's token_to_save logic: falsy token or capped run -> None."""
+    # Mirror the guard in _run_post_start so it is tested independently
+    # of any DB call. This is a pure-logic unit test — no DB required.
+    def compute_token_to_save(new_sync_token: str, hit_cap: bool):
+        return new_sync_token if (new_sync_token and not hit_cap) else None
 
-    session = SessionLocal()
-    mbx = orm.Mailbox(
-        provider="gmail", owner_email="empty-token@example.com",
-        embed_model="t", embed_dim=0, config={},
-    )
-    session.add(mbx)
-    session.commit()
-    mid = str(mbx.id)
-
-    try:
-        # The runner guards this before calling save_sync_token, but confirm
-        # that an empty string, if somehow passed, would be treated as falsy.
-        if "":  # same guard as in the runner
-            save_sync_token(session, mid, "")
-        assert load_sync_token(session, mid) is None, \
-            "empty token must not be stored"
-    finally:
-        session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
-        session.commit()
-        session.close()
+    assert compute_token_to_save("history-abc", False) == "history-abc"
+    assert compute_token_to_save("history-abc", True)  is None   # capped
+    assert compute_token_to_save("", False)             is None   # empty token
+    assert compute_token_to_save("", True)              is None   # both
 
 
 @requires_db

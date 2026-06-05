@@ -345,7 +345,7 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at, sinc
   people          : {len(result.people)}
   edges           : {len(result.edges)}
   clustering      : deferred (no embedding model configured)
-  sync_token      : {"NOT saved (capped run)" if hit_cap else new_sync_token[:16] + "..."}
+  sync_token      : {token_to_save[:16] + "..." if token_to_save else ("NOT saved (capped run)" if hit_cap else "NOT saved (provider returned no historyId)")}
   persisted       : YES (L0 + L1 identity/graph/roles)
 ╚══════════════════════════════════════════════════════╝
 """)
