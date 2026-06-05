@@ -79,6 +79,7 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # No ForeignKey intentional: audit rows survive mailbox deletion (spec 04, append-only retention).
     mailbox_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
     actor: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)

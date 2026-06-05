@@ -41,11 +41,23 @@ class GmailProvider:
 
     # ── auth ────────────────────────────────────────────────────────────────
     def authorize(self, grant: dict) -> None:
+        """Build the Gmail service client.
+
+        ``grant`` may contain either:
+        - A raw token dict (passed to ``Credentials(**token)``), or
+        - ``{"credentials": <pre-built Credentials object>}`` for callers
+          that have already constructed the Credentials (e.g. the smoke runner
+          that validates the token dict fields before calling authorize).
+        Passing an empty dict falls back to ``get_token(self.mailbox_id)``.
+        """
         from google.oauth2.credentials import Credentials  # lazy import
         from googleapiclient.discovery import build
 
-        token = grant or get_token(self.mailbox_id)
-        creds = Credentials(**token)
+        if isinstance(grant.get("credentials"), Credentials):
+            creds = grant["credentials"]
+        else:
+            token = grant or get_token(self.mailbox_id)
+            creds = Credentials(**token)
         self._service = build("gmail", "v1", credentials=creds, cache_discovery=False)
 
     def _require_service(self):
@@ -77,6 +89,13 @@ class GmailProvider:
         if since_token:
             yield from self._list_incremental(since_token)
             return
+        # getProfile reliably returns the mailbox's current historyId before we
+        # start fetching, which messages.list does not include in its response.
+        profile = self._with_backoff(
+            lambda: svc.users().getProfile(userId="me").execute()
+        )
+        if profile.get("historyId"):
+            self._history_id = profile["historyId"]
         page_token = None
         while True:
             resp = self._with_backoff(

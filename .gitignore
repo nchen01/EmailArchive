@@ -51,5 +51,11 @@ Thumbs.db
 .codex_pydeps
 .claude/
 
+# OAuth credentials and tokens — never commit these
+credentials.json
+token.json
+*.local.json
+secrets/
+
 # Docker volumes (data lives outside the repo)
 pgdata/
