@@ -22,6 +22,7 @@ dependencies = [
 gmail = [
     "google-api-python-client>=2.100",
     "google-auth>=2.20",
+    "google-auth-oauthlib>=1.2",  # InstalledAppFlow for the OAuth helper script
     "structlog>=24.0",   # structured JSON logging for the real-ingest runner
 ]
 db = [
@@ -92,6 +93,7 @@ dev = [
     "uvicorn[standard]>=0.30",
     "google-api-python-client>=2.100",
     "google-auth>=2.20",
+    "google-auth-oauthlib>=1.2",
     "structlog>=24.0",
     "numpy>=1.26",
     "scipy>=1.13",
