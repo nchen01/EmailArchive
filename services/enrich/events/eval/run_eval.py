@@ -30,10 +30,21 @@ INTERNAL_DOMAINS = ["acme.com"]
 
 
 def _load_inputs():
-    from conftest import run_full_ingest  # type: ignore
     from services.enrich.pipeline import run_enrichment
+    from services.ingest.params import IngestParams
+    from services.ingest.pipeline import IngestConfig, run_ingest
 
-    store = run_full_ingest()
+    store = run_ingest(IngestConfig(
+        provider="fixture",
+        mailbox_path=FIXTURES / "mailbox.json",
+        owner_email=OWNER_EMAIL,
+        internal_domains=INTERNAL_DOMAINS,
+        params=IngestParams(
+            legal_domains=["morrislaw.com"],
+            hr_senders=["hr@acme.com"],
+            personal_domains=[],
+        ),
+    ))
     enrich = run_enrichment(store.messages, OWNER_EMAIL, INTERNAL_DOMAINS)
     e2p = {i.email: i.person_id for i in enrich.identities if i.person_id}
     by_thread: dict = defaultdict(list)
