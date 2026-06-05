@@ -160,9 +160,11 @@ def _get_or_create_mailbox(session, owner_email: str, mailbox_id_arg: str | None
 
 # ── smoke check ───────────────────────────────────────────────────────────────
 
-def _smoke_check(provider, owner_email: str, show_body: bool) -> None:
+def _smoke_check(provider, owner_email: str, show_body: bool) -> int:
     """Fetch exactly one message, print sanitized metadata. Persist nothing.
 
+    Returns the number of messages actually fetched (0 or 1) so the caller
+    can write an accurate message_count to the audit log.
     Uses islice so the provider never paginates past the first result.
     Body excerpt is opt-in (--show-body) to avoid leaking third-party content.
     """
@@ -170,7 +172,7 @@ def _smoke_check(provider, owner_email: str, show_body: bool) -> None:
     ids = list(itertools.islice(provider.list_ids(None), 1))
     if not ids:
         log.info("smoke_check_result", status="mailbox_empty")
-        return
+        return 0
 
     raw = provider.fetch(ids[0])
 
@@ -205,6 +207,7 @@ def _smoke_check(provider, owner_email: str, show_body: bool) -> None:
         print("--- End ---")
     else:
         print(f"\nSmoke check OK. {len(clean_text)} chars of clean text. Pass --show-body to see excerpt.")
+    return 1
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -224,10 +227,10 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at, sinc
 
     # ── Smoke check ────────────────────────────────────────────────────
     if args.smoke_check:
-        _smoke_check(provider, args.owner_email, show_body=args.show_body)
+        fetched = _smoke_check(provider, args.owner_email, show_body=args.show_body)
         write_audit_event(
             session, mailbox_id=mailbox_id, actor=actor, action="ingest_finish",
-            scope="gmail.readonly", message_count=1,
+            scope="gmail.readonly", message_count=fetched,
             started_at=started_at, finished_at=datetime.now(timezone.utc),
         )
         return
@@ -305,13 +308,19 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at, sinc
             mbx.owner_person_id = owner_pid
             session.commit()
 
-    # ── Sync token: only save for complete (uncapped) runs ────────────
+    # ── Sync token: save only when uncapped AND non-empty ─────────────
+    # GmailProvider.sync_token() returns "" when no historyId was captured
+    # (e.g. the mailbox returned no messages). Saving "" would be treated as
+    # a valid incremental token on the next run.
+    token_to_save = new_sync_token if (new_sync_token and not hit_cap) else None
     if hit_cap:
         log.warning(
             "sync_token_not_saved",
             reason="run hit --max-messages cap; snapshot may be incomplete",
             hint="re-run without --max-messages or with a higher cap to enable incremental",
         )
+    elif not new_sync_token:
+        log.warning("sync_token_not_saved", reason="provider returned no historyId")
     else:
         save_sync_token(session, mailbox_id, new_sync_token)
         log.info("sync_token_saved", preview=new_sync_token[:16] + "...")
@@ -320,7 +329,7 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at, sinc
     write_audit_event(
         session, mailbox_id=mailbox_id, actor=actor, action="ingest_finish",
         scope="gmail.readonly", message_count=len(store.messages),
-        sync_token=new_sync_token if not hit_cap else None,
+        sync_token=token_to_save,
         started_at=started_at, finished_at=datetime.now(timezone.utc),
     )
 
@@ -443,7 +452,11 @@ def main() -> None:
             )
         except Exception as exc:
             err_type = type(exc).__name__
-            log.error("ingest_failed", error_type=err_type, error=str(exc)[:200])
+            # Log only the error category, not the message string — exception
+            # messages from Gmail/Google APIs routinely contain email addresses,
+            # API response bodies, and request URLs that may include mailbox data.
+            log.error("ingest_failed", error_type=err_type,
+                      hint="check stderr or --dry-run for context; message withheld for privacy")
             try:
                 write_audit_event(
                     session,
@@ -454,9 +467,14 @@ def main() -> None:
                     started_at=started_at,
                     finished_at=datetime.now(timezone.utc),
                 )
-            except Exception as audit_exc:
-                log.error("audit_error_write_failed", error=str(audit_exc)[:200])
-            sys.exit(f"FAILED: {err_type}: {str(exc)[:200]}")
+            except Exception:
+                # Swallow — original exception is more important.
+                pass
+            # Print the error type to stderr for the operator; avoid stdout
+            # which may be piped to logs. Full traceback goes to sys.stderr
+            # via Python's default uncaught-exception handler if we re-raise,
+            # but we sys.exit to keep the exit code predictable.
+            sys.exit(f"FAILED ({err_type}) — see structured log above. Re-run with --dry-run to diagnose.")
 
     finally:
         session.close()

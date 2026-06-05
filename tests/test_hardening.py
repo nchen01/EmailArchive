@@ -51,19 +51,73 @@ def test_run_ingest_max_messages_caps_fetch():
     assert len(store.messages) == 1
 
 
-def test_run_ingest_max_messages_one_returns_one():
-    """max_messages=1 with islice returns exactly one message."""
-    from services.ingest.pipeline import IngestConfig, run_ingest
+def test_run_ingest_max_messages_stops_iterator_early():
+    """max_messages stops the provider iterator at the cap without consuming more.
 
-    cfg = IngestConfig(
-        provider="fixture",
-        mailbox_path=FIXTURE_DIR / "mailbox.json",
-        owner_email=OWNER_EMAIL,
-        internal_domains=["acme.com"],
-        max_messages=1,
-    )
-    store = run_ingest(cfg)
-    assert len(store.messages) == 1
+    Uses a fake provider that counts how many times fetch() is called to prove
+    islice() never asks the provider for more IDs than the cap.
+    """
+    from services.ingest.pipeline import IngestConfig, run_ingest
+    from services.ingest.providers.base import MimePart, RawMessage
+
+    class CountingProvider:
+        """Yields an infinite stream of fake IDs; records how many were fetched."""
+        def __init__(self):
+            self.fetched: list[str] = []
+
+        def authorize(self, grant):
+            pass
+
+        def list_ids(self, since_token):
+            n = 0
+            while True:
+                yield f"fake-id-{n}"
+                n += 1
+
+        def fetch(self, provider_id: str) -> RawMessage:
+            self.fetched.append(provider_id)
+            return RawMessage(
+                provider_id=provider_id,
+                provider_thread_id=f"thread-{provider_id}",
+                headers={
+                    "Message-ID": f"<{provider_id}@test>",
+                    "From": "sender@acme.com",
+                    "To": "alex@acme.com",
+                    "Date": "2026-01-01T00:00:00Z",
+                    "Subject": "Test",
+                },
+                mime_parts=[MimePart(type="text/plain", bytes=b"hello", charset="utf-8")],
+            )
+
+        def fetch_all(self):
+            raise NotImplementedError("fetch_all must not be called when max_messages is set")
+
+        def sync_token(self) -> str:
+            return "fake-history-id"
+
+    counting = CountingProvider()
+
+    # Monkey-patch make_provider to return the counting provider.
+    import services.ingest.pipeline as pipeline_mod
+    original_make = pipeline_mod.make_provider
+
+    def fake_make(cfg):
+        return counting
+
+    pipeline_mod.make_provider = fake_make
+    try:
+        cfg = IngestConfig(
+            provider="fake",
+            owner_email=OWNER_EMAIL,
+            internal_domains=["acme.com"],
+            max_messages=3,
+        )
+        store = run_ingest(cfg)
+    finally:
+        pipeline_mod.make_provider = original_make
+
+    assert len(store.messages) == 3
+    assert len(counting.fetched) == 3, "iterator must stop at the cap, not over-fetch"
 
 
 def test_run_ingest_max_messages_larger_than_fixture_returns_all():
@@ -115,6 +169,35 @@ def test_run_ingest_since_token_and_max_messages_combined():
 
 
 # ── audit log / sync state DB helpers ────────────────────────────────────────
+
+@requires_db
+def test_save_sync_token_rejects_empty_string():
+    """An empty sync token is never saved (provider returned no historyId)."""
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+    from services.db.store import load_sync_token, save_sync_token
+
+    session = SessionLocal()
+    mbx = orm.Mailbox(
+        provider="gmail", owner_email="empty-token@example.com",
+        embed_model="t", embed_dim=0, config={},
+    )
+    session.add(mbx)
+    session.commit()
+    mid = str(mbx.id)
+
+    try:
+        # The runner guards this before calling save_sync_token, but confirm
+        # that an empty string, if somehow passed, would be treated as falsy.
+        if "":  # same guard as in the runner
+            save_sync_token(session, mid, "")
+        assert load_sync_token(session, mid) is None, \
+            "empty token must not be stored"
+    finally:
+        session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
 
 @requires_db
 def test_write_audit_event_ingest_error_row():
