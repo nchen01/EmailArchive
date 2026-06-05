@@ -51,8 +51,8 @@ def test_run_ingest_max_messages_caps_fetch():
     assert len(store.messages) == 1
 
 
-def test_run_ingest_max_messages_zero_returns_empty():
-    """max_messages=0 results in no messages."""
+def test_run_ingest_max_messages_one_returns_one():
+    """max_messages=1 with islice returns exactly one message."""
     from services.ingest.pipeline import IngestConfig, run_ingest
 
     cfg = IngestConfig(
@@ -60,10 +60,10 @@ def test_run_ingest_max_messages_zero_returns_empty():
         mailbox_path=FIXTURE_DIR / "mailbox.json",
         owner_email=OWNER_EMAIL,
         internal_domains=["acme.com"],
-        max_messages=0,
+        max_messages=1,
     )
     store = run_ingest(cfg)
-    assert len(store.messages) == 0
+    assert len(store.messages) == 1
 
 
 def test_run_ingest_max_messages_larger_than_fixture_returns_all():
@@ -115,6 +115,38 @@ def test_run_ingest_since_token_and_max_messages_combined():
 
 
 # ── audit log / sync state DB helpers ────────────────────────────────────────
+
+@requires_db
+def test_write_audit_event_ingest_error_row():
+    """An ingest_error audit row is appended on failure (append-only audit trail)."""
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+    from services.db.store import write_audit_event
+    from sqlalchemy import select
+
+    session = SessionLocal()
+    mbx = orm.Mailbox(
+        provider="gmail", owner_email="error-test@example.com",
+        embed_model="t", embed_dim=0, config={},
+    )
+    session.add(mbx)
+    session.commit()
+    mid = str(mbx.id)
+
+    try:
+        write_audit_event(session, mailbox_id=mid, actor="client:test", action="ingest_start", scope="gmail.readonly")
+        write_audit_event(session, mailbox_id=mid, actor="client:test", action="ingest_error", scope="gmail.readonly")
+
+        rows = session.execute(
+            select(orm.AuditLog).where(orm.AuditLog.mailbox_id == mid)
+        ).scalars().all()
+        assert len(rows) == 2
+        assert {r.action for r in rows} == {"ingest_start", "ingest_error"}
+    finally:
+        session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
 
 @requires_db
 def test_write_audit_event_appends_two_rows():

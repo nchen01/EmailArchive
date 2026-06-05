@@ -188,9 +188,11 @@ def _smoke_check(provider, owner_email: str, show_body: bool) -> None:
     log.info(
         "smoke_check_result",
         provider_id=raw.provider_id,
-        subject=raw.headers.get("Subject", "")[:80],
+        # Subject may contain sensitive/personal content; log only its length.
+        # Pass --show-body to print body excerpt (also opt-in).
+        subject_chars=len(raw.headers.get("Subject", "")),
         sender_domain=sender_email.split("@")[-1] if "@" in sender_email else "(none)",
-        date=raw.headers.get("Date", "")[:30],
+        date=raw.headers.get("Date", "")[:10],  # date only, no time zone details
         clean_text_chars=len(clean_text),
         noise=noise,
         mime_parts=[p.type for p in raw.mime_parts],
@@ -207,6 +209,139 @@ def _smoke_check(provider, owner_email: str, show_body: bool) -> None:
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+def _run_post_start(args, provider, session, mailbox_id, actor, started_at, since_token, ingest_params):
+    """All work that happens after the audit-start row is written.
+
+    Extracted so that main() can wrap it in a try/except and guarantee an
+    "ingest_error" audit row if anything here raises.
+    """
+    from services.db.store import (
+        persist_l0,
+        persist_l1,
+        save_sync_token,
+        write_audit_event,
+    )
+
+    # ── Smoke check ────────────────────────────────────────────────────
+    if args.smoke_check:
+        _smoke_check(provider, args.owner_email, show_body=args.show_body)
+        write_audit_event(
+            session, mailbox_id=mailbox_id, actor=actor, action="ingest_finish",
+            scope="gmail.readonly", message_count=1,
+            started_at=started_at, finished_at=datetime.now(timezone.utc),
+        )
+        return
+
+    # ── Fetch N+1 IDs to distinguish exact-fit from truncated run ─────
+    log.info("fetch_start", max_messages=args.max_messages, since_token=bool(since_token))
+    raw_ids = list(itertools.islice(provider.list_ids(since_token), args.max_messages + 1))
+    hit_cap = len(raw_ids) > args.max_messages
+    ids = raw_ids[: args.max_messages]
+    log.info("ids_fetched", count=len(ids), hit_cap=hit_cap)
+
+    raws = [provider.fetch(id_) for id_ in ids]
+    new_sync_token = provider.sync_token()
+
+    # ── Normalize ─────────────────────────────────────────────────────
+    from services.ingest.normalize.threads import reconstruct
+    from services.ingest.store import persist as ingest_persist
+
+    messages, threads = reconstruct(raws, args.owner_email, ingest_params, mailbox_id)
+    store = ingest_persist(messages, threads)
+
+    noise_count = sum(1 for m in store.messages if m.noise)
+    sensitivity_counts: dict[str, int] = {}
+    for m in store.messages:
+        for s in m.sensitivity:
+            sensitivity_counts[s.value] = sensitivity_counts.get(s.value, 0) + 1
+
+    log.info(
+        "normalize_complete",
+        messages=len(store.messages),
+        threads=len(store.threads),
+        noise_flagged=noise_count,
+        sensitivity=sensitivity_counts,
+    )
+
+    # ── Dry-run exit ───────────────────────────────────────────────────
+    if args.dry_run:
+        write_audit_event(
+            session, mailbox_id=mailbox_id, actor=actor, action="ingest_finish",
+            scope="gmail.readonly", message_count=len(store.messages),
+            started_at=started_at, finished_at=datetime.now(timezone.utc),
+        )
+        print(
+            f"\nDry-run complete — {len(store.messages)} messages normalized, "
+            f"{noise_count} noise-flagged. Nothing persisted."
+        )
+        return
+
+    # ── Persist L0 ─────────────────────────────────────────────────────
+    persist_l0(store, mailbox_id, session, replace_snapshot=False)
+    log.info("l0_persisted", messages=len(store.messages), threads=len(store.threads))
+
+    # ── Enrich L1 (identity + graph + roles; clustering deferred) ──────
+    from services.enrich.params import EnrichParams
+    from services.enrich.pipeline import run_enrichment
+
+    result = run_enrichment(
+        store.messages,
+        owner_email=args.owner_email,
+        internal_domains=args.internal_domains,
+        params=EnrichParams(),
+        # threads intentionally omitted → clustering + event extraction skipped
+    )
+    persist_l1(result, mailbox_id, session)
+    log.info("l1_persisted", people=len(result.people), edges=len(result.edges))
+
+    # Update owner_person_id.
+    from services.db import models as orm
+    owner_pid = next(
+        (i.person_id for i in result.identities if i.email == args.owner_email.lower()), None
+    )
+    if owner_pid:
+        mbx = session.get(orm.Mailbox, mailbox_id)
+        if mbx and not mbx.owner_person_id:
+            mbx.owner_person_id = owner_pid
+            session.commit()
+
+    # ── Sync token: only save for complete (uncapped) runs ────────────
+    if hit_cap:
+        log.warning(
+            "sync_token_not_saved",
+            reason="run hit --max-messages cap; snapshot may be incomplete",
+            hint="re-run without --max-messages or with a higher cap to enable incremental",
+        )
+    else:
+        save_sync_token(session, mailbox_id, new_sync_token)
+        log.info("sync_token_saved", preview=new_sync_token[:16] + "...")
+
+    # ── Audit finish ───────────────────────────────────────────────────
+    write_audit_event(
+        session, mailbox_id=mailbox_id, actor=actor, action="ingest_finish",
+        scope="gmail.readonly", message_count=len(store.messages),
+        sync_token=new_sync_token if not hit_cap else None,
+        started_at=started_at, finished_at=datetime.now(timezone.utc),
+    )
+
+    print(f"""
+╔══════════════════════════════════════════════════════╗
+║  Gmail Smoke Ingest — Complete                       ║
+╠══════════════════════════════════════════════════════╣
+  mailbox_id      : {mailbox_id}
+  owner           : {args.owner_email}
+  messages        : {len(store.messages)} ({noise_count} noise-flagged)
+  threads         : {len(store.threads)}
+  sensitivity     : {sensitivity_counts}
+  people          : {len(result.people)}
+  edges           : {len(result.edges)}
+  clustering      : deferred (no embedding model configured)
+  sync_token      : {"NOT saved (capped run)" if hit_cap else new_sync_token[:16] + "..."}
+  persisted       : YES (L0 + L1 identity/graph/roles)
+╚══════════════════════════════════════════════════════╝
+""")
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Controlled Gmail smoke ingest (L0 + L1 identity/graph/roles).",
@@ -217,7 +352,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--internal-domains", nargs="*", default=[])
     p.add_argument(
         "--max-messages", type=int, default=200,
-        help="Hard cap on messages fetched per run (default 200). "
+        help="Hard cap on messages fetched per run (default 200, minimum 1). "
              "If Gmail has more messages than the cap, the sync token is NOT saved "
              "to avoid marking an incomplete snapshot as incremental-ready.",
     )
@@ -239,6 +374,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    if args.max_messages is not None and args.max_messages < 1:
+        sys.exit("ERROR: --max-messages must be >= 1.")
 
     if not args.confirm:
         sys.exit(
@@ -297,145 +435,28 @@ def main() -> None:
         )
         log.info("audit_start_written", actor=actor)
 
-        # ── Smoke check ────────────────────────────────────────────────────
-        if args.smoke_check:
-            _smoke_check(provider, args.owner_email, show_body=args.show_body)
-            write_audit_event(
-                session,
-                mailbox_id=mailbox_id,
-                actor=actor,
-                action="ingest_finish",
-                scope="gmail.readonly",
-                message_count=1,
-                started_at=started_at,
-                finished_at=datetime.now(timezone.utc),
+        # ── All post-start work wrapped: failures write audit "ingest_error" ─
+        try:
+            _run_post_start(
+                args, provider, session, mailbox_id, actor, started_at,
+                since_token, ingest_params,
             )
-            return
-
-        # ── Fetch — islice stops the stream at max_messages ────────────────
-        log.info("fetch_start", max_messages=args.max_messages, since_token=bool(since_token))
-        id_stream = provider.list_ids(since_token)
-        ids = list(itertools.islice(id_stream, args.max_messages))
-        hit_cap = len(ids) >= args.max_messages
-        log.info("ids_fetched", count=len(ids), hit_cap=hit_cap)
-
-        raws = [provider.fetch(id_) for id_ in ids]
-        new_sync_token = provider.sync_token()
-
-        # ── Normalize ─────────────────────────────────────────────────────
-        from services.ingest.normalize.threads import reconstruct
-        from services.ingest.store import persist as ingest_persist
-
-        messages, threads = reconstruct(raws, args.owner_email, ingest_params, mailbox_id)
-        store = ingest_persist(messages, threads)
-
-        noise_count = sum(1 for m in store.messages if m.noise)
-        sensitivity_counts: dict[str, int] = {}
-        for m in store.messages:
-            for s in m.sensitivity:
-                sensitivity_counts[s.value] = sensitivity_counts.get(s.value, 0) + 1
-
-        log.info(
-            "normalize_complete",
-            messages=len(store.messages),
-            threads=len(store.threads),
-            noise_flagged=noise_count,
-            sensitivity=sensitivity_counts,
-        )
-
-        # ── Dry-run exit ───────────────────────────────────────────────────
-        if args.dry_run:
-            write_audit_event(
-                session,
-                mailbox_id=mailbox_id,
-                actor=actor,
-                action="ingest_finish",
-                scope="gmail.readonly",
-                message_count=len(store.messages),
-                started_at=started_at,
-                finished_at=datetime.now(timezone.utc),
-            )
-            print(
-                f"\nDry-run complete — {len(store.messages)} messages normalized, "
-                f"{noise_count} noise-flagged. Nothing persisted."
-            )
-            return
-
-        # ── Persist L0 ─────────────────────────────────────────────────────
-        persist_l0(store, mailbox_id, session, replace_snapshot=False)
-        log.info("l0_persisted", messages=len(store.messages), threads=len(store.threads))
-
-        # ── Enrich L1 (identity + graph + roles; clustering deferred) ──────
-        # Clustering requires a production embedding model (D11, spec 04
-        # ticket 4.5). This runner does NOT run clustering.
-        from services.enrich.params import EnrichParams
-        from services.enrich.pipeline import run_enrichment
-
-        result = run_enrichment(
-            store.messages,
-            owner_email=args.owner_email,
-            internal_domains=args.internal_domains,
-            params=EnrichParams(),
-            # threads intentionally omitted → clustering + event extraction skipped
-        )
-        persist_l1(result, mailbox_id, session)
-        log.info("l1_persisted", people=len(result.people), edges=len(result.edges))
-
-        # Update owner_person_id.
-        from services.db import models as orm
-        owner_pid = next(
-            (i.person_id for i in result.identities if i.email == args.owner_email.lower()),
-            None,
-        )
-        if owner_pid:
-            mbx = session.get(orm.Mailbox, mailbox_id)
-            if mbx and not mbx.owner_person_id:
-                mbx.owner_person_id = owner_pid
-                session.commit()
-
-        # ── Sync token: only save when the run was NOT capped ─────────────
-        # If len(ids) == max_messages the run may have stopped mid-mailbox.
-        # Saving a historyId in that state would cause the next incremental
-        # run to skip un-fetched messages.
-        if hit_cap:
-            log.warning(
-                "sync_token_not_saved",
-                reason="run hit --max-messages cap; snapshot may be incomplete",
-                hint="re-run without --max-messages (or with a higher cap) to save the token",
-            )
-        else:
-            save_sync_token(session, mailbox_id, new_sync_token)
-            log.info("sync_token_saved", preview=new_sync_token[:16] + "...")
-
-        # ── Audit finish ───────────────────────────────────────────────────
-        write_audit_event(
-            session,
-            mailbox_id=mailbox_id,
-            actor=actor,
-            action="ingest_finish",
-            scope="gmail.readonly",
-            message_count=len(store.messages),
-            sync_token=new_sync_token if not hit_cap else None,
-            started_at=started_at,
-            finished_at=datetime.now(timezone.utc),
-        )
-
-        print(f"""
-╔══════════════════════════════════════════════════════╗
-║  Gmail Smoke Ingest — Complete                       ║
-╠══════════════════════════════════════════════════════╣
-  mailbox_id      : {mailbox_id}
-  owner           : {args.owner_email}
-  messages        : {len(store.messages)} ({noise_count} noise-flagged)
-  threads         : {len(store.threads)}
-  sensitivity     : {sensitivity_counts}
-  people          : {len(result.people)}
-  edges           : {len(result.edges)}
-  clustering      : deferred (no embedding model configured)
-  sync_token      : {"NOT saved (capped run)" if hit_cap else new_sync_token[:16] + "..."}
-  persisted       : YES (L0 + L1 identity/graph/roles)
-╚══════════════════════════════════════════════════════╝
-""")
+        except Exception as exc:
+            err_type = type(exc).__name__
+            log.error("ingest_failed", error_type=err_type, error=str(exc)[:200])
+            try:
+                write_audit_event(
+                    session,
+                    mailbox_id=mailbox_id,
+                    actor=actor,
+                    action="ingest_error",
+                    scope="gmail.readonly",
+                    started_at=started_at,
+                    finished_at=datetime.now(timezone.utc),
+                )
+            except Exception as audit_exc:
+                log.error("audit_error_write_failed", error=str(audit_exc)[:200])
+            sys.exit(f"FAILED: {err_type}: {str(exc)[:200]}")
 
     finally:
         session.close()
