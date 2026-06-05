@@ -136,8 +136,9 @@ email-archive/
         communities.py  materialize.py  confidence.py  labeling.py
         incremental.py  pipeline.py  testkit.py
         eval/  metrics.py  run_eval.py
-      events/                       # event extraction (spec 01 §7, D10)  ✓ S4
-        __init__.py  events_llm.py
+      events_llm.py                 # production extract_fn (Anthropic, D10)  ✓ S4
+      events/                       # event extraction orchestration (spec 01 §7)  ✓ S4
+        __init__.py
         eval/  run_eval.py
     api/                            # FastAPI  ✓ S2-S4
       main.py  deps.py
