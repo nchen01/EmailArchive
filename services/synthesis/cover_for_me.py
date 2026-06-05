@@ -113,6 +113,15 @@ def _project_state(
         for m in msgs
     }
 
+    # No citable headers → nothing to ground claims against; short-circuit.
+    if not allowed_headers:
+        return SynthesisResult(
+            claims=[],
+            model=params.model,
+            usage={},
+            state="insufficient structured evidence — no citable message headers found",
+        )
+
     return synthesize_project(
         project,
         events,
@@ -120,7 +129,7 @@ def _project_state(
         messages_by_thread,
         synth_fn=synth_fn,
         params=params,
-        allowed_message_id_headers=allowed_headers or None,
+        allowed_message_id_headers=allowed_headers,  # always a non-empty set here
     )
 
 
@@ -208,6 +217,15 @@ def _who_to_ask(
 
             events = sorted(raw_events, key=_max_ts, reverse=True)
 
+    # No citable headers → short-circuit; every claim would be filtered anyway.
+    if not allowed_headers:
+        return SynthesisResult(
+            claims=[],
+            model=params.model,
+            usage={},
+            state="insufficient structured evidence — no shared message headers found",
+        )
+
     return synthesize_contact(
         person,
         edge,
@@ -215,7 +233,7 @@ def _who_to_ask(
         events,
         synth_fn=synth_fn,
         params=params,
-        allowed_message_id_headers=allowed_headers or None,
+        allowed_message_id_headers=allowed_headers,  # always a non-empty set here
     )
 
 

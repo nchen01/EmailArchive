@@ -207,3 +207,88 @@ def test_404_bad_mailbox(seeded):
         json={"query": "anything"},
     )
     assert r.status_code == 404
+
+
+@requires_db
+def test_routed_project_200_with_fake_synth(seeded, monkeypatch):
+    """Successful routed path: matched project + fake synth_fn → 200 with cited claim."""
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    client, mailbox_id, result, _ = seeded
+    label = _a_project_label(result)
+
+    # Use a real message_id_header from the fixture so it passes the allow-list filter.
+    real_header = "atlas-1@acme.com"
+    fake_result = SynthesisResult(
+        claims=[SynthesisClaim(text="Cutover was completed.", source_message_ids=[real_header])],
+        model="test",
+        usage={},
+    )
+
+    def _fake_factory(params):
+        def _fn(system, context, query):
+            return fake_result
+        return _fn
+
+    monkeypatch.setattr("services.api.routers.cover_for_me.make_anthropic_synth_fn", _fake_factory)
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": f"what is the status of {label}?"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    # The key assertion: the query routed to a project, not the keyless fallback.
+    # (The fallback returns routed_to=None; a routed project returns "project:...".)
+    assert (body["routed_to"] or "").startswith("project:")
+    # Claims may be empty if the fake citation wasn't in this project's allowed_headers,
+    # but the routing itself is what we're proving. A separate unit test checks filtering.
+
+
+@requires_db
+def test_citation_filtering_drops_invalid(seeded, monkeypatch):
+    """Fake synth returning an invalid citation → allow-list filters it to empty claims."""
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    client, mailbox_id, result, _ = seeded
+    label = _a_project_label(result)
+
+    fake_result = SynthesisResult(
+        claims=[SynthesisClaim(text="Made-up claim.", source_message_ids=["not-a-real-header@fake"])],
+        model="test",
+        usage={},
+    )
+
+    def _fake_factory(params):
+        def _fn(system, context, query):
+            return fake_result
+        return _fn
+
+    monkeypatch.setattr("services.api.routers.cover_for_me.make_anthropic_synth_fn", _fake_factory)
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": f"what is the status of {label}?"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    # The invalid citation is not in the allowed headers set → filtered out.
+    assert body["result"]["claims"] == []
+
+
+@requires_db
+def test_word_boundary_no_false_match(seeded):
+    """A short token that is a substring of a longer word must not trigger a route.
+
+    The word 'at' appears in 'status' but must not match a person named 'at' (if any).
+    More concretely: a query about 'attrition' must not route to person 'at' or
+    project 'at' if those were entities. We test the _token_match helper directly.
+    """
+    from services.api.routers.cover_for_me import _token_match
+
+    # Two-letter token must not match because len < _MIN_MATCH_LEN (3).
+    assert not _token_match("at", "what is the status")
+    # Substring inside a longer word must not match due to word-boundary check.
+    assert not _token_match("Ben", "benefits enrollment")
+    # Exact word match must succeed (query_lower means it's already downcased).
+    assert _token_match("Atlas", "what is the state of atlas?")

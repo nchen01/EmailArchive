@@ -3,7 +3,8 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S0–S4 complete · S5 (bounded L1-only cover-for-me query) is next.
+**Status:** S0–S5 complete. MVP pipeline and all three surfaces shipped.
+Next: production hardening (real Gmail OAuth, queue, secrets) or L2 hybrid retrieval.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
@@ -186,7 +187,7 @@ email-archive/
 | S2 | Role inference + DB migrations + network-map surface | ✓ done | spec 01 §5, spec 05 |
 | S3 | Project clustering + project view surface | ✓ done | spec 03, spec 02 |
 | S4 | Event extraction + L3 grounded synthesis | ✓ done | spec 01 §7 |
-| S5 | Cover-for-me query (bounded L1-only, D11) | **next** | implementation-plan §6.3 |
+| S5 | Cover-for-me query (bounded L1-only, D11) | ✓ done | implementation-plan §6.3 |
 
 **Quick start (S0–S4 running):**
 ```bash
@@ -207,7 +208,7 @@ cd frontend && npm install && VITE_MAILBOX_ID=<uuid> npm run dev  # UI on :5173
 
 # 4. Tests
 DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
-  pytest                                                      # 138 tests (DB-gated skip without DATABASE_URL)
+  pytest                                                      # 147 tests (DB-gated tests skip without DATABASE_URL)
 ```
 
 ## Privacy guardrails (non-negotiable)

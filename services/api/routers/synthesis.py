@@ -235,5 +235,5 @@ async def synthesize_contact_endpoint(
     return synthesize_contact(
         person, edge, threads, events,
         synth_fn=synth_fn,
-        allowed_message_id_headers=allowed_headers or None,
+        allowed_message_id_headers=allowed_headers,  # always pass the set; empty → all claims filtered
     )

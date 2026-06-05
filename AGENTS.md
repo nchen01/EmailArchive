@@ -80,9 +80,10 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
 - **S3 ✓** — project clustering (spec 03) + project view surface (spec 02). 124 tests.
 - **S4 ✓** — event extraction (spec 01 §7) + L3 synthesis (project summary, contact summary).
   138 tests. `services/enrich/events/`, `services/synthesis/`.
-- **S5 — next** — bounded L1-only cover-for-me query (D11). Routes over Person, Project,
-  Event, Edge, Thread already in the DB. Does not bluff on queries beyond structured evidence.
-  No L2/vector retrieval in S5; `message_embedding` remains deferred (see known gaps).
+- **S5 ✓** — bounded L1-only cover-for-me query (D11). `POST /api/cover-for-me/{mailbox_id}`.
+  Routes over Person, Project, Event, Edge, Thread in the DB; word-boundary entity detection;
+  citation allow-list enforced; "insufficient structured evidence" on no match. 147 tests.
+  **All three MVP surfaces are now shipped.** Next: production hardening or L2 retrieval.
 
 ## 6. Known gaps — flag, don't fake
 

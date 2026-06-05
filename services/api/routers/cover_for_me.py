@@ -40,6 +40,23 @@ router = APIRouter(tags=["cover-for-me"])
 WHO_ASK = re.compile(r"who\s+(do\s+i\s+ask|owns?|handles?|is\s+responsible)", re.I)
 WHAT_STATE = re.compile(r"(state|status|what.s?\s+been\s+done|what\s+happened)", re.I)
 
+# Minimum token length for entity matching — prevents false-matches on short/common
+# tokens (e.g. "at", "or", "of") that could appear inside unrelated words.
+_MIN_MATCH_LEN = 3
+
+
+def _token_match(name: str, query_lower: str) -> bool:
+    """True when ``name`` appears as a distinct word in ``query_lower`` (word-boundary).
+
+    Word-boundary regex (\b) prevents "Ben" from matching "benefits" or
+    "Dana" from matching "Danaher". Combined with _MIN_MATCH_LEN, this avoids
+    accidental substring false-positives on very short tokens.
+    """
+    if not name or len(name) < _MIN_MATCH_LEN:
+        return False
+    pattern = r"\b" + re.escape(name.lower()) + r"\b"
+    return bool(re.search(pattern, query_lower))
+
 
 def _get_mailbox(db: Session, mailbox_id: str) -> orm.Mailbox:
     mbx = db.get(orm.Mailbox, mailbox_id)
@@ -63,7 +80,7 @@ def _match_persons(query: str, db: Session, mailbox_id: str) -> list[orm.Person]
     for p in persons:
         if owner_email and (p.canonical_email or "").lower() == owner_email:
             continue
-        if any(n.lower() in q for n in p.names if n):
+        if any(_token_match(n, q) for n in p.names):
             out.append(p)
     return out
 
@@ -74,7 +91,7 @@ def _match_projects(query: str, db: Session, mailbox_id: str) -> list[orm.Projec
     projects = db.execute(
         select(orm.Project).where(orm.Project.mailbox_id == mailbox_id)
     ).scalars()
-    return [p for p in projects if p.label and p.label.lower() in q]
+    return [p for p in projects if _token_match(p.label, q)]
 
 
 def _best_person(query: str, persons: list[orm.Person]) -> orm.Person | None:
@@ -83,7 +100,7 @@ def _best_person(query: str, persons: list[orm.Person]) -> orm.Person | None:
     best: orm.Person | None = None
     best_len = -1
     for p in persons:
-        matched = [len(n) for n in p.names if n and n.lower() in q]
+        matched = [len(n) for n in p.names if _token_match(n, q)]
         score = max(matched) if matched else 0
         if score > best_len:
             best_len, best = score, p
@@ -117,7 +134,7 @@ def _route(
     if best_project is not None and best_person is not None:
         proj_len = len(best_project.label or "")
         pers_len = max(
-            (len(n) for n in best_person.names if n and n.lower() in query.lower()),
+            (len(n) for n in best_person.names if _token_match(n, query.lower())),
             default=0,
         )
         # Tie or project longer → prefer project.

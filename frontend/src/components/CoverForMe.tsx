@@ -56,7 +56,8 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask anything about this mailbox…"
+          placeholder="Ask about a project or contact, e.g. &quot;What's the state of Atlas?&quot;"
+          maxLength={500}
           className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
         />
         <button

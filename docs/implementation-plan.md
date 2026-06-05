@@ -184,12 +184,12 @@ Where summaries get generated — and where the grounding discipline lives.
 - Surfaces: network map (S2), project view with activity panel (S3–S4), synthesis buttons (S4).
 - 138 tests passing. Frontend build clean. `python scripts/dev_seed.py` seeds all layers.
 
-**Next (S5):**
-- **Cover-for-me query** — the third and last MVP surface (implementation-plan §6.3). A
-  natural-language entry point answering "Who do I ask about Y / what's the state of project Z?"
-  Ships as a bounded L1-only implementation (D11): routes over Person, Project, Event, Edge,
-  Thread already in the DB. Returns "insufficient structured evidence" for queries that exceed
-  the structured data available. No L2 vector retrieval in S5.
+**Implemented (S5, complete):**
+- **Cover-for-me query** (implementation-plan §6.3, D11). `POST /api/cover-for-me/{mailbox_id}`.
+  Word-boundary entity detection against Person names and Project labels already in Postgres.
+  Routes to `synthesize_project` / `synthesize_contact` (reusing S4); citation allow-list
+  enforced (invalid headers filtered post-model). "Insufficient structured evidence" fallback
+  when no entity matches — never bluffs. Third "Cover for Me" tab in the frontend. 147 tests.
 
 **Deferred:**
 - **L2 retrieval** (`message_embedding` table, spec 04 ticket 4.5): needs embedding model and
