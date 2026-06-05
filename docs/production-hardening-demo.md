@@ -4,8 +4,7 @@ Branch: `production-hardening-demo`
 
 ## Live Gmail Validation — 2026-06-05
 
-End-to-end smoke test run against a throwaway Gmail account
-(`johncartergpt2024@gmail.com`) using the real OAuth flow.
+End-to-end smoke test run against a throwaway Gmail account using the real OAuth flow.
 
 | Check | Result |
 |---|---|
@@ -17,7 +16,7 @@ End-to-end smoke test run against a throwaway Gmail account
 | Sync token saved after full baseline | PASS (fixed via `getProfile().historyId`) |
 | Sync token saved after incremental | PASS |
 | Token / body / subject leak in output | None observed |
-| Audit start + finish rows | Clean pairs for every run |
+| Audit start + finish rows | Clean pairs for validated smoke-runner paths |
 | Audit retention after mailbox delete | Intentional — no FK cascade (spec 04) |
 
 ### Sync token fix
@@ -37,5 +36,5 @@ Tests that write audit rows clean up after themselves explicitly.
 
 ```
 python -m pytest -q          # 161 passed
-npm --prefix frontend build  # 357.13 kB bundle
+npm.cmd --prefix frontend run build  # 357.13 kB bundle
 ```
