@@ -12,6 +12,8 @@ Dedupe keys (spec 04 §1):
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,64 @@ from services.ingest.store import IngestStore
 
 from . import mappers
 from . import models as orm
+
+
+# ── Audit log (append-only, spec 00 §12/§16) ─────────────────────────────────
+
+def write_audit_event(
+    session: Session,
+    *,
+    mailbox_id: str,
+    actor: str,
+    action: str,
+    scope: str | None = None,
+    message_count: int | None = None,
+    sync_token: str | None = None,
+    started_at: datetime | None = None,
+    finished_at: datetime | None = None,
+) -> None:
+    """Append one immutable row to audit_log (never UPDATE, spec 00 §12).
+
+    Call twice per ingest run:
+      1. action="ingest_start" before any data is read (started_at set, rest None).
+      2. action="ingest_finish" after completion (finished_at, message_count, sync_token set).
+
+    Two rows preserves the append-only contract; a single-row update would not.
+    ``actor`` should be the OAuth subject claim, never a raw token.
+    """
+    now = datetime.now(timezone.utc)
+    session.execute(
+        insert(orm.AuditLog).values(
+            mailbox_id=mailbox_id,
+            actor=actor,
+            action=action,
+            scope=scope,
+            message_count=message_count,
+            started_at=started_at or now,
+            finished_at=finished_at,
+            sync_token=sync_token,
+        )
+    )
+    session.commit()
+
+
+def save_sync_token(session: Session, mailbox_id: str, sync_token: str) -> None:
+    """Upsert the Gmail historyId / Graph delta token for incremental ingest."""
+    session.execute(
+        insert(orm.SyncState)
+        .values(mailbox_id=mailbox_id, sync_token=sync_token, last_run_at=datetime.now(timezone.utc))
+        .on_conflict_do_update(
+            index_elements=["mailbox_id"],
+            set_={"sync_token": sync_token, "last_run_at": datetime.now(timezone.utc)},
+        )
+    )
+    session.commit()
+
+
+def load_sync_token(session: Session, mailbox_id: str) -> str | None:
+    """Return the stored sync token for this mailbox, or None if never run."""
+    row = session.get(orm.SyncState, mailbox_id)
+    return row.sync_token if row else None
 
 
 def _upsert(session: Session, model, rows: list[dict], index_elements: list[str]) -> None:

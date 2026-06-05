@@ -22,6 +22,7 @@ dependencies = [
 gmail = [
     "google-api-python-client>=2.100",
     "google-auth>=2.20",
+    "structlog>=24.0",   # structured JSON logging for the real-ingest runner
 ]
 db = [
     "sqlalchemy>=2.0",
@@ -91,6 +92,7 @@ dev = [
     "uvicorn[standard]>=0.30",
     "google-api-python-client>=2.100",
     "google-auth>=2.20",
+    "structlog>=24.0",
     "numpy>=1.26",
     "scipy>=1.13",
     "scikit-learn>=1.5",

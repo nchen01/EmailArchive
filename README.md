@@ -189,7 +189,26 @@ email-archive/
 | S4 | Event extraction + L3 grounded synthesis | ✓ done | spec 01 §7 |
 | S5 | Cover-for-me query (bounded L1-only, D11) | ✓ done | implementation-plan §6.3 |
 
-**Quick start (S0–S4 running):**
+**Real Gmail smoke ingest (production-hardening-demo):**
+```bash
+# 1. Obtain an OAuth token with gmail.readonly scope (see scripts/gmail_smoke_ingest.py docstring).
+#    Store the token JSON — exactly these fields:
+#    { "token": "...", "refresh_token": "...", "token_uri": "https://oauth2.googleapis.com/token",
+#      "client_id": "...", "client_secret": "...",
+#      "scopes": ["https://www.googleapis.com/auth/gmail.readonly"] }
+export GMAIL_TOKEN='<paste token JSON here>'   # never committed; never logged
+
+# 2. Smoke-check first (fetches one message, persists nothing):
+python scripts/gmail_smoke_ingest.py --owner-email you@example.com --confirm --smoke-check
+
+# 3. First real run (capped at 200 messages):
+python scripts/gmail_smoke_ingest.py --owner-email you@example.com --max-messages 200 --confirm
+
+# 4. Incremental (uses stored historyId automatically):
+python scripts/gmail_smoke_ingest.py --mailbox-id <uuid> --owner-email you@example.com --confirm
+```
+
+**Quick start (S0–S5 running):**
 ```bash
 # 1. Python deps (one time)
 pip install -e .[dev]      # app + all dev/test/api/db/gmail deps

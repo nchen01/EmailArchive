@@ -22,6 +22,10 @@ class IngestConfig:
     owner_email: str = ""
     internal_domains: list[str] = field(default_factory=list)
     params: IngestParams = field(default_factory=IngestParams)
+    # Incremental sync and fetch cap.  These are intentionally on IngestConfig
+    # (not left to fetch_all()) so callers cannot accidentally ignore them.
+    since_token: str | None = None       # Gmail historyId / Graph delta token; None = full fetch
+    max_messages: int | None = None      # hard cap on messages fetched; None = no limit
 
 
 def make_provider(cfg: IngestConfig) -> MailProvider:
@@ -38,8 +42,23 @@ def make_provider(cfg: IngestConfig) -> MailProvider:
 
 
 def run_ingest(cfg: IngestConfig) -> IngestStore:
+    """Fetch, normalize, and return an in-memory IngestStore.
+
+    When ``since_token`` or ``max_messages`` is set, the fetch path uses
+    ``provider.list_ids(since_token)`` directly and caps the ID list before
+    issuing any ``fetch()`` calls — so the limits cannot be accidentally
+    bypassed by a provider's ``fetch_all()`` implementation.
+    """
     provider = make_provider(cfg)
     provider.authorize({})
-    raws = list(provider.fetch_all())
+
+    if cfg.since_token is not None or cfg.max_messages is not None:
+        ids = list(provider.list_ids(cfg.since_token))
+        if cfg.max_messages is not None:
+            ids = ids[: cfg.max_messages]
+        raws = [provider.fetch(id_) for id_ in ids]
+    else:
+        raws = list(provider.fetch_all())
+
     messages, threads = reconstruct(raws, cfg.owner_email, cfg.params, cfg.db_mailbox_id)
     return persist(messages, threads)
