@@ -262,3 +262,22 @@ def extract_events(
             )
 
     return events
+
+
+def get_processed_headers(
+    threads: list[Thread],
+    messages_by_thread: dict[str, list[Message]],
+) -> list[str]:
+    """All message_id_header values from threads that extraction would process.
+
+    This is the delete scope for persist_events: even when extract_fn returns []
+    for a thread (or the model produces no valid events), old Events citing those
+    messages must be cleared. Mirrors the sensitivity gate in extract_events so
+    the two functions stay in sync.
+    """
+    headers: list[str] = []
+    for thread in threads:
+        msgs = messages_by_thread.get(thread.id, [])
+        if msgs and not _thread_is_sensitive(msgs):
+            headers.extend(m.message_id_header for m in msgs)
+    return headers

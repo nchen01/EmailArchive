@@ -97,6 +97,15 @@ async def synthesize_project_endpoint(
     )
     events = [mappers.row_to_event(e) for e in event_rows]
 
+    # Empty events → graceful result immediately; no model call or key check needed.
+    if not events:
+        return SynthesisResult(
+            claims=[],
+            model=PARAMS.model,
+            usage={},
+            state="no evidenced activity in email",
+        )
+
     thread_ids = sorted(
         {
             tid
@@ -110,17 +119,23 @@ async def synthesize_project_endpoint(
     threads = _threads_for_ids(db, thread_ids)
     messages_by_thread = _messages_by_thread(db, mailbox_id, thread_ids)
 
-    # Build the production synth_fn only if there is something to synthesize.
-    # Empty events AND empty threads → graceful empty result (no key needed).
-    synth_fn = None
-    if events or threads:
-        try:
-            synth_fn = make_anthropic_synth_fn(PARAMS)
-        except MissingApiKeyError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    # Collect allowed message_id_header values for citation validation.
+    allowed_headers: set[str] = {
+        mid
+        for msgs in messages_by_thread.values()
+        for m in msgs
+        for mid in [m.message_id_header]
+    }
+
+    try:
+        synth_fn = make_anthropic_synth_fn(PARAMS)
+    except MissingApiKeyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return synthesize_project(
-        project, events, threads, messages_by_thread, synth_fn=synth_fn
+        project, events, threads, messages_by_thread,
+        synth_fn=synth_fn,
+        allowed_message_id_headers=allowed_headers,
     )
 
 
@@ -174,30 +189,51 @@ async def synthesize_contact_endpoint(
     # Events from those threads: an Event whose citations overlap the threads'
     # message headers. Resolve thread → headers, then match.
     events = []
+    allowed_headers: set[str] = set()
     if thread_ids:
-        headers = [
-            h
-            for (h,) in db.execute(
-                select(orm.Message.message_id_header).where(
+        # Fetch messages for threads; build {header: ts} for event sorting.
+        msg_rows = list(
+            db.execute(
+                select(orm.Message.message_id_header, orm.Message.ts).where(
                     orm.Message.mailbox_id == mailbox_id,
                     orm.Message.thread_id.in_(thread_ids),
                 )
-            )
-        ]
-        if headers:
+            ).all()
+        )
+        header_ts: dict = {row[0]: row[1] for row in msg_rows}
+        allowed_headers = set(header_ts)
+
+        if allowed_headers:
             event_rows = list(
                 db.execute(
                     select(orm.Event).where(
                         orm.Event.mailbox_id == mailbox_id,
-                        orm.Event.source_message_ids.overlap(headers),
+                        orm.Event.source_message_ids.overlap(list(allowed_headers)),
                     )
                 ).scalars()
             )
-            events = [mappers.row_to_event(e) for e in event_rows]
+            raw_events = [mappers.row_to_event(e) for e in event_rows]
+            # Sort by max cited message.ts desc before capping — P3 fix.
+            from datetime import datetime, timezone
+
+            def _max_ts(ev) -> datetime:
+                ts_list = [
+                    header_ts[h] for h in ev.source_message_ids if h in header_ts
+                ]
+                if not ts_list:
+                    return datetime.min.replace(tzinfo=timezone.utc)
+                ts = max(ts_list)
+                return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+            events = sorted(raw_events, key=_max_ts, reverse=True)
 
     try:
         synth_fn = make_anthropic_synth_fn(PARAMS)
     except MissingApiKeyError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return synthesize_contact(person, edge, threads, events, synth_fn=synth_fn)
+    return synthesize_contact(
+        person, edge, threads, events,
+        synth_fn=synth_fn,
+        allowed_message_id_headers=allowed_headers or None,
+    )

@@ -24,8 +24,9 @@ record: email is one channel; real collaboration also lives in Slack, docs, and
 meetings. Surface what is evidenced; flag what cannot be seen from email.
 
 Rules — every one is mandatory:
-  - Every claim MUST cite the message_id(s) or thread(s) that evidence it.
-    No citation, no claim.
+  - Every claim MUST cite the message_id_header value(s) from the provided
+    messages that evidence it. No citation, no claim. Cite only message_id values
+    — not thread IDs or any other identifier.
   - Volume is not accomplishment. Many messages is not evidence of a result.
   - Carry epistemic labels through; never upgrade intent into a confirmed outcome.
   - Prefer "coordinated across N threads; outcome not visible in email" over a
@@ -35,7 +36,8 @@ Rules — every one is mandatory:
 
 QUERY = (
     "Summarize what this contact works on with the owner and in what capacity. "
-    "Every claim must cite the message_id(s) or thread(s) that evidence it."
+    "Every claim must cite the message_id_header value(s) from the provided "
+    "messages that evidence it."
 )
 
 
@@ -74,8 +76,8 @@ def build_context(
         lines.append("  (none)")
     lines.append("")
 
-    # Cap recent events by recency (top N). Events are already grounded; here we
-    # surface their summaries + citations as additional context.
+    # Events arrive pre-sorted by recency (synthesis endpoint orders them);
+    # just cap to max_context_messages here.
     capped_events = events[: params.max_context_messages]
     lines.append("Recent events from these threads:")
     if capped_events:
@@ -95,14 +97,28 @@ def synthesize_contact(
     *,
     synth_fn: SynthFn | None = None,
     params: SynthesisParams = PARAMS,
+    allowed_message_id_headers: set[str] | None = None,
 ) -> SynthesisResult:
     """Synthesize "Ask about this contact" (spec 05 §3.4).
 
     Edge stats always provide structural context, so this calls the model even
     with no events (unlike the empty-project short-circuit).
+
+    ``allowed_message_id_headers``: when supplied, any claim whose
+    ``source_message_ids`` are not all within this set is silently dropped
+    before the result leaves the synthesis layer (citation hygiene).
     """
     if synth_fn is None:
         synth_fn = make_anthropic_synth_fn(params)
 
     context = build_context(person, edge, threads, events, params)
-    return synth_fn(SYSTEM_PROMPT, context, QUERY)
+    result = synth_fn(SYSTEM_PROMPT, context, QUERY)
+
+    if allowed_message_id_headers is not None:
+        result = result.model_copy(update={
+            "claims": [
+                c for c in result.claims
+                if all(h in allowed_message_id_headers for h in c.source_message_ids)
+            ]
+        })
+    return result

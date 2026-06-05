@@ -18,20 +18,26 @@ NOW = datetime(2026, 6, 3, tzinfo=timezone.utc)
 # ── DB-free unit tests ───────────────────────────────────────────────────────
 
 def test_project_state_active_recent():
-    assert project_state([NOW - timedelta(days=5)], NOW) == "active"
+    assert project_state([NOW - timedelta(days=5)], now=NOW) == "active"
 
 
 def test_project_state_stale_old():
-    assert project_state([NOW - timedelta(days=40)], NOW) == "stale"
+    assert project_state([NOW - timedelta(days=40)], now=NOW) == "stale"
 
 
 def test_project_state_empty_is_stale():
-    assert project_state([], NOW) == "stale"
+    assert project_state([], now=NOW) == "stale"
 
 
 def test_project_state_uses_latest_thread():
     ends = [NOW - timedelta(days=40), NOW - timedelta(days=2)]
-    assert project_state(ends, NOW) == "active"
+    assert project_state(ends, now=NOW) == "active"
+
+
+def test_project_state_shipping_with_outcome():
+    assert project_state(
+        [NOW - timedelta(days=5)], has_recent_outcome=True, now=NOW
+    ) == "shipping"
 
 
 # ── DB-backed integration tests ──────────────────────────────────────────────

@@ -32,7 +32,8 @@ channel; real work also lives in Slack, docs, and meetings. Surface what is
 evidenced; flag what cannot be seen from email.
 
 Rules — every one is mandatory:
-  - Every claim MUST cite the message_id(s) that evidence it. No citation, no claim.
+  - Every claim MUST cite the message_id_header value(s) from the provided messages
+    that evidence it. No citation, no claim. Cite only message_id values.
   - Carry the epistemic label through. A 'proposed' item is intent, not a result;
     never present it as an outcome. Never upgrade proposed/did into outcome.
   - Volume is not accomplishment. Never render "sent N emails" as "drove to completion".
@@ -43,7 +44,7 @@ Rules — every one is mandatory:
 
 QUERY = (
     "Summarize what has been done on this project. Every claim must cite the "
-    "message_id(s) that evidence it."
+    "message_id_header value(s) from the provided messages that evidence it."
 )
 
 
@@ -98,11 +99,15 @@ def synthesize_project(
     *,
     synth_fn: SynthFn | None = None,
     params: SynthesisParams = PARAMS,
+    allowed_message_id_headers: set[str] | None = None,
 ) -> SynthesisResult:
     """Synthesize "What's been done" for a project (spec 02 §6).
 
     With no events AND no threads, returns an empty/"no evidenced activity"
     result rather than calling the model (graceful empty path, DoD §10).
+
+    ``allowed_message_id_headers``: when supplied, claims whose citations are
+    not within this set are dropped before the result leaves the synthesis layer.
     """
     if not events and not threads:
         return SynthesisResult(
@@ -116,4 +121,13 @@ def synthesize_project(
         synth_fn = make_anthropic_synth_fn(params)
 
     context = build_context(project, events, threads, messages_by_thread, params)
-    return synth_fn(SYSTEM_PROMPT, context, QUERY)
+    result = synth_fn(SYSTEM_PROMPT, context, QUERY)
+
+    if allowed_message_id_headers is not None:
+        result = result.model_copy(update={
+            "claims": [
+                c for c in result.claims
+                if all(h in allowed_message_id_headers for h in c.source_message_ids)
+            ]
+        })
+    return result

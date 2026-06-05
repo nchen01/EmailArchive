@@ -140,41 +140,50 @@ def persist_l1(result: EnrichResult, mailbox_id: str, session: Session) -> None:
     if result.clustering is not None:
         _persist_clustering(result.clustering, mailbox_id, session)
 
-    if result.events:
-        persist_events(result.events, mailbox_id, session)
+    # Always call persist_events when extraction ran (even if no events were
+    # produced): processed_headers is non-empty iff extract_fn was supplied,
+    # and we must delete stale Events for those threads regardless.
+    if result.event_processed_headers:
+        persist_events(
+            result.events, mailbox_id, session,
+            processed_headers=result.event_processed_headers,
+        )
 
     session.commit()
 
 
-def persist_events(events: list, mailbox_id: str, session: Session) -> None:
+def persist_events(
+    events: list,
+    mailbox_id: str,
+    session: Session,
+    *,
+    processed_headers: list[str],
+) -> None:
     """Persist Events via scoped delete-and-reinsert (S4 guide §4, D10).
 
-    Re-running enrichment must not double Events, and a content-key upsert is
-    unreliable because the LLM may vary ``summary`` across runs. Instead, for the
-    batch being (re-)processed, delete every existing event whose
-    ``source_message_ids`` overlaps the citations of the new batch, then insert
-    fresh rows. The ``ix_event_srcs`` GIN index covers the ``&&`` overlap.
+    The delete scope is ``processed_headers`` — ALL message_id_header values
+    from threads that extraction ran on (including threads that produced zero
+    Events). This ensures stale Events are removed even when re-extraction
+    yields nothing or cites different messages.
 
-    This only clears Events whose source messages are in the current batch,
-    leaving Events from untouched threads intact — safe for incremental sync.
+    The ``ix_event_srcs`` GIN index covers the ``&&`` overlap efficiently.
+    Safe for incremental sync: only clears Events whose source messages are
+    in the processed batch; untouched threads' Events are left intact.
     """
     from sqlalchemy import delete
 
-    if not events:
-        return
-
-    headers = sorted({h for e in events for h in e.source_message_ids})
-    if headers:
+    if processed_headers:
         session.execute(
             delete(orm.Event).where(
                 orm.Event.mailbox_id == mailbox_id,
-                orm.Event.source_message_ids.overlap(headers),  # SQL: &&
+                orm.Event.source_message_ids.overlap(processed_headers),  # SQL: &&
             )
         )
 
-    rows = [mappers.event_to_row(e, mailbox_id) for e in events]
-    # IDs are fresh uuid4 per run, so a plain insert is correct after the delete.
-    _upsert(session, orm.Event, rows, ["id"])
+    if events:
+        rows = [mappers.event_to_row(e, mailbox_id) for e in events]
+        # IDs are fresh uuid4 per run, so a plain insert is correct after the delete.
+        _upsert(session, orm.Event, rows, ["id"])
     session.commit()
 
 

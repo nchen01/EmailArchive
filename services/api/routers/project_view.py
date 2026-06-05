@@ -55,13 +55,25 @@ def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
-def project_state(thread_ends: list[datetime], now: datetime = _DEFAULT_NOW) -> str:
-    """Derived state (spec 02 §4, Event-free S3 variant)."""
+def project_state(
+    thread_ends: list[datetime],
+    *,
+    has_recent_outcome: bool = False,
+    now: datetime = _DEFAULT_NOW,
+) -> str:
+    """Derived state (spec 02 §4).
+
+    stale:    last thread activity > STALE_DAYS ago.
+    shipping: stale threshold not met AND at least one outcome Event exists.
+    active:   otherwise.
+    """
     if not thread_ends:
         return "stale"
     last = max(_aware(t) for t in thread_ends)
     if (now - last).days > STALE_DAYS:
         return "stale"
+    if has_recent_outcome:
+        return "shipping"
     return "active"
 
 
@@ -145,6 +157,17 @@ async def list_projects(
         ).scalars()
     )
 
+    # Single query for all outcome events — avoids N+1 for state derivation.
+    outcome_project_ids: set[str] = set(
+        db.execute(
+            select(orm.Event.project_id).where(
+                orm.Event.mailbox_id == mailbox_id,
+                orm.Event.type == "outcome",
+                orm.Event.project_id.is_not(None),
+            ).distinct()
+        ).scalars()
+    )
+
     summaries: list[ProjectSummaryOut] = []
     for p in projects:
         assigns = list(
@@ -166,7 +189,10 @@ async def list_projects(
             ProjectSummaryOut(
                 id=str(p.id),
                 label=p.label,
-                state=project_state(thread_ends),
+                state=project_state(
+                    thread_ends,
+                    has_recent_outcome=str(p.id) in outcome_project_ids,
+                ),
                 confidence=float(p.confidence),
                 start=p.start,
                 end=p.end,
@@ -281,10 +307,15 @@ async def get_project_detail(
         last_activity=last_activity,
     )
 
+    activity = _activity_for_project(db, mailbox_id, project_id)
+
     return ProjectDetailOut(
         id=str(project.id),
         label=project.label,
-        state=project_state([t.t_end for t in threads]),
+        state=project_state(
+            [t.t_end for t in threads],
+            has_recent_outcome=any(item.type == "outcome" for item in activity),
+        ),
         confidence=float(project.confidence),
         start=project.start,
         end=project.end,
@@ -292,5 +323,5 @@ async def get_project_detail(
         who_to_ask=who_to_ask,
         members=member_outs,
         recent_threads=recent,
-        activity=_activity_for_project(db, mailbox_id, project_id),
+        activity=activity,
     )

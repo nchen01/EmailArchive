@@ -29,6 +29,10 @@ class EnrichResult:
     edges: list[Edge]
     clustering: ClusteringResult | None = None  # None if < 2 clusterable threads
     events: list[Event] = field(default_factory=list)  # [] unless extract_fn supplied
+    # Headers of all messages from threads that extraction processed (including
+    # threads that produced zero events). Used as the delete scope in persist_events
+    # so stale Events are removed even when re-extraction produces nothing.
+    event_processed_headers: list[str] = field(default_factory=list)
 
 
 def run_enrichment(
@@ -74,8 +78,9 @@ def run_enrichment(
     # extract_fn is injected. extract_fn is the seam keeping the network call
     # out of the deterministic path; without it, events stays [].
     events: list[Event] = []
+    event_processed_headers: list[str] = []
     if threads is not None and extract_fn is not None:
-        from .events import extract_events  # noqa: PLC0415
+        from .events import extract_events, get_processed_headers  # noqa: PLC0415
 
         owner_pid = email_to_pid.get(owner_email)
         if owner_pid is not None:
@@ -85,6 +90,9 @@ def run_enrichment(
             assignments = (
                 list(clustering.assignments) if clustering is not None else []
             )
+            # Collect processed headers BEFORE extraction so the delete scope
+            # covers threads that produce zero events (stale-event fix).
+            event_processed_headers = get_processed_headers(threads, by_thread)
             events = extract_events(
                 threads,
                 by_thread,
@@ -98,6 +106,7 @@ def run_enrichment(
     return EnrichResult(
         people=people, identities=identities, orgs=orgs, edges=edges,
         clustering=clustering, events=events,
+        event_processed_headers=event_processed_headers,
     )
 
 
