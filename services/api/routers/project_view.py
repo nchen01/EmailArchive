@@ -9,7 +9,7 @@ only (spec 02 §4, Event-free variant per Step 8).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -82,15 +82,15 @@ def _person_name(person: orm.Person) -> str:
 
 
 def _activity_for_project(
-    db: Session, mailbox_id: str, project_id: str
-) -> list[ActivityItemOut]:
-    """Build the ordered activity panel from the ``event`` table (spec 02 §6).
+    db: Session, mailbox_id: str, project_id: str, *, now: datetime = _DEFAULT_NOW
+) -> tuple[list[ActivityItemOut], bool]:
+    """Build the ordered activity panel and check for recent outcomes (spec 02 §6).
 
-    Ordered by epistemic grade (outcome > did > proposed) then by the MAX cited
-    message timestamp. The timestamp is derived by unnesting every
-    ``event.source_message_ids`` (an Event may cite several messages — not just
-    ``[0]``) and joining each to ``message.message_id_header`` within the
-    mailbox, taking ``MAX(message.ts)`` per Event.
+    Returns ``(items, has_recent_outcome)`` where ``has_recent_outcome`` is True
+    only when at least one outcome Event has a max-cited-message timestamp within
+    STALE_DAYS of ``now``.
+
+    Ordered by epistemic grade (outcome > did > proposed) then MAX cited ts.
     """
     events = list(
         db.execute(
@@ -101,7 +101,7 @@ def _activity_for_project(
         ).scalars()
     )
     if not events:
-        return []
+        return [], False
 
     # MAX cited ts per event: map each citation header -> message.ts, take max.
     all_headers = sorted({h for e in events for h in e.source_message_ids})
@@ -121,14 +121,22 @@ def _activity_for_project(
         cited = [header_ts[h] for h in e.source_message_ids if h in header_ts]
         return max((_aware(t) for t in cited), default=_EPOCH)
 
+    # Compute once; reused for ordering and freshness check.
+    event_max_ts = {id(e): _max_ts(e) for e in events}
+
     ordered = sorted(
         events,
-        key=lambda e: (_GRADE_RANK.get(e.type, 99), -_max_ts(e).timestamp()),
+        key=lambda e: (_GRADE_RANK.get(e.type, 99), -event_max_ts[id(e)].timestamp()),
+    )
+
+    cutoff = _aware(now) - timedelta(days=STALE_DAYS)
+    has_recent_outcome = any(
+        e.type == "outcome" and event_max_ts[id(e)] >= cutoff
+        for e in events
     )
 
     items: list[ActivityItemOut] = []
     for e in ordered:
-        # Hard invariant (spec 02 §5): every activity item ships >=1 citation.
         if not e.source_message_ids:
             continue
         items.append(
@@ -140,7 +148,45 @@ def _activity_for_project(
                 confidence=float(e.confidence),
             )
         )
-    return items
+    return items, has_recent_outcome
+
+
+def _recent_outcome_project_ids(
+    db: Session, mailbox_id: str, now: datetime = _DEFAULT_NOW
+) -> set[str]:
+    """Project IDs with an outcome Event whose max-cited message.ts is within STALE_DAYS.
+
+    Two queries for the whole mailbox — no N+1.
+    """
+    outcome_rows = list(
+        db.execute(
+            select(orm.Event.project_id, orm.Event.source_message_ids).where(
+                orm.Event.mailbox_id == mailbox_id,
+                orm.Event.type == "outcome",
+                orm.Event.project_id.is_not(None),
+            )
+        ).all()
+    )
+    if not outcome_rows:
+        return set()
+
+    all_cited = sorted({h for _, sids in outcome_rows for h in sids})
+    header_ts_map: dict[str, datetime] = dict(
+        db.execute(
+            select(orm.Message.message_id_header, orm.Message.ts).where(
+                orm.Message.mailbox_id == mailbox_id,
+                orm.Message.message_id_header.in_(all_cited),
+            )
+        ).all()
+    )
+
+    cutoff = _aware(now) - timedelta(days=STALE_DAYS)
+    recent: set[str] = set()
+    for pid, sids in outcome_rows:
+        cited_ts = [_aware(header_ts_map[h]) for h in sids if h in header_ts_map]
+        if cited_ts and max(cited_ts) >= cutoff:
+            recent.add(str(pid))
+    return recent
 
 
 @router.get("/projects/{mailbox_id}", response_model=ProjectListOut)
@@ -157,16 +203,8 @@ async def list_projects(
         ).scalars()
     )
 
-    # Single query for all outcome events — avoids N+1 for state derivation.
-    outcome_project_ids: set[str] = set(
-        db.execute(
-            select(orm.Event.project_id).where(
-                orm.Event.mailbox_id == mailbox_id,
-                orm.Event.type == "outcome",
-                orm.Event.project_id.is_not(None),
-            ).distinct()
-        ).scalars()
-    )
+    # Freshness-gated outcome project IDs (two queries for the whole mailbox).
+    outcome_project_ids = _recent_outcome_project_ids(db, mailbox_id)
 
     summaries: list[ProjectSummaryOut] = []
     for p in projects:
@@ -307,14 +345,14 @@ async def get_project_detail(
         last_activity=last_activity,
     )
 
-    activity = _activity_for_project(db, mailbox_id, project_id)
+    activity, has_recent_outcome = _activity_for_project(db, mailbox_id, project_id)
 
     return ProjectDetailOut(
         id=str(project.id),
         label=project.label,
         state=project_state(
             [t.t_end for t in threads],
-            has_recent_outcome=any(item.type == "outcome" for item in activity),
+            has_recent_outcome=has_recent_outcome,
         ),
         confidence=float(project.confidence),
         start=project.start,
