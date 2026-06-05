@@ -1,11 +1,11 @@
 """L1 enrichment orchestrator (spec 01 §8): identity → graph → roles → clustering."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from ekc_schemas import ClusteringResult, Edge, Identity, Org, Person
+from ekc_schemas import ClusteringResult, Edge, Event, Identity, Org, Person
 
 # Clustering deps are optional (pip install .[clustering]).  Do NOT import them at
 # module level — that would break pip install -e .[test] without the clustering
@@ -13,6 +13,7 @@ from ekc_schemas import ClusteringResult, Edge, Identity, Org, Person
 # when ``threads`` is passed to run_enrichment().
 if TYPE_CHECKING:  # IDE / mypy only — never executed at runtime
     from .clustering.params import ClusteringParams
+    from .events import EventParams, ExtractFn
 
 from .graph import build_relationship_graph
 from .identity import resolve_identities
@@ -27,6 +28,7 @@ class EnrichResult:
     orgs: list[Org]
     edges: list[Edge]
     clustering: ClusteringResult | None = None  # None if < 2 clusterable threads
+    events: list[Event] = field(default_factory=list)  # [] unless extract_fn supplied
 
 
 def run_enrichment(
@@ -41,6 +43,8 @@ def run_enrichment(
     nlp=None,
     cluster_params: ClusteringParams | None = None,  # default resolved lazily inside _run_clustering
     prev_clustering: ClusteringResult | None = None,
+    extract_fn: ExtractFn | None = None,
+    event_params: EventParams | None = None,
 ) -> EnrichResult:
     """Run L1 enrichment.
 
@@ -66,9 +70,34 @@ def run_enrichment(
             prev_clustering=prev_clustering,
         )
 
+    # Event extraction (S4 / D10) runs only when threads are supplied AND an
+    # extract_fn is injected. extract_fn is the seam keeping the network call
+    # out of the deterministic path; without it, events stays [].
+    events: list[Event] = []
+    if threads is not None and extract_fn is not None:
+        from .events import extract_events  # noqa: PLC0415
+
+        owner_pid = email_to_pid.get(owner_email)
+        if owner_pid is not None:
+            by_thread: dict = {}
+            for m in messages:
+                by_thread.setdefault(m.thread_id, []).append(m)
+            assignments = (
+                list(clustering.assignments) if clustering is not None else []
+            )
+            events = extract_events(
+                threads,
+                by_thread,
+                assignments,
+                email_to_pid,
+                owner_pid,
+                extract_fn=extract_fn,
+                params=event_params,
+            )
+
     return EnrichResult(
         people=people, identities=identities, orgs=orgs, edges=edges,
-        clustering=clustering,
+        clustering=clustering, events=events,
     )
 
 
