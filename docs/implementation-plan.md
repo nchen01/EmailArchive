@@ -219,6 +219,6 @@ current pipeline already extracts and where it slots in.`
 - **Retention** after a coverage period ends: `retention_days` param in `IngestParams` (wired in
   params, not yet enforced in a scheduled job).
 - **Embedding model + dimension:** deferred; gates spec 04 ticket 4.5 (`message_embedding` HNSW
-  index) and L2 retrieval. Decide before S4.
+  index) and L2 retrieval. Decide before implementing L2 / full hybrid retrieval.
 - **Data-subject deletion semantics** for third-party content inside shared threads — needs a
   product + legal decision (spec 04 §11, §13).

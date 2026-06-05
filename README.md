@@ -105,12 +105,12 @@ email-archive/
       0005_fix_event_citation_check.py  # D8: cardinality() replaces array_length()
   docs/
     implementation-plan.md          # the why + end-to-end design
-    decisions.md                    # D1–D9 resolved build decisions (supersede spec open decisions)
+    decisions.md                    # D1–D11 resolved build decisions (supersede spec open decisions)
     specs/
       00-l0-ingest.md               # L0 ingest + normalization  ✓ S1
-      01-layer1-enrichment.md       # L1: identity, graph, roles, clustering, events  ✓ §3-§5 S1-S2
-      02-project-view.md            # project-view surface  → S3
-      03-project-clustering.md      # L1 §6 deep dive — full clustering impl  → S3
+      01-layer1-enrichment.md       # L1: identity, graph, roles, clustering, events  ✓ S1-S4
+      02-project-view.md            # project-view surface + activity panel  ✓ S3-S4
+      03-project-clustering.md      # L1 §6 deep dive — full clustering impl  ✓ S3
       04-storage-schema.md          # Postgres + pgvector schema & migrations  ✓ S2
       05-network-map.md             # network-map surface + API  ✓ S2
   fixtures/                         # seed synthetic mailbox + gold labels
@@ -129,29 +129,34 @@ email-archive/
       providers/                    #   base.py · fixture.py · gmail.py · msgraph.py (stub)
       normalize/                    #   address · threads · body · artifacts · noise · sensitivity
       params.py  store.py  pipeline.py
-    enrich/                         # L1  ✓ S1-S3
+    enrich/                         # L1  ✓ S1-S4
       identity.py  graph.py  roles.py  params.py  pipeline.py
       clustering/                   # project clustering (spec 03)  ✓ S3
         params.py  features.py  blocking.py  similarity.py  graph.py
         communities.py  materialize.py  confidence.py  labeling.py
         incremental.py  pipeline.py  testkit.py
         eval/  metrics.py  run_eval.py
-    api/                            # FastAPI  ✓ S2-S3
+      events/                       # event extraction (spec 01 §7, D10)  ✓ S4
+        __init__.py  events_llm.py
+        eval/  run_eval.py
+    api/                            # FastAPI  ✓ S2-S4
       main.py  deps.py
-      routers/network_map.py  routers/project_view.py
+      routers/network_map.py  routers/project_view.py  routers/synthesis.py
       schemas/network_map.py  schemas/project_view.py
     retrieval/                      # L2 — not yet built (externally owned query router)
-    synthesis/                      # L3 — not yet built
-  frontend/                         # React 18 + TypeScript + react-force-graph-2d  ✓ S2-S3
+    synthesis/                      # L3  ✓ S4
+      params.py  client.py  contracts.py
+      project_summary.py  contact_summary.py
+  frontend/                         # React 18 + TypeScript + react-force-graph-2d  ✓ S2-S4
     src/
-      api/        # client.ts + types.ts (network map + project view)
+      api/        # client.ts + types.ts (network map + project view + synthesis)
       components/ # NetworkMap · RoleLegend · ContactPanel · ProjectList · ProjectDetail
       hooks/      # useNetworkMap · useContactDetail · useProjects · useProjectDetail
       utils/      # roleColors.ts
   scripts/
-    dev_seed.py                     # seed fixture mailbox + clustering; --serve starts uvicorn
+    dev_seed.py                     # seed fixture mailbox + all L1 layers; --serve starts uvicorn
     download_models.py              # download spaCy en_core_web_sm for production runs
-  tests/                            # 121 tests (DB-gated tests skip cleanly without DATABASE_URL)
+  tests/                            # 138 tests (DB-gated tests skip cleanly without DATABASE_URL)
     test_l0_*.py   test_l1_*.py   test_clustering_*.py
     test_db_roundtrip.py   test_api_network_map.py
 ```
@@ -201,7 +206,7 @@ cd frontend && npm install && VITE_MAILBOX_ID=<uuid> npm run dev  # UI on :5173
 
 # 4. Tests
 DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
-  pytest                                                      # 121 tests (DB-gated skip without DATABASE_URL)
+  pytest                                                      # 138 tests (DB-gated skip without DATABASE_URL)
 ```
 
 ## Privacy guardrails (non-negotiable)

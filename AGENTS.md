@@ -89,9 +89,9 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
 - **L2 retrieval** is intentionally *not* specced here; an existing query router owns it. Integrate
   against it; do not build a retrieval layer. The `message_embedding` table (spec 04 ticket 4.5,
   pgvector HNSW) is deferred until the embedding model is chosen.
-- **L3 synthesis / grounding spec** is not written. The contract (cite-or-don't-claim; proposed/did/
-  outcome grading) lives in `implementation-plan.md` §4 and spec 01 §7, but the L3 *mechanism* is
-  unspecified. Do not build it until the spec exists.
+- **L3 synthesis** — `services/synthesis/` is built (S4): project "What's been done" and contact
+  "Ask about this contact", both citation-validated. The **cover-for-me free-text query** (S5,
+  D11) is the remaining L3 surface; it routes over L1 structured objects, not L2 vector retrieval.
 - **Role inference** (spec 01 §5, `services/enrich/roles.py`) is a rules-based v1. It correctly
   classifies all fixture contacts but is not a learned classifier. Upgrade path: labeled data →
   small classifier, logged in the spec.
