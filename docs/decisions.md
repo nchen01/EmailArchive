@@ -105,3 +105,23 @@ grounding discipline (cited Events must be present before synthesis runs).
 **Invariant preserved:** `extract_fn` is the seam — L1 orchestrates + persists; the network call
 stays behind the injectable interface; tests never call the Anthropic API.
 **Scope.** S4. **Affects.** `services/enrich/events.py`; AGENTS §3 #9 (exception now documented).
+
+## D11 — S5 cover-for-me ships as bounded L1-only; no L2/vector retrieval
+**Decision.** The cover-for-me query (implementation-plan §6.3, the third MVP surface) is built
+in S5 as a bounded query over structured L1 objects — Person, Project, Event, Edge, Thread —
+already persisted in Postgres. It does NOT use vector retrieval, embeddings, or the
+`message_embedding` table. That table remains deferred pending embedding model choice
+(spec 04 ticket 4.5).
+**What it answers:** "Who do I ask about X?" (route to Person/Edge/Role) and "What's the
+state of project Z?" (route to Project/Event/Thread). Bounded, cited, grounded on L1 data.
+**What it explicitly does not bluff:** queries that cannot be answered from structured evidence
+return a clear "insufficient structured evidence" message — not a fabricated answer. This
+preserves the grounding discipline and "no citation, no claim" (AGENTS §3 #3).
+**Why not wait for L2:** the L1 objects already support the core product job (implementation-plan
+§3). L2 retrieval improves recall on arbitrary open-ended queries; it is not required for the
+bounded "who to ask / project state" job the MVP specifies.
+**Upgrade path:** when L2 lands (embedding model chosen → migration 0006 for
+`message_embedding` → HNSW index), the cover-for-me endpoint is upgraded to hybrid retrieval
+without changing the surface API or the citation contract.
+**Scope.** S5. **Affects.** new `services/api/routers/cover_for_me.py`; frontend query box;
+docs/implementation-plan.md §6.3.

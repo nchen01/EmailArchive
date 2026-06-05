@@ -16,9 +16,9 @@ exist; your job is to realize them faithfully, not to redesign them. **Read befo
 | Spec | Covers | Status |
 |---|---|---|
 | `00-l0-ingest.md` | L0 ingest & normalization (deep dive) | ✓ implemented (S1) |
-| `01-layer1-enrichment.md` | L1: identity (§3), graph (§4), roles (§5), clustering (§6), events (§7) | §3–§5 done (S1–S2); §6–§7 next (S3–S4) |
-| `02-project-view.md` | Project-view surface + its API contract | → S3 |
-| `03-project-clustering.md` | Deep dive of L1 §6 (build-ready) | → S3 |
+| `01-layer1-enrichment.md` | L1: identity (§3), graph (§4), roles (§5), clustering (§6), events (§7) | ✓ all sections done (S1–S4) |
+| `02-project-view.md` | Project-view surface + its API contract | ✓ implemented (S3–S4) |
+| `03-project-clustering.md` | Deep dive of L1 §6 (build-ready) | ✓ implemented (S3) |
 | `04-storage-schema.md` | Postgres + pgvector schema & migrations | ✓ implemented (S2, migrations 0001–0005) |
 | `05-network-map.md` | Network-map surface + API contract | ✓ implemented (S2) |
 
@@ -77,9 +77,12 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   0001–0005 (`alembic/versions/`) + SQLAlchemy mappers (`services/db/`) + FastAPI network-map
   endpoints (`services/api/`, spec 05) + React frontend (`frontend/`). 46 passing tests.
   DB runs via Docker Compose (`docker-compose.yml`). Seed with `python scripts/dev_seed.py`.
-- **S3 — next** — project clustering (spec 03, tickets 3.1–3.11) + project view surface
-  (spec 02, `@sprint S3`). Entry point: spec 03 §1 scope.
-- **S4** — event extraction (spec 01 §7) + L3 grounded synthesis.
+- **S3 ✓** — project clustering (spec 03) + project view surface (spec 02). 124 tests.
+- **S4 ✓** — event extraction (spec 01 §7) + L3 synthesis (project summary, contact summary).
+  138 tests. `services/enrich/events/`, `services/synthesis/`.
+- **S5 — next** — bounded L1-only cover-for-me query (D11). Routes over Person, Project,
+  Event, Edge, Thread already in the DB. Does not bluff on queries beyond structured evidence.
+  No L2/vector retrieval in S5; `message_embedding` remains deferred (see known gaps).
 
 ## 6. Known gaps — flag, don't fake
 

@@ -3,7 +3,7 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S1 + S2 + S3 complete · S4 (event extraction + L3 synthesis) is next.
+**Status:** S0–S4 complete · S5 (bounded L1-only cover-for-me query) is next.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
@@ -179,9 +179,10 @@ email-archive/
 | S1 | L0 ingest + identity resolution + relationship graph | ✓ done | spec 00, spec 01 §3–§4 |
 | S2 | Role inference + DB migrations + network-map surface | ✓ done | spec 01 §5, spec 05 |
 | S3 | Project clustering + project view surface | ✓ done | spec 03, spec 02 |
-| S4 | Event extraction + L3 grounded synthesis | **next** | spec 01 §7 |
+| S4 | Event extraction + L3 grounded synthesis | ✓ done | spec 01 §7 |
+| S5 | Cover-for-me query (bounded L1-only, D11) | **next** | implementation-plan §6.3 |
 
-**Quick start (S1+S2+S3 running):**
+**Quick start (S0–S4 running):**
 ```bash
 # 1. Python deps (one time)
 pip install -e .[dev]      # app + all dev/test/api/db/gmail deps
