@@ -75,3 +75,29 @@ body {
 .thread-meta { font-size: 0.7rem; color: #94a3b8; margin-top: 0.1rem; }
 
 .muted { color: #94a3b8; font-size: 0.8125rem; }
+
+/* What's been done — activity panel (spec 02 §6) */
+.project-activity { margin-bottom: 1.5rem; }
+.project-activity h3 { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin: 0 0 0.5rem; }
+.activity-grade { margin-bottom: 0.75rem; }
+.activity-grade h4 { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 0.25rem; color: #475569; }
+.activity-grade-outcome h4 { color: #15803d; }
+.activity-grade-did h4 { color: #1d4ed8; }
+.activity-grade-proposed h4 { color: #b45309; }
+.activity-grade ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.activity-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.3rem 0.5rem; font-size: 0.8125rem; color: #334155; border-radius: 0.25rem; }
+.activity-row:hover { background: #f1f5f9; }
+.activity-summary { flex: 1; }
+.activity-citations { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.citation-chip { font-size: 0.65rem; color: #475569; background: #e2e8f0; padding: 0.1rem 0.35rem; border-radius: 0.25rem; }
+
+/* Generate summary (L3 synthesis) */
+.project-summary { margin-top: 0.75rem; }
+.generate-summary-btn { font-size: 0.8125rem; font-weight: 500; color: #fff; background: #1e293b; border: none; padding: 0.45rem 0.85rem; border-radius: 0.375rem; cursor: pointer; }
+.generate-summary-btn:hover { background: #334155; }
+.generate-summary-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+.summary-error { margin-top: 0.5rem; font-size: 0.8125rem; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; padding: 0.4rem 0.6rem; border-radius: 0.375rem; }
+.summary-result { margin-top: 0.5rem; font-size: 0.8125rem; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.375rem; padding: 0.5rem 0.65rem; }
+.summary-result ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.summary-claim { display: flex; flex-direction: column; gap: 0.25rem; }
+.claim-text { color: #1e293b; }

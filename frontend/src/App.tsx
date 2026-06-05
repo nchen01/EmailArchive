@@ -208,7 +208,10 @@ export default function App() {
                     </div>
                   )}
                   {selectedProjectId && projectDetail && !projectDetailLoading ? (
-                    <ProjectDetail detail={projectDetail} />
+                    <ProjectDetail
+                      detail={projectDetail}
+                      mailboxId={mailboxId}
+                    />
                   ) : !projectDetailLoading && !projectDetailError ? (
                     <div className="flex h-full items-center justify-center text-slate-400 text-sm">
                       {projects && projects.length > 0
@@ -229,6 +232,8 @@ export default function App() {
         error={detailError}
         open={activeTab === "network" && selectedPersonId !== null}
         onClose={() => setSelectedPersonId(null)}
+        mailboxId={mailboxId || null}
+        personId={selectedPersonId}
       />
     </div>
   );

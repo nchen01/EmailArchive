@@ -104,6 +104,14 @@ export interface RecentThread {
   last: string;
 }
 
+export interface ActivityItem {
+  type: string; // "proposed" | "did" | "outcome"
+  summary: string;
+  actor_person_id: string;
+  source_message_ids: string[];
+  confidence: number;
+}
+
 export interface ProjectDetailData {
   id: string;
   label: string;
@@ -115,5 +123,19 @@ export interface ProjectDetailData {
   who_to_ask: WhoToAsk[];
   members: ProjectMember[];
   recent_threads: RecentThread[];
-  activity: unknown[]; // @sprint S4 — always empty in S3
+  activity: ActivityItem[]; // S4 — Events from the event table
+}
+
+// ── L3 synthesis (spec 02 §6, spec 05 §3.4) ──────────────────────────────────
+
+export interface SynthesisClaim {
+  text: string;
+  source_message_ids: string[];
+}
+
+export interface SynthesisResult {
+  claims: SynthesisClaim[];
+  model: string;
+  usage: Record<string, number>;
+  state: string | null;
 }
