@@ -281,6 +281,81 @@ def test_audit_log_rows_are_not_updated():
         session.close()
 
 
+def test_gmail_provider_full_baseline_captures_historyid_from_getprofile():
+    """GmailProvider.list_ids(None) reads historyId via getProfile, not messages.list.
+
+    mirrors the real Gmail API: messages.list does not include historyId in its
+    response, but getProfile always does.
+    """
+    from unittest.mock import MagicMock
+    from services.ingest.params import IngestParams
+    from services.ingest.providers.gmail import GmailProvider
+
+    provider = GmailProvider(params=IngestParams(), mailbox_id="test-mb")
+    mock_svc = MagicMock()
+    users = mock_svc.users.return_value
+    users.getProfile.return_value.execute.return_value = {
+        "emailAddress": "test@example.com",
+        "historyId": "9876",
+        "messagesTotal": 0,
+    }
+    # messages.list deliberately omits historyId — mirrors real Gmail behaviour
+    users.messages.return_value.list.return_value.execute.return_value = {
+        "resultSizeEstimate": 0,
+    }
+    provider._service = mock_svc
+
+    list(provider.list_ids(None))
+
+    assert provider.sync_token() == "9876"
+
+
+@requires_db
+def test_gmail_full_baseline_saves_sync_token_to_db():
+    """Full uncapped baseline: getProfile historyId flows through to sync_state row."""
+    from unittest.mock import MagicMock
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+    from services.db.store import load_sync_token, save_sync_token
+    from services.ingest.params import IngestParams
+    from services.ingest.providers.gmail import GmailProvider
+
+    session = SessionLocal()
+    mbx = orm.Mailbox(
+        provider="gmail", owner_email="gmail-baseline-test@example.com",
+        embed_model="t", embed_dim=0, config={},
+    )
+    session.add(mbx)
+    session.commit()
+    mid = str(mbx.id)
+
+    try:
+        provider = GmailProvider(params=IngestParams(), mailbox_id=mid)
+        mock_svc = MagicMock()
+        users = mock_svc.users.return_value
+        users.getProfile.return_value.execute.return_value = {
+            "emailAddress": "owner@example.com",
+            "historyId": "54321",
+        }
+        users.messages.return_value.list.return_value.execute.return_value = {
+            "resultSizeEstimate": 0,
+        }
+        provider._service = mock_svc
+
+        list(provider.list_ids(None))  # complete, uncapped baseline
+        token = provider.sync_token()
+        hit_cap = False
+        token_to_save = token if (token and not hit_cap) else None
+
+        assert token_to_save == "54321", "token must be non-empty for uncapped run"
+        save_sync_token(session, mid, token_to_save)
+        assert load_sync_token(session, mid) == "54321"
+    finally:
+        session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
+
 @requires_db
 def test_save_and_load_sync_token_roundtrip():
     """save_sync_token persists and load_sync_token retrieves the historyId."""

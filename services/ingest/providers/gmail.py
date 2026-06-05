@@ -89,6 +89,13 @@ class GmailProvider:
         if since_token:
             yield from self._list_incremental(since_token)
             return
+        # getProfile reliably returns the mailbox's current historyId before we
+        # start fetching, which messages.list does not include in its response.
+        profile = self._with_backoff(
+            lambda: svc.users().getProfile(userId="me").execute()
+        )
+        if profile.get("historyId"):
+            self._history_id = profile["historyId"]
         page_token = None
         while True:
             resp = self._with_backoff(
