@@ -74,6 +74,12 @@ test = [
     # Synthesis deps — tests import them at collection time (S4 Track B).
     "anthropic>=0.40",
     "instructor>=1.3",
+    # Gmail deps — test_hardening.py mocks the service but GmailProvider still
+    # does a lazy `from googleapiclient.errors import HttpError` in _with_backoff,
+    # so these must be present for the full suite to pass under pip install -e .[test].
+    "google-api-python-client>=2.100",
+    "google-auth>=2.20",
+    "structlog>=24.0",
     # hnswlib is NOT here: requires MS C++ Build Tools on Windows and fails to
     # build without them.  blocking.py falls back to scikit-learn NearestNeighbors
     # automatically, so the full test suite passes without hnswlib.

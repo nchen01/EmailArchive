@@ -47,7 +47,11 @@ def _hash_id(value: str, mailbox_id: str) -> str:
 
 def _sender_domain(email: str) -> str:
     parts = email.rsplit("@", 1)
-    return parts[1] if len(parts) == 2 else email
+    return parts[1] if len(parts) == 2 else "(invalid)"
+
+
+def _is_sensitive(sensitivity: list[str]) -> bool:
+    return any(s != "none" for s in (sensitivity or []))
 
 
 def _date_day(ts) -> str:
@@ -201,12 +205,15 @@ def build_summary(session, mailbox_id: str, owner_email: str) -> dict:
 # ── noise samples ─────────────────────────────────────────────────────────────
 
 def sample_noise(
-    session, mailbox_id: str, owner_email: str, n: int, seed: int, hash_fn
+    session, mailbox_id: str, owner_email: str, n: int, seed: int, hash_fn,
+    *, include_sensitive: bool = True,
 ) -> tuple[list[dict], int, int]:
     """Return (rows, noise_denominator, not_noise_denominator).
 
     Stratified: up to n rows from noise=True and up to n rows from noise=False,
     sampled independently so both buckets are represented.
+    When include_sensitive=False, sensitive-tagged messages are excluded from
+    both buckets before sampling.
     """
     mid = mailbox_id
 
@@ -239,6 +246,9 @@ def sample_noise(
         {"mid": mid},
     ).all()
 
+    if not include_sensitive:
+        all_rows = [r for r in all_rows if not _is_sensitive(r.sensitivity)]
+
     noise_rows     = [r for r in all_rows if r.noise]
     not_noise_rows = [r for r in all_rows if not r.noise]
 
@@ -267,9 +277,16 @@ def sample_noise(
 # ── sensitivity samples ───────────────────────────────────────────────────────
 
 def sample_sensitivity(
-    session, mailbox_id: str, n: int, seed: int, hash_fn
+    session, mailbox_id: str, n: int, seed: int, hash_fn,
+    *, include_sensitive: bool = True,
 ) -> tuple[list[dict], int]:
-    """Return (rows, denominator). Samples messages with non-default sensitivity."""
+    """Return (rows, denominator). Samples messages with non-default sensitivity.
+
+    Returns ([], 0) when include_sensitive=False — caller must not emit rows.
+    """
+    if not include_sensitive:
+        return [], 0
+
     all_rows = session.execute(
         text(
             "SELECT id, message_id_header, sender_email, sensitivity, noise, "
@@ -440,8 +457,14 @@ def _blank_label_row(sample_id: str) -> dict:
 # ── local review file ─────────────────────────────────────────────────────────
 
 def emit_local_review_file(
-    session, mailbox_id: str, noise_rows: list[dict], out_dir: Path
+    session, mailbox_id: str, noise_rows: list[dict], sens_rows: list[dict], out_dir: Path
 ) -> None:
+    """Write raw subject/body excerpts for all label template rows.
+
+    Covers noise samples and sensitivity-only samples (those in sens_rows whose
+    message_pk did not already appear in noise_rows).  Deduplication mirrors
+    build_label_template so every labeled row has review context.
+    """
     _assert_under_local(out_dir)
     out_path = out_dir / "local_review.csv"
     print(
@@ -449,11 +472,24 @@ def emit_local_review_file(
         "This file must NEVER be committed to the repository.\n"
         f"  Path: {out_path}\n"
     )
-    pks = [r["message_pk"] for r in noise_rows]
-    if not pks:
+
+    # Collect all sample rows that appear in the label template (same dedup logic).
+    seen_pks: set[str] = set()
+    all_sample_rows: list[dict] = []
+    for row in sorted(noise_rows, key=lambda r: r["sample_id"]):
+        if row["message_pk"] not in seen_pks:
+            seen_pks.add(row["message_pk"])
+            all_sample_rows.append(row)
+    for row in sorted(sens_rows, key=lambda r: r["sample_id"]):
+        if row["message_pk"] not in seen_pks:
+            seen_pks.add(row["message_pk"])
+            all_sample_rows.append(row)
+
+    if not all_sample_rows:
         print("No rows to write — skipping local review file.")
         return
 
+    pks = [r["message_pk"] for r in all_sample_rows]
     raw_rows = session.execute(
         select(orm.Message.id, orm.Message.subject, orm.Message.clean_text, orm.Message.ts)
         .where(orm.Message.id.in_(pks))
@@ -463,7 +499,7 @@ def emit_local_review_file(
 
     fieldnames = ["sample_id", "message_pk", "date_day", "subject", "clean_text_excerpt"]
     rows = []
-    for sample_row in sorted(noise_rows, key=lambda r: r["sample_id"]):
+    for sample_row in sorted(all_sample_rows, key=lambda r: r["sample_id"]):
         pk = sample_row["message_pk"]
         raw = raw_map.get(pk)
         rows.append({
@@ -534,9 +570,12 @@ def main(argv=None):
             f"People: {summary['person_count']}  Edges: {summary['edge_count']}"
         )
 
+        inc_sens = args.include_sensitive
+
         # noise samples
         noise_rows, noise_denom, not_noise_denom = sample_noise(
-            session, mid, owner_email, n, seed, hash_fn
+            session, mid, owner_email, n, seed, hash_fn,
+            include_sensitive=inc_sens,
         )
         _write_csv(
             out_dir / "noise_samples.csv",
@@ -549,14 +588,17 @@ def main(argv=None):
               f"(noise={noise_denom} / not-noise={not_noise_denom})")
 
         # sensitivity samples
-        sens_rows, sens_denom = sample_sensitivity(session, mid, n, seed, hash_fn)
+        sens_rows, sens_denom = sample_sensitivity(
+            session, mid, n, seed, hash_fn, include_sensitive=inc_sens,
+        )
         _write_csv(
             out_dir / "sensitivity_samples.csv",
             ["sample_id", "message_pk", "message_header_hash", "sender_domain",
              "sensitivity", "noise", "subject_chars", "clean_text_chars", "date_day"],
             sens_rows,
         )
-        print(f"sensitivity_samples.csv: {len(sens_rows)} rows  (denominator={sens_denom})")
+        label = f"(denominator={sens_denom})" if inc_sens else "(--include-sensitive off)"
+        print(f"sensitivity_samples.csv: {len(sens_rows)} rows  {label}")
 
         # identity samples
         identity_rows, identity_denom = sample_identity(session, mid, n, seed)
@@ -599,7 +641,7 @@ def main(argv=None):
 
         # optional local review file
         if args.emit_local_review_file:
-            emit_local_review_file(session, mid, noise_rows, out_dir)
+            emit_local_review_file(session, mid, noise_rows, sens_rows, out_dir)
 
         print(f"\nDone. Reports written to: {out_dir.resolve()}")
 

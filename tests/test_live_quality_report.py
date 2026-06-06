@@ -50,6 +50,7 @@ from scripts.live_quality_report import (  # noqa: E402
     _blank_label_row,
     _date_day,
     _hash_id,
+    _is_sensitive,
     _sender_domain,
     _stable_sample,
     _write_csv,
@@ -87,12 +88,39 @@ def test_sender_domain_normal():
 
 
 def test_sender_domain_no_at():
-    assert _sender_domain("noemail") == "noemail"
+    assert _sender_domain("noemail") == "(invalid)"
+
+
+def test_sender_domain_no_at_does_not_leak_raw_value():
+    raw = "some-raw-internal-address"
+    assert raw not in _sender_domain(raw)
 
 
 def test_sender_domain_multiple_at():
     # rsplit('@', 1) takes the last @
     assert _sender_domain("a@b@c.com") == "c.com"
+
+
+# ── _is_sensitive ─────────────────────────────────────────────────────────────
+
+def test_is_sensitive_none_tag():
+    assert not _is_sensitive(["none"])
+
+
+def test_is_sensitive_hr_tag():
+    assert _is_sensitive(["hr"])
+
+
+def test_is_sensitive_mixed_tags():
+    assert _is_sensitive(["none", "hr"])
+
+
+def test_is_sensitive_empty():
+    assert not _is_sensitive([])
+
+
+def test_is_sensitive_null():
+    assert not _is_sensitive(None)
 
 
 # ── _date_day ─────────────────────────────────────────────────────────────────
@@ -304,6 +332,69 @@ def test_label_template_deterministic():
 
 def test_label_template_empty_inputs():
     assert build_label_template([], []) == []
+
+
+# ── include_sensitive flag ───────────────────────────────────────────────────
+
+@requires_db
+def test_include_sensitive_false_excludes_sensitive_from_noise_samples(tmp_path):
+    """When --include-sensitive is off, sensitive-tagged messages must not appear
+    in noise_samples.csv rows."""
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+    from services.db.store import persist_l0, persist_l1
+    from services.ingest.pipeline import IngestConfig, run_ingest
+    from services.enrich.pipeline import run_enrichment
+    from scripts.live_quality_report import main
+    import csv as _csv
+
+    FIXTURE = ROOT / "fixtures" / "mailbox.json"
+    cfg = IngestConfig(
+        provider="fixture",
+        mailbox_path=FIXTURE,
+        owner_email="sens-gate-test@example.com",
+        internal_domains=["example.com"],
+    )
+    store = run_ingest(cfg)
+    enrich = run_enrichment(store.messages, owner_email="sens-gate-test@example.com",
+                            internal_domains=["example.com"])
+    session = SessionLocal()
+    mbx = orm.Mailbox(
+        provider="gmail", owner_email="sens-gate-test@example.com",
+        embed_model="t", embed_dim=0, config={},
+    )
+    session.add(mbx)
+    session.commit()
+    mid = str(mbx.id)
+
+    try:
+        persist_l0(store, mid, session)
+        persist_l1(enrich, mid, session)
+
+        out_dir = tmp_path / "out"
+        main(["--mailbox-id", mid, "--out", str(out_dir), "--sample-size", "50", "--seed", "42"])
+
+        noise_csv = out_dir / "noise_samples.csv"
+        with noise_csv.open(newline="") as f:
+            rows = list(_csv.DictReader(f))
+
+        for row in rows:
+            tags = [t for t in row["sensitivity"].split(",") if t]
+            assert all(t == "none" for t in tags), (
+                f"noise_samples.csv row {row['sample_id']} has sensitivity tag(s) "
+                f"{tags} but --include-sensitive was not set"
+            )
+
+        sens_csv = out_dir / "sensitivity_samples.csv"
+        with sens_csv.open(newline="") as f:
+            sens_rows = list(_csv.DictReader(f))
+        assert sens_rows == [], "sensitivity_samples.csv must be empty when --include-sensitive is off"
+
+    finally:
+        from sqlalchemy import delete
+        session.execute(delete(orm.Mailbox).where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
 
 
 # ── DB integration: full report run ──────────────────────────────────────────
