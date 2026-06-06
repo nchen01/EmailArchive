@@ -283,6 +283,8 @@ def run_hard_checks(
     label_errors: list[str],
     n_labeled: int,
     pk_mismatches: list[str] | None = None,
+    is_legacy_label_file: bool = False,
+    allow_legacy_labels: bool = False,
 ) -> dict[str, dict]:
     checks: dict[str, dict] = {}
 
@@ -342,13 +344,33 @@ def run_hard_checks(
 
     # 7. Label/report pk match — detects stale label files
     mismatches = pk_mismatches or []
-    checks["label_report_pk_match"] = {
-        "passed":         len(mismatches) == 0,
-        "mismatch_count": len(mismatches),
-        "mismatches":     mismatches[:5],
-        "note": "message_pk absent in label rows means check was skipped "
-                "(pre-fix label file without message_pk column)",
-    }
+    if is_legacy_label_file and n_labeled > 0:
+        if allow_legacy_labels:
+            checks["label_report_pk_match"] = {
+                "passed":  True,
+                "skipped": True,
+                "note": "--allow-legacy-labels set; message_pk absent in label file — "
+                        "stale-label detection bypassed",
+            }
+        else:
+            checks["label_report_pk_match"] = {
+                "passed":  False,
+                "skipped": False,
+                "mismatch_count": 0,
+                "mismatches": [],
+                "note": "label file has non-blank labels but no message_pk column. "
+                        "Re-generate label_template.csv from the current report and "
+                        "transfer labels, or pass --allow-legacy-labels to bypass.",
+            }
+    else:
+        checks["label_report_pk_match"] = {
+            "passed":         not mismatches,
+            "skipped":        False,
+            "mismatch_count": len(mismatches),
+            "mismatches":     mismatches[:5],
+            "note": "absent message_pk in all label rows means check was skipped "
+                    "(no labels yet, or pre-fix file without message_pk column)",
+        }
 
     return checks
 
@@ -387,7 +409,11 @@ def evaluate_soft_targets(noise: dict, sens: dict, project: dict) -> dict:
 
 # ── entry point ───────────────────────────────────────────────────────────────
 
-def run_eval(report_dir: Path, labels_path: Path) -> tuple[dict, bool]:
+def run_eval(
+    report_dir: Path,
+    labels_path: Path,
+    allow_legacy_labels: bool = False,
+) -> tuple[dict, bool]:
     """Run the full eval. Returns (result_dict, overall_passed)."""
     if not report_dir.exists():
         raise FileNotFoundError(f"Report directory not found: {report_dir}")
@@ -429,6 +455,10 @@ def run_eval(report_dir: Path, labels_path: Path) -> tuple[dict, bool]:
 
     n_labeled = sum(1 for r in joined if r["actual_noise"] in ("noise", "not_noise"))
 
+    # Detect legacy label files: non-blank labels exist but no message_pk column present.
+    has_pk_in_labels = any(r.get("message_pk", "") for r in labels)
+    is_legacy_file   = n_labeled > 0 and not has_pk_in_labels
+
     # Metrics
     noise_metrics   = compute_noise_metrics(joined)
     sens_metrics    = compute_sensitivity_metrics(joined)
@@ -436,7 +466,11 @@ def run_eval(report_dir: Path, labels_path: Path) -> tuple[dict, bool]:
     soft = evaluate_soft_targets(noise_metrics, sens_metrics, project_metrics)
 
     # Hard checks
-    hard = run_hard_checks(joined, pii_violations, [], n_labeled, pk_mismatches)
+    hard = run_hard_checks(
+        joined, pii_violations, [], n_labeled, pk_mismatches,
+        is_legacy_label_file=is_legacy_file,
+        allow_legacy_labels=allow_legacy_labels,
+    )
 
     overall_passed = all(c["passed"] for c in hard.values())
 
@@ -499,9 +533,15 @@ def _print_summary(result: dict) -> None:
 
     print("\n  Soft targets (this sample only — not product thresholds):")
     for key, st in result["soft_targets"].items():
-        met  = "met" if st["met"] else "MISS"
-        val  = f"{st['value']:.3f}" if st["value"] is not None else "n/a"
-        print(f"    {key:<35}: {val}  (target {st['direction']} {st['target']})  [{met}]")
+        lc  = st.get("low_confidence")
+        val = f"{st['value']:.3f}" if st["value"] is not None else "n/a"
+        if lc == "hard" and st["value"] is None:
+            status = "low-confidence / not evaluated"
+        elif lc == "soft":
+            status = "met (low-confidence)" if st["met"] else "MISS (low-confidence)"
+        else:
+            status = "met" if st["met"] else "MISS"
+        print(f"    {key:<35}: {val}  (target {st['direction']} {st['target']})  [{status}]")
 
     status = "PASSED" if result["overall_passed"] else "FAILED"
     print(f"\n  Overall: {status}")
@@ -526,6 +566,9 @@ def parse_args(argv=None):
                    help="Human-filled label CSV (S6.2 workflow).")
     p.add_argument("--out", default=None,
                    help="Directory for live_quality_eval.json. Default: same as --report-dir.")
+    p.add_argument("--allow-legacy-labels", action="store_true",
+                   help="Allow label files without message_pk (pre-fix format). "
+                        "WARNING: stale-label detection is bypassed.")
     return p.parse_args(argv)
 
 
@@ -536,7 +579,10 @@ def main(argv=None):
     out_dir     = Path(args.out) if args.out else report_dir
 
     try:
-        result, passed = run_eval(report_dir, labels_path)
+        result, passed = run_eval(
+            report_dir, labels_path,
+            allow_legacy_labels=args.allow_legacy_labels,
+        )
     except (FileNotFoundError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)

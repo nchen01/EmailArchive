@@ -441,6 +441,35 @@ def test_hard_check_pk_match_skipped_for_pre_fix_labels():
     assert checks["label_report_pk_match"]["passed"]
 
 
+def test_hard_check_legacy_file_with_labels_fails_without_flag():
+    """Non-blank labels + no message_pk column → hard check fails by default."""
+    checks = run_hard_checks(
+        [], [], [], 50, pk_mismatches=None,
+        is_legacy_label_file=True, allow_legacy_labels=False,
+    )
+    assert not checks["label_report_pk_match"]["passed"]
+    assert not checks["label_report_pk_match"]["skipped"]
+
+
+def test_hard_check_legacy_file_passes_with_allow_flag():
+    """--allow-legacy-labels bypasses the check and sets skipped=True."""
+    checks = run_hard_checks(
+        [], [], [], 50, pk_mismatches=None,
+        is_legacy_label_file=True, allow_legacy_labels=True,
+    )
+    assert checks["label_report_pk_match"]["passed"]
+    assert checks["label_report_pk_match"]["skipped"]
+
+
+def test_hard_check_legacy_file_no_labels_passes():
+    """Legacy file with no non-blank labels → no risk, check passes normally."""
+    checks = run_hard_checks(
+        [], [], [], 0, pk_mismatches=None,  # n_labeled=0
+        is_legacy_label_file=False, allow_legacy_labels=False,
+    )
+    assert checks["label_report_pk_match"]["passed"]
+
+
 # ── scan_pii ──────────────────────────────────────────────────────────────────
 
 def test_scan_pii_clean_report_passes(tmp_path):
@@ -652,6 +681,37 @@ def test_run_eval_fails_on_stale_label_pk(tmp_path):
     assert not passed
     assert not result["hard_checks"]["label_report_pk_match"]["passed"]
     assert result["hard_checks"]["label_report_pk_match"]["mismatch_count"] >= 1
+
+
+def test_run_eval_legacy_label_file_fails_without_flag(tmp_path):
+    """run_eval rejects a label file with non-blank labels but no message_pk column."""
+    report_dir, _ = _make_minimal_report_dir(tmp_path, 40, 40)
+    # Write a label file in the old format (no message_pk column)
+    legacy_labels = tmp_path / "legacy_labels.csv"
+    legacy_labels.write_text(
+        "sample_id,actual_noise,actual_sensitivity,project_relevant,notes\n" +
+        "noise-0001,noise,none,no,\n" * 40 +
+        "noise-0041,not_noise,none,no,\n" * 40,
+        encoding="utf-8",
+    )
+    result, passed = run_eval(report_dir, legacy_labels, allow_legacy_labels=False)
+    assert not passed
+    assert not result["hard_checks"]["label_report_pk_match"]["passed"]
+
+
+def test_run_eval_legacy_label_file_passes_with_flag(tmp_path):
+    """--allow-legacy-labels bypasses stale-label check for old label files."""
+    report_dir, _ = _make_minimal_report_dir(tmp_path, 40, 40)
+    legacy_labels = tmp_path / "legacy_labels.csv"
+    legacy_labels.write_text(
+        "sample_id,actual_noise,actual_sensitivity,project_relevant,notes\n" +
+        "noise-0001,noise,none,no,\n" * 40 +
+        "noise-0041,not_noise,none,no,\n" * 40,
+        encoding="utf-8",
+    )
+    result, passed = run_eval(report_dir, legacy_labels, allow_legacy_labels=True)
+    assert result["hard_checks"]["label_report_pk_match"]["passed"]
+    assert result["hard_checks"]["label_report_pk_match"]["skipped"]
 
 
 def test_run_eval_missing_report_dir_raises(tmp_path):
