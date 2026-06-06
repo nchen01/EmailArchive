@@ -778,6 +778,33 @@ def test_run_eval_unlabeled_unknown_ids_pass(tmp_path):
     assert result["hard_checks"]["no_unknown_label_ids"]["passed"]
 
 
+def test_run_eval_mixed_pk_file_fails(tmp_path):
+    """Label file where some rows have message_pk and one labeled row doesn't → pk check fails."""
+    report_dir, _ = _make_minimal_report_dir(tmp_path, 40, 40)
+    mixed_labels = tmp_path / "mixed_labels.csv"
+    fieldnames = ["sample_id", "message_pk", "actual_noise", "actual_sensitivity",
+                  "project_relevant", "notes", "reviewed_by", "reviewed_at"]
+    with mixed_labels.open("w", newline="\n") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
+        w.writeheader()
+        for i in range(40):
+            w.writerow({"sample_id": f"noise-{i+1:04d}", "message_pk": f"pk-{i}",
+                        "actual_noise": "noise", "actual_sensitivity": "none",
+                        "project_relevant": "no", "notes": "", "reviewed_by": "", "reviewed_at": ""})
+        for i in range(39):
+            w.writerow({"sample_id": f"noise-{i+41:04d}", "message_pk": f"pk-nn-{i}",
+                        "actual_noise": "not_noise", "actual_sensitivity": "none",
+                        "project_relevant": "no", "notes": "", "reviewed_by": "", "reviewed_at": ""})
+        # One labeled row with blank message_pk in an otherwise pk-present file
+        w.writerow({"sample_id": "noise-0080", "message_pk": "",
+                    "actual_noise": "not_noise", "actual_sensitivity": "none",
+                    "project_relevant": "no", "notes": "", "reviewed_by": "", "reviewed_at": ""})
+    result, _ = run_eval(report_dir, mixed_labels)
+    assert not result["hard_checks"]["label_report_pk_match"]["passed"]
+    assert any("blank message_pk" in m
+               for m in result["hard_checks"]["label_report_pk_match"]["mismatches"])
+
+
 def test_run_eval_legacy_label_file_fails_without_flag(tmp_path):
     """run_eval rejects a label file with non-blank labels but no message_pk column."""
     report_dir, _ = _make_minimal_report_dir(tmp_path, 40, 40)

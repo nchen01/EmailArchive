@@ -455,6 +455,9 @@ def run_eval(
     # Load sample predictions
     samples = load_sample_csvs(report_dir)
 
+    # Compute once; used by both pk checks below and by legacy-file detection.
+    has_pk_in_labels = any(r.get("message_pk", "") for r in labels)
+
     # Detect stale label files: message_pk in label must match current report
     pk_mismatches: list[str] = []
     for sid, sample in sorted(samples.items()):
@@ -467,6 +470,16 @@ def run_eval(
                 f"{sid}: label message_pk={label_pk!r} != "
                 f"report message_pk={sample['message_pk']!r}"
             )
+
+    # Detect mixed-pk files: if any row has a pk, ALL non-blank-labeled rows must.
+    # --allow-legacy-labels only exempts fully-legacy files (no pks anywhere).
+    if has_pk_in_labels:
+        for r in labels:
+            if r["actual_noise"] not in ("", "unsure") and not r.get("message_pk", ""):
+                pk_mismatches.append(
+                    f"{r['sample_id']}: non-blank label has blank message_pk "
+                    "(mixed file — all labeled rows must have message_pk)"
+                )
 
     # Join predictions with labels
     joined = []
@@ -483,8 +496,7 @@ def run_eval(
     n_labeled = sum(1 for r in joined if r["actual_noise"] in ("noise", "not_noise"))
 
     # Detect legacy label files: non-blank labels exist but no message_pk column present.
-    has_pk_in_labels = any(r.get("message_pk", "") for r in labels)
-    is_legacy_file   = n_labeled > 0 and not has_pk_in_labels
+    is_legacy_file = n_labeled > 0 and not has_pk_in_labels
 
     # Detect labeled rows whose sample_id is not in the current report.
     unknown_label_ids = [
