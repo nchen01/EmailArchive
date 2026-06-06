@@ -32,6 +32,16 @@ CLI input. A `generated_at` field in `summary.json` would silently break the
 determinism criterion on every run. Either omit it or add a `--timestamp`
 flag so callers control the value.
 
+Required determinism practices for every output file:
+- Sort every row and list before writing (do not rely on DB or dict ordering).
+- Use stable sample ordering: sort candidate rows by a fixed key before
+  applying the seeded sample, not after.
+- `json.dumps(..., sort_keys=True)` for all JSON output.
+- Fixed newline behavior: open files with `newline="\n"` or normalize
+  explicitly; do not let the platform decide.
+- No implicit timestamps anywhere in the output — not in filenames, not in
+  JSON fields, not in CSV headers.
+
 ---
 
 ## S6.1 — Redacted Live Quality Report Script
@@ -60,6 +70,7 @@ call) and writes privacy-safe CSV/JSON reports to `.local/reports/`.
   (see global note on timestamps above)
 - `--include-sensitive` defaults false; sensitive-tagged messages are excluded
   from CSV samples unless explicitly opted in
+- Script queries Postgres only. It must not call Gmail or any external API.
 
 **Decisions:**
 
@@ -118,6 +129,8 @@ mailbox client.
    When set, the script writes a separate file under `.local/` that includes
    raw subject/body excerpts for labeling convenience. This file must:
    - Write only under `.local/` (never committed)
+   - Hard-fail if the resolved output path is not under `.local/` — do not
+     fall back silently or write elsewhere
    - Print a privacy warning before writing
    - Not appear in normal report output
    - Default off
@@ -144,11 +157,16 @@ without failing on them.
 
 | Check |
 |---|
-| No raw private content committed |
+| No raw private content in generated report files |
 | Reports are deterministic (same seed → byte-identical) |
 | Malformed label file → eval fails, not silently skips |
 | No sensitive false negatives in the reviewed sample |
-| No undocumented project-like messages wrongly dropped as noise |
+| No undocumented project-relevant messages wrongly dropped as noise |
+
+Note on the "no raw private content" check: the eval script cannot determine
+what has or hasn't been committed without shelling out to git, which is out of
+scope. This check means "no raw private content appears in the generated report
+files themselves." Human review before committing any output remains required.
 
 **Soft reporting targets (this sample only — not product thresholds):**
 
