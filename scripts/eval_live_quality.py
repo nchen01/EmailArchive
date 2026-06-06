@@ -100,10 +100,16 @@ def load_labels(path: Path) -> list[dict]:
         if missing:
             raise ValueError(f"Label file missing required columns: {sorted(missing)}")
 
+        seen_ids: set[str] = set()
         for i, row in enumerate(reader, start=2):
-            an = row.get("actual_noise", "").strip()
+            sid = row.get("sample_id", "").strip()
+            an  = row.get("actual_noise", "").strip()
             as_ = row.get("actual_sensitivity", "").strip()
-            pr = row.get("project_relevant", "").strip()
+            pr  = row.get("project_relevant", "").strip()
+
+            if sid in seen_ids:
+                errors.append(f"row {i}: duplicate sample_id={sid!r}")
+            seen_ids.add(sid)
 
             if an not in VALID_NOISE:
                 errors.append(f"row {i}: actual_noise={an!r} not in {sorted(VALID_NOISE)}")
@@ -113,7 +119,7 @@ def load_labels(path: Path) -> list[dict]:
                 errors.append(f"row {i}: project_relevant={pr!r} not in {sorted(VALID_PROJECT)}")
 
             rows.append({
-                "sample_id":          row.get("sample_id", "").strip(),
+                "sample_id":          sid,
                 "message_pk":         row.get("message_pk", "").strip(),   # optional; absent in pre-fix files
                 "actual_noise":       an,
                 "actual_sensitivity": as_,
@@ -142,8 +148,13 @@ def load_sample_csvs(report_dir: Path) -> dict[str, dict]:
         with path.open(newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 sid = row.get("sample_id", "").strip()
-                if not sid or sid in samples:
+                if not sid:
                     continue
+                if sid in samples:
+                    raise ValueError(
+                        f"Duplicate sample_id {sid!r} in report CSV {fname}. "
+                        "Each message must appear only once across all report CSVs."
+                    )
                 samples[sid] = {
                     "sample_id":           sid,
                     "message_pk":          row.get("message_pk", ""),
@@ -196,9 +207,12 @@ def _scan_json_file(path: Path) -> list[str]:
 def scan_pii(report_dir: Path) -> list[str]:
     """Scan all generated report .csv and .json files for @ signs.
 
+    Best-effort proxy for raw email leakage. Does NOT detect names, subjects,
+    phone numbers, or other non-@ private content. Human review before
+    committing any output is still required regardless of whether this passes.
+
     Skips local_review.csv (intentionally raw) and live_quality_eval.json
-    (the eval output itself).  Best-effort — human review before committing
-    any output remains required.
+    (the eval output itself).
     """
     violations: list[str] = []
     if not report_dir.exists():
@@ -285,14 +299,17 @@ def run_hard_checks(
     pk_mismatches: list[str] | None = None,
     is_legacy_label_file: bool = False,
     allow_legacy_labels: bool = False,
+    unknown_label_ids: list[str] | None = None,
 ) -> dict[str, dict]:
     checks: dict[str, dict] = {}
 
     # 1. No PII in reports
     checks["no_pii_in_reports"] = {
-        "passed":     len(pii_violations) == 0,
+        "passed":     not pii_violations,
         "violations": pii_violations,
-        "note":       "best-effort @-scan of generated CSVs; human review still required",
+        "note": "best-effort @-scan only; does not detect names, subjects, phone "
+                "numbers, or other non-@ private content. Human review before "
+                "committing any output is still required.",
     }
 
     # 2. Determinism — enforced by S6.1 design, not re-checked here
@@ -342,7 +359,17 @@ def run_hard_checks(
         "note":      "add notes to label file to document known false positives",
     }
 
-    # 7. Label/report pk match — detects stale label files
+    # 7. No unknown label sample_ids (labeled rows not in current report)
+    unknown = unknown_label_ids or []
+    checks["no_unknown_label_ids"] = {
+        "passed":     not unknown,
+        "count":      len(unknown),
+        "sample_ids": unknown[:10],
+        "note": "label rows with non-blank actual_noise whose sample_id is not in "
+                "the current report — indicates a wrong or stale label file",
+    }
+
+    # 8. Label/report pk match — detects stale label files
     mismatches = pk_mismatches or []
     if is_legacy_label_file and n_labeled > 0:
         if allow_legacy_labels:
@@ -459,6 +486,12 @@ def run_eval(
     has_pk_in_labels = any(r.get("message_pk", "") for r in labels)
     is_legacy_file   = n_labeled > 0 and not has_pk_in_labels
 
+    # Detect labeled rows whose sample_id is not in the current report.
+    unknown_label_ids = [
+        r["sample_id"] for r in labels
+        if r["actual_noise"] not in ("", "unsure") and r["sample_id"] not in samples
+    ]
+
     # Metrics
     noise_metrics   = compute_noise_metrics(joined)
     sens_metrics    = compute_sensitivity_metrics(joined)
@@ -470,6 +503,7 @@ def run_eval(
         joined, pii_violations, [], n_labeled, pk_mismatches,
         is_legacy_label_file=is_legacy_file,
         allow_legacy_labels=allow_legacy_labels,
+        unknown_label_ids=unknown_label_ids,
     )
 
     overall_passed = all(c["passed"] for c in hard.values())

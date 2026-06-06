@@ -176,6 +176,17 @@ def test_load_labels_empty_file_raises(tmp_path):
         load_labels(path)
 
 
+def test_load_labels_duplicate_sample_id_raises(tmp_path):
+    path = _write_label_csv(tmp_path, [
+        {"sample_id": "noise-0001", "actual_noise": "noise",
+         "actual_sensitivity": "none", "project_relevant": "no"},
+        {"sample_id": "noise-0001", "actual_noise": "not_noise",  # duplicate
+         "actual_sensitivity": "none", "project_relevant": "no"},
+    ])
+    with pytest.raises(ValueError, match="duplicate sample_id"):
+        load_labels(path)
+
+
 # ── compute_noise_metrics ─────────────────────────────────────────────────────
 
 def _make_joined(specs: list[tuple]) -> list[dict]:
@@ -470,6 +481,27 @@ def test_hard_check_legacy_file_no_labels_passes():
     assert checks["label_report_pk_match"]["passed"]
 
 
+# ── unknown label sample_ids ──────────────────────────────────────────────────
+
+def test_hard_check_unknown_label_ids_fails():
+    checks = run_hard_checks(
+        [], [], [], 50,
+        unknown_label_ids=["noise-9999", "noise-8888"],
+    )
+    assert not checks["no_unknown_label_ids"]["passed"]
+    assert checks["no_unknown_label_ids"]["count"] == 2
+
+
+def test_hard_check_unknown_label_ids_passes_when_empty():
+    checks = run_hard_checks([], [], [], 50, unknown_label_ids=[])
+    assert checks["no_unknown_label_ids"]["passed"]
+
+
+def test_hard_check_unknown_label_ids_passes_when_none():
+    checks = run_hard_checks([], [], [], 50, unknown_label_ids=None)
+    assert checks["no_unknown_label_ids"]["passed"]
+
+
 # ── scan_pii ──────────────────────────────────────────────────────────────────
 
 def test_scan_pii_clean_report_passes(tmp_path):
@@ -523,6 +555,32 @@ def test_scan_pii_excludes_eval_json(tmp_path):
 
 def test_scan_pii_missing_files_skip_gracefully(tmp_path):
     assert scan_pii(tmp_path) == []
+
+
+# ── load_sample_csvs duplicate detection ──────────────────────────────────────
+
+def test_load_sample_csvs_duplicate_raises(tmp_path):
+    path = tmp_path / "noise_samples.csv"
+    with path.open("w", newline="\n") as f:
+        w = csv.DictWriter(f, fieldnames=["sample_id", "message_pk", "noise", "sensitivity"],
+                           lineterminator="\n")
+        w.writeheader()
+        w.writerow({"sample_id": "noise-0001", "message_pk": "pk-1", "noise": "True", "sensitivity": "none"})
+        w.writerow({"sample_id": "noise-0001", "message_pk": "pk-2", "noise": "False", "sensitivity": "none"})
+    with pytest.raises(ValueError, match="Duplicate sample_id"):
+        load_sample_csvs(tmp_path)
+
+
+def test_load_sample_csvs_no_duplicate_passes(tmp_path):
+    path = tmp_path / "noise_samples.csv"
+    with path.open("w", newline="\n") as f:
+        w = csv.DictWriter(f, fieldnames=["sample_id", "message_pk", "noise", "sensitivity"],
+                           lineterminator="\n")
+        w.writeheader()
+        w.writerow({"sample_id": "noise-0001", "message_pk": "pk-1", "noise": "True", "sensitivity": "none"})
+        w.writerow({"sample_id": "noise-0002", "message_pk": "pk-2", "noise": "False", "sensitivity": "none"})
+    samples = load_sample_csvs(tmp_path)
+    assert len(samples) == 2
 
 
 # ── evaluate_soft_targets ─────────────────────────────────────────────────────
@@ -683,6 +741,43 @@ def test_run_eval_fails_on_stale_label_pk(tmp_path):
     assert result["hard_checks"]["label_report_pk_match"]["mismatch_count"] >= 1
 
 
+def test_run_eval_unknown_label_ids_fails(tmp_path):
+    """Label rows referencing sample_ids not in the current report fail the eval."""
+    report_dir, labels_path = _make_minimal_report_dir(tmp_path, 40, 40)
+    # Append a label row with a sample_id that doesn't exist in the report
+    with labels_path.open("a", newline="\n") as f:
+        w = csv.DictWriter(f, fieldnames=["sample_id", "message_pk",
+            "actual_noise", "actual_sensitivity", "project_relevant",
+            "notes", "reviewed_by", "reviewed_at"], lineterminator="\n")
+        w.writerow({
+            "sample_id": "noise-9999", "message_pk": "pk-stale",
+            "actual_noise": "noise",  # non-blank → triggers check
+            "actual_sensitivity": "none", "project_relevant": "no",
+            "notes": "", "reviewed_by": "", "reviewed_at": "",
+        })
+    result, passed = run_eval(report_dir, labels_path)
+    assert not passed
+    assert not result["hard_checks"]["no_unknown_label_ids"]["passed"]
+    assert "noise-9999" in result["hard_checks"]["no_unknown_label_ids"]["sample_ids"]
+
+
+def test_run_eval_unlabeled_unknown_ids_pass(tmp_path):
+    """Label rows with blank actual_noise don't trigger the unknown-ID check."""
+    report_dir, labels_path = _make_minimal_report_dir(tmp_path, 40, 40)
+    with labels_path.open("a", newline="\n") as f:
+        w = csv.DictWriter(f, fieldnames=["sample_id", "message_pk",
+            "actual_noise", "actual_sensitivity", "project_relevant",
+            "notes", "reviewed_by", "reviewed_at"], lineterminator="\n")
+        w.writerow({
+            "sample_id": "noise-9999", "message_pk": "",
+            "actual_noise": "",  # blank → not counted as labeled, no trigger
+            "actual_sensitivity": "", "project_relevant": "",
+            "notes": "", "reviewed_by": "", "reviewed_at": "",
+        })
+    result, passed = run_eval(report_dir, labels_path)
+    assert result["hard_checks"]["no_unknown_label_ids"]["passed"]
+
+
 def test_run_eval_legacy_label_file_fails_without_flag(tmp_path):
     """run_eval rejects a label file with non-blank labels but no message_pk column."""
     report_dir, _ = _make_minimal_report_dir(tmp_path, 40, 40)
@@ -690,8 +785,8 @@ def test_run_eval_legacy_label_file_fails_without_flag(tmp_path):
     legacy_labels = tmp_path / "legacy_labels.csv"
     legacy_labels.write_text(
         "sample_id,actual_noise,actual_sensitivity,project_relevant,notes\n" +
-        "noise-0001,noise,none,no,\n" * 40 +
-        "noise-0041,not_noise,none,no,\n" * 40,
+        "".join(f"noise-{i+1:04d},noise,none,no,\n" for i in range(40)) +
+        "".join(f"noise-{i+41:04d},not_noise,none,no,\n" for i in range(40)),
         encoding="utf-8",
     )
     result, passed = run_eval(report_dir, legacy_labels, allow_legacy_labels=False)
@@ -705,8 +800,8 @@ def test_run_eval_legacy_label_file_passes_with_flag(tmp_path):
     legacy_labels = tmp_path / "legacy_labels.csv"
     legacy_labels.write_text(
         "sample_id,actual_noise,actual_sensitivity,project_relevant,notes\n" +
-        "noise-0001,noise,none,no,\n" * 40 +
-        "noise-0041,not_noise,none,no,\n" * 40,
+        "".join(f"noise-{i+1:04d},noise,none,no,\n" for i in range(40)) +
+        "".join(f"noise-{i+41:04d},not_noise,none,no,\n" for i in range(40)),
         encoding="utf-8",
     )
     result, passed = run_eval(report_dir, legacy_labels, allow_legacy_labels=True)
