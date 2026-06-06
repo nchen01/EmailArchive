@@ -315,6 +315,7 @@ def test_label_template_sens_only_row_included():
 def test_label_template_blank_fields():
     noise = [_make_noise_row("noise-0001", "pk-X")]
     rows = build_label_template(noise, [])
+    assert rows[0]["message_pk"] == "pk-X"
     assert rows[0]["actual_noise"] == ""
     assert rows[0]["actual_sensitivity"] == ""
     assert rows[0]["project_relevant"] == ""

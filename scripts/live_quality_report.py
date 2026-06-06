@@ -434,17 +434,18 @@ def build_label_template(
     template = []
     for row in sorted(noise_rows, key=lambda r: r["sample_id"]):
         seen.add(row["message_pk"])
-        template.append(_blank_label_row(row["sample_id"]))
+        template.append(_blank_label_row(row["sample_id"], row["message_pk"]))
     for row in sorted(sens_rows, key=lambda r: r["sample_id"]):
         if row["message_pk"] not in seen:
             seen.add(row["message_pk"])
-            template.append(_blank_label_row(row["sample_id"]))
+            template.append(_blank_label_row(row["sample_id"], row["message_pk"]))
     return template
 
 
-def _blank_label_row(sample_id: str) -> dict:
+def _blank_label_row(sample_id: str, message_pk: str = "") -> dict:
     return {
         "sample_id":          sample_id,
+        "message_pk":         message_pk,   # anchor for stale-label detection in eval
         "actual_noise":       "",
         "actual_sensitivity": "",
         "project_relevant":   "",
@@ -633,8 +634,8 @@ def main(argv=None):
         label_rows = build_label_template(noise_rows, sens_rows)
         _write_csv(
             out_dir / "label_template.csv",
-            ["sample_id", "actual_noise", "actual_sensitivity", "project_relevant",
-             "notes", "reviewed_by", "reviewed_at"],
+            ["sample_id", "message_pk", "actual_noise", "actual_sensitivity",
+             "project_relevant", "notes", "reviewed_by", "reviewed_at"],
             label_rows,
         )
         print(f"label_template.csv   : {len(label_rows)} rows")

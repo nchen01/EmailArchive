@@ -99,7 +99,7 @@ def test_met_none_fails():
 
 def _write_label_csv(tmp_path: Path, rows: list[dict]) -> Path:
     path = tmp_path / "labels.csv"
-    fieldnames = ["sample_id", "actual_noise", "actual_sensitivity",
+    fieldnames = ["sample_id", "message_pk", "actual_noise", "actual_sensitivity",
                   "project_relevant", "notes", "reviewed_by", "reviewed_at"]
     with path.open("w", newline="\n", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
@@ -287,20 +287,24 @@ def test_sensitivity_metrics_low_confidence_when_no_class_data():
 # ── compute_project_metrics ───────────────────────────────────────────────────
 
 def test_project_metrics_no_false_noise():
-    joined = _make_joined([(False, "not_noise", "none", "yes", "")] * 10)
+    # 20 rows >= LOW_CONF_SOFT (20) → low_confidence is None
+    joined = _make_joined([(False, "not_noise", "none", "yes", "")] * 20)
     m = compute_project_metrics(joined)
     assert m["false_noise_rate"] == 0.0
     assert m["project_relevant_falsely_noised"] == 0
+    assert m["low_confidence"] is None
 
 
 def test_project_metrics_some_false_noise():
+    # 4 + 16 = 20 total project rows → low_confidence is None
     joined = (
-        _make_joined([(True, "noise", "none", "yes", "")] * 2) +
-        _make_joined([(False, "not_noise", "none", "yes", "")] * 8)
+        _make_joined([(True, "noise", "none", "yes", "")] * 4) +
+        _make_joined([(False, "not_noise", "none", "yes", "")] * 16)
     )
     m = compute_project_metrics(joined)
-    assert m["project_relevant_falsely_noised"] == 2
+    assert m["project_relevant_falsely_noised"] == 4
     assert abs(m["false_noise_rate"] - 0.2) < 0.001
+    assert m["low_confidence"] is None
 
 
 def test_project_metrics_no_project_rows():
@@ -308,6 +312,22 @@ def test_project_metrics_no_project_rows():
     m = compute_project_metrics(joined)
     assert m["project_relevant_count"] == 0
     assert m["false_noise_rate"] is None
+    assert m["low_confidence"] == "hard"  # 0 rows
+
+
+def test_project_metrics_low_confidence_hard():
+    joined = _make_joined([(False, "not_noise", "none", "yes", "")] * (LOW_CONF_HARD - 1))
+    m = compute_project_metrics(joined)
+    assert m["low_confidence"] == "hard"
+    assert m["false_noise_rate"] is None
+
+
+def test_project_metrics_low_confidence_soft():
+    n = (LOW_CONF_HARD + LOW_CONF_SOFT) // 2
+    joined = _make_joined([(False, "not_noise", "none", "yes", "")] * n)
+    m = compute_project_metrics(joined)
+    assert m["low_confidence"] == "soft"
+    assert m["false_noise_rate"] is not None
 
 
 # ── run_hard_checks ───────────────────────────────────────────────────────────
@@ -401,6 +421,26 @@ def test_hard_check_documented_project_noise_passes():
     assert checks["no_undocumented_project_noise"]["passed"]
 
 
+def test_hard_check_stale_label_fails():
+    checks = run_hard_checks(
+        [], [], [], 50,
+        pk_mismatches=["noise-0001: label pk='old-pk' != report pk='new-pk'"],
+    )
+    assert not checks["label_report_pk_match"]["passed"]
+    assert checks["label_report_pk_match"]["mismatch_count"] == 1
+
+
+def test_hard_check_pk_match_passes_when_no_mismatches():
+    checks = run_hard_checks([], [], [], 50, pk_mismatches=[])
+    assert checks["label_report_pk_match"]["passed"]
+
+
+def test_hard_check_pk_match_skipped_for_pre_fix_labels():
+    # pk_mismatches=None means no message_pk in label file — check skipped (passes)
+    checks = run_hard_checks([], [], [], 50, pk_mismatches=None)
+    assert checks["label_report_pk_match"]["passed"]
+
+
 # ── scan_pii ──────────────────────────────────────────────────────────────────
 
 def test_scan_pii_clean_report_passes(tmp_path):
@@ -414,7 +454,7 @@ def test_scan_pii_clean_report_passes(tmp_path):
     assert scan_pii(tmp_path) == []
 
 
-def test_scan_pii_detects_at_sign(tmp_path):
+def test_scan_pii_detects_at_sign_in_csv(tmp_path):
     path = tmp_path / "noise_samples.csv"
     with path.open("w", newline="\n") as f:
         w = csv.DictWriter(f, fieldnames=["sample_id", "sender_domain"],
@@ -424,11 +464,35 @@ def test_scan_pii_detects_at_sign(tmp_path):
     violations = scan_pii(tmp_path)
     assert len(violations) == 1
     assert "sender_domain" in violations[0]
-    assert "@" in violations[0]
+
+
+def test_scan_pii_detects_at_sign_in_json(tmp_path):
+    (tmp_path / "summary.json").write_text(
+        '{"owner_email": "user@example.com", "count": 10}', encoding="utf-8"
+    )
+    violations = scan_pii(tmp_path)
+    assert any("summary.json" in v for v in violations)
+    assert any("owner_email" in v for v in violations)
+
+
+def test_scan_pii_excludes_local_review_csv(tmp_path):
+    path = tmp_path / "local_review.csv"
+    with path.open("w", newline="\n") as f:
+        w = csv.DictWriter(f, fieldnames=["subject"], lineterminator="\n")
+        w.writeheader()
+        w.writerow({"subject": "Meeting with user@example.com"})
+    # local_review.csv is intentionally excluded
+    assert scan_pii(tmp_path) == []
+
+
+def test_scan_pii_excludes_eval_json(tmp_path):
+    (tmp_path / "live_quality_eval.json").write_text(
+        '{"note": "user@example.com"}', encoding="utf-8"
+    )
+    assert scan_pii(tmp_path) == []
 
 
 def test_scan_pii_missing_files_skip_gracefully(tmp_path):
-    # No CSV files in empty dir — should not error, return empty
     assert scan_pii(tmp_path) == []
 
 
@@ -475,8 +539,9 @@ def _make_minimal_report_dir(tmp_path: Path, n_noise: int = 40, n_not_noise: int
     label_rows = []
     for i in range(n_noise):
         sid = f"noise-{i+1:04d}"
+        pk = f"pk-{i}"
         noise_rows.append({
-            "sample_id": sid, "message_pk": f"pk-{i}",
+            "sample_id": sid, "message_pk": pk,
             "message_header_hash": "abcdef0123456789",
             "sender_domain": "example.com", "noise": "True",
             "sensitivity": "none", "has_owner_reply_in_thread": "False",
@@ -484,14 +549,16 @@ def _make_minimal_report_dir(tmp_path: Path, n_noise: int = 40, n_not_noise: int
             "clean_text_chars": "200", "date_day": "2026-01-01",
         })
         label_rows.append({
-            "sample_id": sid, "actual_noise": "noise",
+            "sample_id": sid, "message_pk": pk,  # must match report
+            "actual_noise": "noise",
             "actual_sensitivity": "none", "project_relevant": "no",
             "notes": "", "reviewed_by": "", "reviewed_at": "",
         })
     for i in range(n_not_noise):
         sid = f"noise-{n_noise+i+1:04d}"
+        pk = f"pk-nn-{i}"
         noise_rows.append({
-            "sample_id": sid, "message_pk": f"pk-nn-{i}",
+            "sample_id": sid, "message_pk": pk,
             "message_header_hash": "abcdef0123456789",
             "sender_domain": "example.com", "noise": "False",
             "sensitivity": "none", "has_owner_reply_in_thread": "False",
@@ -499,7 +566,8 @@ def _make_minimal_report_dir(tmp_path: Path, n_noise: int = 40, n_not_noise: int
             "clean_text_chars": "100", "date_day": "2026-01-01",
         })
         label_rows.append({
-            "sample_id": sid, "actual_noise": "not_noise",
+            "sample_id": sid, "message_pk": pk,  # must match report
+            "actual_noise": "not_noise",
             "actual_sensitivity": "none", "project_relevant": "no",
             "notes": "", "reviewed_by": "", "reviewed_at": "",
         })
@@ -551,17 +619,39 @@ def test_run_eval_fails_on_sensitive_fn(tmp_path):
         })
     # Add label: human says this was hr, system missed it
     with labels_path.open("a", newline="\n") as f:
-        w = csv.DictWriter(f, fieldnames=["sample_id", "actual_noise",
-            "actual_sensitivity", "project_relevant",
+        w = csv.DictWriter(f, fieldnames=["sample_id", "message_pk",
+            "actual_noise", "actual_sensitivity", "project_relevant",
             "notes", "reviewed_by", "reviewed_at"], lineterminator="\n")
         w.writerow({
-            "sample_id": "sens-0001", "actual_noise": "not_noise",
+            "sample_id": "sens-0001", "message_pk": "pk-sens-1",
+            "actual_noise": "not_noise",
             "actual_sensitivity": "hr", "project_relevant": "no",
             "notes": "", "reviewed_by": "", "reviewed_at": "",
         })
     result, passed = run_eval(report_dir, labels_path)
     assert not passed
     assert not result["hard_checks"]["no_sensitive_false_negatives"]["passed"]
+
+
+def test_run_eval_fails_on_stale_label_pk(tmp_path):
+    """Eval fails when label message_pk does not match current report."""
+    report_dir, labels_path = _make_minimal_report_dir(tmp_path, 40, 40)
+    # Corrupt one label row's message_pk so it looks like a stale file
+    import csv as _csv
+    rows = labels_path.read_text().splitlines()
+    header = rows[0]
+    first_data = rows[1]
+    # Replace the message_pk value in the first data row with a wrong pk
+    cols = first_data.split(",")
+    pk_idx = header.split(",").index("message_pk")
+    cols[pk_idx] = "stale-wrong-pk"
+    rows[1] = ",".join(cols)
+    labels_path.write_text("\n".join(rows) + "\n")
+
+    result, passed = run_eval(report_dir, labels_path)
+    assert not passed
+    assert not result["hard_checks"]["label_report_pk_match"]["passed"]
+    assert result["hard_checks"]["label_report_pk_match"]["mismatch_count"] >= 1
 
 
 def test_run_eval_missing_report_dir_raises(tmp_path):

@@ -114,6 +114,7 @@ def load_labels(path: Path) -> list[dict]:
 
             rows.append({
                 "sample_id":          row.get("sample_id", "").strip(),
+                "message_pk":         row.get("message_pk", "").strip(),   # optional; absent in pre-fix files
                 "actual_noise":       an,
                 "actual_sensitivity": as_,
                 "project_relevant":   pr,
@@ -154,26 +155,61 @@ def load_sample_csvs(report_dir: Path) -> dict[str, dict]:
 
 # ── PII scan ──────────────────────────────────────────────────────────────────
 
-def scan_pii(report_dir: Path) -> list[str]:
-    """Return a list of violations (@ in any CSV value that shouldn't have one).
+# Files intentionally containing raw content — excluded from PII scan.
+_SCAN_EXCLUDE = {"local_review.csv", "live_quality_eval.json"}
 
-    This is a best-effort check for raw email leakage in generated report files.
-    Human review before committing any output remains required.
-    """
+
+def _scan_csv_file(path: Path) -> list[str]:
     violations = []
-    for fname in ("noise_samples.csv", "sensitivity_samples.csv",
-                  "identity_samples.csv", "edge_samples.csv", "thread_samples.csv"):
-        path = report_dir / fname
-        if not path.exists():
+    with path.open(newline="", encoding="utf-8") as f:
+        for line_no, row in enumerate(csv.DictReader(f), start=2):
+            for col, val in row.items():
+                if "@" in (val or ""):
+                    violations.append(
+                        f"{path.name}:{line_no} col='{col}' contains '@' "
+                        f"(possible raw email address)"
+                    )
+    return violations
+
+
+def _collect_json_violations(obj, fname: str, jpath: str, out: list) -> None:
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _collect_json_violations(v, fname, f"{jpath}.{k}", out)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            _collect_json_violations(v, fname, f"{jpath}[{i}]", out)
+    elif isinstance(obj, str) and "@" in obj:
+        out.append(f"{fname}: field '{jpath}' contains '@' (possible raw email address)")
+
+
+def _scan_json_file(path: Path) -> list[str]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    violations: list[str] = []
+    _collect_json_violations(data, path.name, "", violations)
+    return violations
+
+
+def scan_pii(report_dir: Path) -> list[str]:
+    """Scan all generated report .csv and .json files for @ signs.
+
+    Skips local_review.csv (intentionally raw) and live_quality_eval.json
+    (the eval output itself).  Best-effort — human review before committing
+    any output remains required.
+    """
+    violations: list[str] = []
+    if not report_dir.exists():
+        return violations
+    for path in sorted(report_dir.iterdir()):
+        if path.name in _SCAN_EXCLUDE or not path.is_file():
             continue
-        with path.open(newline="", encoding="utf-8") as f:
-            for line_no, row in enumerate(csv.DictReader(f), start=2):
-                for col, val in row.items():
-                    if "@" in (val or ""):
-                        violations.append(
-                            f"{fname}:{line_no} col='{col}' contains '@' "
-                            f"(possible raw email address)"
-                        )
+        if path.suffix == ".csv":
+            violations.extend(_scan_csv_file(path))
+        elif path.suffix == ".json":
+            violations.extend(_scan_json_file(path))
     return violations
 
 
@@ -229,10 +265,13 @@ def compute_project_metrics(joined: list[dict]) -> dict:
     """False-noise rate for project-relevant messages."""
     project = [r for r in joined if r["project_relevant"] == "yes"]
     falsely_noised = [r for r in project if r["predicted_noise"]]
+    n = len(project)
+    lc = _low_conf(n)
     return {
-        "project_relevant_count":        len(project),
+        "project_relevant_count":         n,
         "project_relevant_falsely_noised": len(falsely_noised),
-        "false_noise_rate":              _safe_div(len(falsely_noised), len(project)),
+        "false_noise_rate":               _safe_div(len(falsely_noised), n) if lc != "hard" else None,
+        "low_confidence":                 lc,
     }
 
 
@@ -243,6 +282,7 @@ def run_hard_checks(
     pii_violations: list[str],
     label_errors: list[str],
     n_labeled: int,
+    pk_mismatches: list[str] | None = None,
 ) -> dict[str, dict]:
     checks: dict[str, dict] = {}
 
@@ -300,12 +340,29 @@ def run_hard_checks(
         "note":      "add notes to label file to document known false positives",
     }
 
+    # 7. Label/report pk match — detects stale label files
+    mismatches = pk_mismatches or []
+    checks["label_report_pk_match"] = {
+        "passed":         len(mismatches) == 0,
+        "mismatch_count": len(mismatches),
+        "mismatches":     mismatches[:5],
+        "note": "message_pk absent in label rows means check was skipped "
+                "(pre-fix label file without message_pk column)",
+    }
+
     return checks
 
 
 # ── soft targets ──────────────────────────────────────────────────────────────
 
 def evaluate_soft_targets(noise: dict, sens: dict, project: dict) -> dict:
+    _lc_map = {
+        "noise_precision":          noise.get("low_confidence"),
+        "project_false_noise_rate": project.get("low_confidence"),
+        "hr_recall":                sens.get("hr", {}).get("low_confidence"),
+        "legal_recall":             sens.get("legal", {}).get("low_confidence"),
+        "privileged_recall":        sens.get("privileged", {}).get("low_confidence"),
+    }
     values = {
         "noise_precision":          noise.get("precision"),
         "project_false_noise_rate": project.get("false_noise_rate"),
@@ -316,12 +373,14 @@ def evaluate_soft_targets(noise: dict, sens: dict, project: dict) -> dict:
     result = {}
     for key, spec in SOFT_TARGETS.items():
         val = values.get(key)
+        lc  = _lc_map.get(key)
         result[key] = {
-            "value":       val,
-            "target":      spec["target"],
-            "direction":   spec["direction"],
-            "met":         _met(val, spec["target"], spec["direction"]),
-            "note":        "soft target for this sample only — not a universal product threshold",
+            "value":          val,
+            "target":         spec["target"],
+            "direction":      spec["direction"],
+            "met":            _met(val, spec["target"], spec["direction"]),
+            "low_confidence": lc,
+            "note":           "soft target for this sample only — not a universal product threshold",
         }
     return result
 
@@ -343,6 +402,19 @@ def run_eval(report_dir: Path, labels_path: Path) -> tuple[dict, bool]:
     # Load sample predictions
     samples = load_sample_csvs(report_dir)
 
+    # Detect stale label files: message_pk in label must match current report
+    pk_mismatches: list[str] = []
+    for sid, sample in sorted(samples.items()):
+        label = label_by_id.get(sid)
+        if label is None:
+            continue
+        label_pk = label.get("message_pk", "")
+        if label_pk and label_pk != sample["message_pk"]:
+            pk_mismatches.append(
+                f"{sid}: label message_pk={label_pk!r} != "
+                f"report message_pk={sample['message_pk']!r}"
+            )
+
     # Join predictions with labels
     joined = []
     for sid, sample in sorted(samples.items()):
@@ -358,13 +430,13 @@ def run_eval(report_dir: Path, labels_path: Path) -> tuple[dict, bool]:
     n_labeled = sum(1 for r in joined if r["actual_noise"] in ("noise", "not_noise"))
 
     # Metrics
-    noise_metrics = compute_noise_metrics(joined)
-    sens_metrics   = compute_sensitivity_metrics(joined)
+    noise_metrics   = compute_noise_metrics(joined)
+    sens_metrics    = compute_sensitivity_metrics(joined)
     project_metrics = compute_project_metrics(joined)
     soft = evaluate_soft_targets(noise_metrics, sens_metrics, project_metrics)
 
     # Hard checks
-    hard = run_hard_checks(joined, pii_violations, [], n_labeled)
+    hard = run_hard_checks(joined, pii_violations, [], n_labeled, pk_mismatches)
 
     overall_passed = all(c["passed"] for c in hard.values())
 
