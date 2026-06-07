@@ -3,8 +3,8 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S0–S5 complete. MVP pipeline and all three surfaces shipped.
-Next: production hardening (real Gmail OAuth, queue, secrets) or L2 hybrid retrieval.
+**Status:** S0–S5 complete. S6 quality-pass tooling complete (live report, label workflow, eval script, identity/graph inspection). Awaiting human labeling pass on live mailbox before S6.4 L0 tuning decision.
+Next: complete labeling → run eval → decide S6.4 or proceed to L2 hybrid retrieval.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 

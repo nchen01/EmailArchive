@@ -317,12 +317,15 @@ what comes next.
 
 | Ticket | Title | Depends on | Status |
 |---|---|---|---|
-| S6.1 | Redacted live quality report script | — | approved |
-| S6.2 | Local label template workflow | S6.1 | approved |
-| S6.3 | Noise/sensitivity eval script | S6.2 | approved |
-| S6.4 | L0 tuning pass | S6.3 | approved |
-| S6.5 | Identity/graph quality inspection | S6.3 | approved |
+| S6.1 | Redacted live quality report script | — | **done** |
+| S6.2 | Local label template workflow | S6.1 | **done** |
+| S6.3 | Noise/sensitivity eval script | S6.2 | **done** |
+| S6.4 | L0 tuning pass | S6.3 | **blocked — awaiting labeling pass** |
+| S6.5 | Identity/graph quality inspection | S6.3 | **done** |
 | S6.6 | Optional live clustering diagnostic | S6.4, S6.5 | deferred to L2 |
-| S6.7 | Documentation update | S6.4, S6.5 | approved |
+| S6.7 | Documentation update | S6.4, S6.5 | **in progress — findings pending labeling** |
 
 Pre-work already complete: `.local/` added to `.gitignore` (`8ee8101`).
+
+Test count at S6.5 completion: **295 passed** (`python -m pytest -q`).
+Frontend: **357.13 kB** (`npm.cmd --prefix frontend run build`).
