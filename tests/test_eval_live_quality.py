@@ -23,6 +23,7 @@ from scripts.eval_live_quality import (  # noqa: E402
     LOW_CONF_SOFT,
     MIN_LABELED_FAIL,
     MIN_LABELED_WARN,
+    _has_nonblank_label,
     _met,
     _parse_bool,
     _parse_tags,
@@ -75,6 +76,28 @@ def test_safe_div_normal():
 
 def test_safe_div_zero_denominator():
     assert _safe_div(5, 0) is None
+
+
+# ── _has_nonblank_label ───────────────────────────────────────────────────────
+
+def test_has_nonblank_label_all_blank():
+    assert not _has_nonblank_label({"actual_noise": "", "actual_sensitivity": "", "project_relevant": ""})
+
+
+def test_has_nonblank_label_all_unsure():
+    assert not _has_nonblank_label({"actual_noise": "unsure", "actual_sensitivity": "unsure", "project_relevant": "unsure"})
+
+
+def test_has_nonblank_label_noise_set():
+    assert _has_nonblank_label({"actual_noise": "noise", "actual_sensitivity": "", "project_relevant": ""})
+
+
+def test_has_nonblank_label_sensitivity_only():
+    assert _has_nonblank_label({"actual_noise": "", "actual_sensitivity": "hr", "project_relevant": ""})
+
+
+def test_has_nonblank_label_project_only():
+    assert _has_nonblank_label({"actual_noise": "", "actual_sensitivity": "", "project_relevant": "yes"})
 
 
 # ── _met ──────────────────────────────────────────────────────────────────────
@@ -803,6 +826,48 @@ def test_run_eval_mixed_pk_file_fails(tmp_path):
     assert not result["hard_checks"]["label_report_pk_match"]["passed"]
     assert any("blank message_pk" in m
                for m in result["hard_checks"]["label_report_pk_match"]["mismatches"])
+
+
+def test_run_eval_mixed_pk_sensitivity_only_row_fails(tmp_path):
+    """actual_sensitivity-only label with blank message_pk also triggers mixed-pk check."""
+    report_dir, _ = _make_minimal_report_dir(tmp_path, 40, 40)
+    mixed_labels = tmp_path / "mixed_sens_labels.csv"
+    fieldnames = ["sample_id", "message_pk", "actual_noise", "actual_sensitivity",
+                  "project_relevant", "notes", "reviewed_by", "reviewed_at"]
+    with mixed_labels.open("w", newline="\n") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
+        w.writeheader()
+        # One row with pk (makes file non-legacy)
+        w.writerow({"sample_id": "noise-0001", "message_pk": "pk-0",
+                    "actual_noise": "noise", "actual_sensitivity": "none",
+                    "project_relevant": "no", "notes": "", "reviewed_by": "", "reviewed_at": ""})
+        # One row with only actual_sensitivity set, blank actual_noise, blank pk
+        w.writerow({"sample_id": "noise-0002", "message_pk": "",
+                    "actual_noise": "", "actual_sensitivity": "hr",
+                    "project_relevant": "", "notes": "", "reviewed_by": "", "reviewed_at": ""})
+    result, _ = run_eval(report_dir, mixed_labels)
+    assert not result["hard_checks"]["label_report_pk_match"]["passed"]
+    assert any("blank message_pk" in m
+               for m in result["hard_checks"]["label_report_pk_match"]["mismatches"])
+
+
+def test_run_eval_unknown_id_project_relevant_only_fails(tmp_path):
+    """project_relevant-only label with unknown sample_id also triggers the unknown-id check."""
+    report_dir, labels_path = _make_minimal_report_dir(tmp_path, 40, 40)
+    with labels_path.open("a", newline="\n") as f:
+        w = csv.DictWriter(f, fieldnames=["sample_id", "message_pk",
+            "actual_noise", "actual_sensitivity", "project_relevant",
+            "notes", "reviewed_by", "reviewed_at"], lineterminator="\n")
+        # Only project_relevant is filled; actual_noise is blank
+        w.writerow({
+            "sample_id": "noise-9999", "message_pk": "",
+            "actual_noise": "", "actual_sensitivity": "",
+            "project_relevant": "yes",   # non-blank → should trigger unknown-id check
+            "notes": "", "reviewed_by": "", "reviewed_at": "",
+        })
+    result, _ = run_eval(report_dir, labels_path)
+    assert not result["hard_checks"]["no_unknown_label_ids"]["passed"]
+    assert "noise-9999" in result["hard_checks"]["no_unknown_label_ids"]["sample_ids"]
 
 
 def test_run_eval_legacy_label_file_fails_without_flag(tmp_path):

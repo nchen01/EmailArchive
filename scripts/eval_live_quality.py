@@ -77,6 +77,15 @@ def _low_conf(n: int) -> str | None:
     return None
 
 
+def _has_nonblank_label(row: dict) -> bool:
+    """True if the reviewer provided at least one definitive value in any label column."""
+    return (
+        row.get("actual_noise", "") not in ("", "unsure")
+        or row.get("actual_sensitivity", "") not in ("", "unsure")
+        or row.get("project_relevant", "") not in ("", "unsure")
+    )
+
+
 def _safe_div(num: int, den: int) -> float | None:
     return round(num / den, 4) if den > 0 else None
 
@@ -475,7 +484,7 @@ def run_eval(
     # --allow-legacy-labels only exempts fully-legacy files (no pks anywhere).
     if has_pk_in_labels:
         for r in labels:
-            if r["actual_noise"] not in ("", "unsure") and not r.get("message_pk", ""):
+            if _has_nonblank_label(r) and not r.get("message_pk", ""):
                 pk_mismatches.append(
                     f"{r['sample_id']}: non-blank label has blank message_pk "
                     "(mixed file — all labeled rows must have message_pk)"
@@ -496,12 +505,12 @@ def run_eval(
     n_labeled = sum(1 for r in joined if r["actual_noise"] in ("noise", "not_noise"))
 
     # Detect legacy label files: non-blank labels exist but no message_pk column present.
-    is_legacy_file = n_labeled > 0 and not has_pk_in_labels
+    is_legacy_file = any(_has_nonblank_label(r) for r in labels) and not has_pk_in_labels
 
     # Detect labeled rows whose sample_id is not in the current report.
     unknown_label_ids = [
         r["sample_id"] for r in labels
-        if r["actual_noise"] not in ("", "unsure") and r["sample_id"] not in samples
+        if _has_nonblank_label(r) and r["sample_id"] not in samples
     ]
 
     # Metrics
