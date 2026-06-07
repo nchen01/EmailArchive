@@ -374,13 +374,14 @@ def run_hard_checks(
         "passed":     not unknown,
         "count":      len(unknown),
         "sample_ids": unknown[:10],
-        "note": "label rows with non-blank actual_noise whose sample_id is not in "
-                "the current report — indicates a wrong or stale label file",
+        "note": "label rows with any non-blank label (actual_noise, actual_sensitivity, "
+                "or project_relevant) whose sample_id is not in the current report — "
+                "indicates a wrong or stale label file",
     }
 
     # 8. Label/report pk match — detects stale label files
     mismatches = pk_mismatches or []
-    if is_legacy_label_file and n_labeled > 0:
+    if is_legacy_label_file:
         if allow_legacy_labels:
             checks["label_report_pk_match"] = {
                 "passed":  True,

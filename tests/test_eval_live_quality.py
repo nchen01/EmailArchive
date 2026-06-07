@@ -504,6 +504,17 @@ def test_hard_check_legacy_file_no_labels_passes():
     assert checks["label_report_pk_match"]["passed"]
 
 
+def test_hard_check_legacy_file_sensitivity_only_fails():
+    """is_legacy_label_file=True fails even when n_labeled=0 (only sensitivity labeled)."""
+    checks = run_hard_checks(
+        [], [], [], 0,  # n_labeled=0 — only actual_sensitivity was filled
+        pk_mismatches=None,
+        is_legacy_label_file=True,
+        allow_legacy_labels=False,
+    )
+    assert not checks["label_report_pk_match"]["passed"]
+
+
 # ── unknown label sample_ids ──────────────────────────────────────────────────
 
 def test_hard_check_unknown_label_ids_fails():
