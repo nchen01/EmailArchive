@@ -199,15 +199,20 @@ def build_summary(session, mailbox_id: str, owner_email: str) -> dict:
         "thread_size_distribution": thread_size_dist,
         "owner_sent_thread_count": owner_thread_count,
         "graph_density": graph_density,
-        "identity_graph_inspection": _build_identity_graph_inspection(session, mid),
+        "identity_graph_inspection": _build_identity_graph_inspection(session, mid, owner_email),
     }
 
 
-def _build_identity_graph_inspection(session, mailbox_id: str) -> dict:
+def _build_identity_graph_inspection(
+    session, mailbox_id: str, owner_email: str
+) -> dict:
     """S6.5 identity/graph quality signals.
 
     All person names are hashed — raw display names never appear in output.
     Engineers needing the raw value should query the identity table by person_id.
+    owner_email is excluded from signal 4 (the owner has no edge row by design).
+    All ORDER BY clauses carry a stable secondary key to guarantee byte-identical
+    output when primary values tie.
     """
     mid = mailbox_id
 
@@ -219,7 +224,7 @@ def _build_identity_graph_inspection(session, mailbox_id: str) -> dict:
             "LEFT JOIN identity i ON i.person_id = p.id AND i.mailbox_id = :mid "
             "WHERE p.mailbox_id = :mid "
             "GROUP BY p.id HAVING COUNT(i.email) > 3 "
-            "ORDER BY identity_count DESC LIMIT 10"
+            "ORDER BY identity_count DESC, p.id ASC LIMIT 10"
         ),
         {"mid": mid},
     ).all()
@@ -229,7 +234,7 @@ def _build_identity_graph_inspection(session, mailbox_id: str) -> dict:
     ]
 
     # 2. Duplicate normalized display names across different persons (split/merge signal).
-    # Build in Python to avoid complex lateral-join SQL.
+    # Built in Python; secondary sort key is name_hash for determinism under ties.
     name_rows = session.execute(
         text(
             "SELECT i.person_id, lower(trim(dn)) AS norm_name "
@@ -252,7 +257,7 @@ def _build_identity_graph_inspection(session, mailbox_id: str) -> dict:
             for norm_name, pids in name_to_persons.items()
             if len(pids) > 1
         ],
-        key=lambda d: -d["person_count"],
+        key=lambda d: (-d["person_count"], d["name_hash"]),
     )[:10]
 
     # 3. High-message people with UNKNOWN role (role-inference miss signal).
@@ -262,7 +267,7 @@ def _build_identity_graph_inspection(session, mailbox_id: str) -> dict:
             "FROM person p "
             "JOIN edge e ON e.person_id = p.id AND e.mailbox_id = :mid "
             "WHERE p.mailbox_id = :mid AND lower(p.role) = 'unknown' "
-            "ORDER BY e.message_count DESC LIMIT 10"
+            "ORDER BY e.message_count DESC, p.id ASC LIMIT 10"
         ),
         {"mid": mid},
     ).all()
@@ -272,19 +277,22 @@ def _build_identity_graph_inspection(session, mailbox_id: str) -> dict:
     ]
 
     # 4. Non-noise senders with no outbound edge (sparse-graph signal).
+    # Excludes the mailbox owner: they are intentionally absent from the edge
+    # table and would otherwise dominate this signal on every mailbox.
     no_edge_rows = session.execute(
         text(
             "SELECT split_part(m.sender_email,'@',2) AS domain, COUNT(*) AS msg_count "
             "FROM message m "
             "WHERE m.mailbox_id = :mid AND m.noise = false "
+            "AND m.sender_email != :owner "
             "AND NOT EXISTS ( "
             "  SELECT 1 FROM identity i "
             "  JOIN edge e ON e.person_id = i.person_id AND e.mailbox_id = :mid "
             "  WHERE i.mailbox_id = :mid AND i.email = m.sender_email "
             ") "
-            "GROUP BY domain ORDER BY msg_count DESC LIMIT 10"
+            "GROUP BY domain ORDER BY msg_count DESC, domain ASC LIMIT 10"
         ),
-        {"mid": mid},
+        {"mid": mid, "owner": owner_email},
     ).all()
     non_noise_no_edge_domains = [
         {"domain": r.domain, "message_count": r.msg_count}
@@ -299,7 +307,7 @@ def _build_identity_graph_inspection(session, mailbox_id: str) -> dict:
             "SUM(e.message_count) AS total_messages "
             "FROM edge e JOIN person p ON p.id = e.person_id "
             "WHERE e.mailbox_id = :mid "
-            "GROUP BY p.role ORDER BY total_messages DESC"
+            "GROUP BY p.role ORDER BY total_messages DESC, p.role ASC"
         ),
         {"mid": mid},
     ).all()

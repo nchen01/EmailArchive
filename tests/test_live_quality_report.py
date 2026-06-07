@@ -124,6 +124,22 @@ def test_is_sensitive_null():
     assert not _is_sensitive(None)
 
 
+# ── identity/graph inspection sort stability ─────────────────────────────────
+
+def test_duplicate_display_names_sort_stable_on_tie():
+    """duplicate_display_names secondary sort key is name_hash — tie in person_count
+    must not produce non-deterministic ordering."""
+    entries = [
+        {"name_hash": "zzz0000000000000", "person_ids": ["p1", "p2"], "person_count": 2},
+        {"name_hash": "aaa0000000000000", "person_ids": ["p3", "p4"], "person_count": 2},
+        {"name_hash": "mmm0000000000000", "person_ids": ["p5", "p6", "p7"], "person_count": 3},
+    ]
+    result = sorted(entries, key=lambda d: (-d["person_count"], d["name_hash"]))
+    assert result[0]["name_hash"] == "mmm0000000000000"   # count=3 first
+    assert result[1]["name_hash"] == "aaa0000000000000"   # count=2, "aaa" < "zzz"
+    assert result[2]["name_hash"] == "zzz0000000000000"
+
+
 # ── _date_day ─────────────────────────────────────────────────────────────────
 
 def test_date_day_none():
@@ -547,7 +563,7 @@ def test_identity_graph_inspection_returns_expected_keys():
     """_build_identity_graph_inspection returns all five S6.5 signal keys."""
     session, mid = _setup_fixture_mailbox("igi-keys-test@example.com")
     try:
-        result = _build_identity_graph_inspection(session, mid)
+        result = _build_identity_graph_inspection(session, mid, "igi-keys-test@example.com")
         assert set(result.keys()) == {
             "high_identity_count_persons",
             "duplicate_display_names",
@@ -577,7 +593,7 @@ def test_identity_graph_inspection_no_raw_names_in_output():
         ).scalars():
             raw_names.update(n.lower().strip() for n in (row or []) if n.strip())
 
-        result = _build_identity_graph_inspection(session, mid)
+        result = _build_identity_graph_inspection(session, mid, "igi-privacy-test@example.com")
         output_str = json.dumps(result)
         for name in raw_names:
             assert name not in output_str.lower(), \
@@ -594,7 +610,7 @@ def test_identity_graph_inspection_name_hash_is_hex():
     """duplicate_display_names entries carry 16-char hex hashes, not raw names."""
     session, mid = _setup_fixture_mailbox("igi-hash-test@example.com")
     try:
-        result = _build_identity_graph_inspection(session, mid)
+        result = _build_identity_graph_inspection(session, mid, "igi-hash-test@example.com")
         for entry in result["duplicate_display_names"]:
             h = entry["name_hash"]
             assert len(h) == 16 and all(c in "0123456789abcdef" for c in h), \
