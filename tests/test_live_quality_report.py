@@ -48,6 +48,7 @@ from scripts.live_quality_report import (  # noqa: E402
     ROOT as SCRIPT_ROOT,
     _assert_under_local,
     _blank_label_row,
+    _build_identity_graph_inspection,
     _date_day,
     _hash_id,
     _is_sensitive,
@@ -508,6 +509,123 @@ def test_report_is_deterministic_on_fixture_mailbox(tmp_path):
 
     finally:
         from sqlalchemy import delete
+        session.execute(delete(orm.Mailbox).where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
+
+# ── S6.5 identity/graph inspection ────────────────────────────────────────────
+
+def _setup_fixture_mailbox(owner_email: str):
+    """Ingest + enrich fixture mailbox. Returns (session, mid); caller must clean up."""
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+    from services.db.store import persist_l0, persist_l1
+    from services.ingest.pipeline import IngestConfig, run_ingest
+    from services.enrich.pipeline import run_enrichment
+
+    FIXTURE = ROOT / "fixtures" / "mailbox.json"
+    store = run_ingest(IngestConfig(
+        provider="fixture", mailbox_path=FIXTURE,
+        owner_email=owner_email, internal_domains=["example.com"],
+    ))
+    enrich = run_enrichment(store.messages, owner_email=owner_email,
+                            internal_domains=["example.com"])
+    session = SessionLocal()
+    mbx = orm.Mailbox(provider="gmail", owner_email=owner_email,
+                      embed_model="t", embed_dim=0, config={})
+    session.add(mbx)
+    session.commit()
+    mid = str(mbx.id)
+    persist_l0(store, mid, session)
+    persist_l1(enrich, mid, session)
+    return session, mid
+
+
+@requires_db
+def test_identity_graph_inspection_returns_expected_keys():
+    """_build_identity_graph_inspection returns all five S6.5 signal keys."""
+    session, mid = _setup_fixture_mailbox("igi-keys-test@example.com")
+    try:
+        result = _build_identity_graph_inspection(session, mid)
+        assert set(result.keys()) == {
+            "high_identity_count_persons",
+            "duplicate_display_names",
+            "high_message_unknown_role",
+            "non_noise_no_edge_domains",
+            "edge_weight_by_role",
+        }
+    finally:
+        from sqlalchemy import delete
+        from services.db import models as orm
+        session.execute(delete(orm.Mailbox).where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
+
+@requires_db
+def test_identity_graph_inspection_no_raw_names_in_output():
+    """Display names must not appear in inspection output — only hashes and UUIDs."""
+    from sqlalchemy import select
+    from services.db import models as orm
+
+    session, mid = _setup_fixture_mailbox("igi-privacy-test@example.com")
+    try:
+        raw_names = set()
+        for row in session.execute(
+            select(orm.Identity.display_names).where(orm.Identity.mailbox_id == mid)
+        ).scalars():
+            raw_names.update(n.lower().strip() for n in (row or []) if n.strip())
+
+        result = _build_identity_graph_inspection(session, mid)
+        output_str = json.dumps(result)
+        for name in raw_names:
+            assert name not in output_str.lower(), \
+                f"Raw display name {name!r} leaked into identity_graph_inspection output"
+    finally:
+        from sqlalchemy import delete
+        session.execute(delete(orm.Mailbox).where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
+
+@requires_db
+def test_identity_graph_inspection_name_hash_is_hex():
+    """duplicate_display_names entries carry 16-char hex hashes, not raw names."""
+    session, mid = _setup_fixture_mailbox("igi-hash-test@example.com")
+    try:
+        result = _build_identity_graph_inspection(session, mid)
+        for entry in result["duplicate_display_names"]:
+            h = entry["name_hash"]
+            assert len(h) == 16 and all(c in "0123456789abcdef" for c in h), \
+                f"name_hash {h!r} is not a 16-char hex string"
+    finally:
+        from sqlalchemy import delete
+        from services.db import models as orm
+        session.execute(delete(orm.Mailbox).where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
+
+@requires_db
+def test_summary_json_includes_identity_graph_section(tmp_path):
+    """Full report summary.json contains the identity_graph_inspection section."""
+    from scripts.live_quality_report import main
+
+    session, mid = _setup_fixture_mailbox("igi-summary-test@example.com")
+    try:
+        out_dir = tmp_path / "out"
+        main(["--mailbox-id", mid, "--out", str(out_dir), "--sample-size", "5"])
+        summary = json.loads((out_dir / "summary.json").read_text())
+        assert "identity_graph_inspection" in summary
+        igi = summary["identity_graph_inspection"]
+        for key in ("high_identity_count_persons", "duplicate_display_names",
+                    "high_message_unknown_role", "non_noise_no_edge_domains",
+                    "edge_weight_by_role"):
+            assert key in igi
+    finally:
+        from sqlalchemy import delete
+        from services.db import models as orm
         session.execute(delete(orm.Mailbox).where(orm.Mailbox.id == mid))
         session.commit()
         session.close()

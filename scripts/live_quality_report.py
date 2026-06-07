@@ -199,6 +199,126 @@ def build_summary(session, mailbox_id: str, owner_email: str) -> dict:
         "thread_size_distribution": thread_size_dist,
         "owner_sent_thread_count": owner_thread_count,
         "graph_density": graph_density,
+        "identity_graph_inspection": _build_identity_graph_inspection(session, mid),
+    }
+
+
+def _build_identity_graph_inspection(session, mailbox_id: str) -> dict:
+    """S6.5 identity/graph quality signals.
+
+    All person names are hashed — raw display names never appear in output.
+    Engineers needing the raw value should query the identity table by person_id.
+    """
+    mid = mailbox_id
+
+    # 1. People with high identity count (over-merge signal).
+    high_id_rows = session.execute(
+        text(
+            "SELECT p.id AS person_id, COUNT(i.email) AS identity_count "
+            "FROM person p "
+            "LEFT JOIN identity i ON i.person_id = p.id AND i.mailbox_id = :mid "
+            "WHERE p.mailbox_id = :mid "
+            "GROUP BY p.id HAVING COUNT(i.email) > 3 "
+            "ORDER BY identity_count DESC LIMIT 10"
+        ),
+        {"mid": mid},
+    ).all()
+    high_identity_count = [
+        {"person_id": r.person_id, "identity_count": r.identity_count}
+        for r in high_id_rows
+    ]
+
+    # 2. Duplicate normalized display names across different persons (split/merge signal).
+    # Build in Python to avoid complex lateral-join SQL.
+    name_rows = session.execute(
+        text(
+            "SELECT i.person_id, lower(trim(dn)) AS norm_name "
+            "FROM identity i, unnest(i.display_names) dn "
+            "WHERE i.mailbox_id = :mid AND trim(dn) != ''"
+        ),
+        {"mid": mid},
+    ).all()
+    from collections import defaultdict
+    name_to_persons: dict[str, set] = defaultdict(set)
+    for row in name_rows:
+        name_to_persons[row.norm_name].add(row.person_id)
+    duplicate_display_names = sorted(
+        [
+            {
+                "name_hash":    _hash_id(norm_name, mid),
+                "person_ids":   sorted(pids),
+                "person_count": len(pids),
+            }
+            for norm_name, pids in name_to_persons.items()
+            if len(pids) > 1
+        ],
+        key=lambda d: -d["person_count"],
+    )[:10]
+
+    # 3. High-message people with UNKNOWN role (role-inference miss signal).
+    unknown_rows = session.execute(
+        text(
+            "SELECT p.id AS person_id, e.message_count "
+            "FROM person p "
+            "JOIN edge e ON e.person_id = p.id AND e.mailbox_id = :mid "
+            "WHERE p.mailbox_id = :mid AND lower(p.role) = 'unknown' "
+            "ORDER BY e.message_count DESC LIMIT 10"
+        ),
+        {"mid": mid},
+    ).all()
+    high_message_unknown_role = [
+        {"person_id": r.person_id, "message_count": r.message_count}
+        for r in unknown_rows
+    ]
+
+    # 4. Non-noise senders with no outbound edge (sparse-graph signal).
+    no_edge_rows = session.execute(
+        text(
+            "SELECT split_part(m.sender_email,'@',2) AS domain, COUNT(*) AS msg_count "
+            "FROM message m "
+            "WHERE m.mailbox_id = :mid AND m.noise = false "
+            "AND NOT EXISTS ( "
+            "  SELECT 1 FROM identity i "
+            "  JOIN edge e ON e.person_id = i.person_id AND e.mailbox_id = :mid "
+            "  WHERE i.mailbox_id = :mid AND i.email = m.sender_email "
+            ") "
+            "GROUP BY domain ORDER BY msg_count DESC LIMIT 10"
+        ),
+        {"mid": mid},
+    ).all()
+    non_noise_no_edge_domains = [
+        {"domain": r.domain, "message_count": r.msg_count}
+        for r in no_edge_rows
+    ]
+
+    # 5. Edge weight distribution by role.
+    role_rows = session.execute(
+        text(
+            "SELECT p.role, COUNT(*) AS edge_count, "
+            "ROUND(AVG(e.weight)::numeric, 4) AS avg_weight, "
+            "SUM(e.message_count) AS total_messages "
+            "FROM edge e JOIN person p ON p.id = e.person_id "
+            "WHERE e.mailbox_id = :mid "
+            "GROUP BY p.role ORDER BY total_messages DESC"
+        ),
+        {"mid": mid},
+    ).all()
+    edge_weight_by_role = [
+        {
+            "role":           r.role,
+            "edge_count":     r.edge_count,
+            "avg_weight":     float(r.avg_weight or 0),
+            "total_messages": r.total_messages,
+        }
+        for r in role_rows
+    ]
+
+    return {
+        "high_identity_count_persons":   high_identity_count,
+        "duplicate_display_names":       duplicate_display_names,
+        "high_message_unknown_role":     high_message_unknown_role,
+        "non_noise_no_edge_domains":     non_noise_no_edge_domains,
+        "edge_weight_by_role":           edge_weight_by_role,
     }
 
 
