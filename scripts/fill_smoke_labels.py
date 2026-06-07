@@ -46,9 +46,9 @@ LABEL_FIELDS = [
 
 # Sensitivity gold-label mapping.
 # The eval VALID_SENSITIVITY set is: none/hr/legal/privileged/personal/unsure/"".
-# Our smoke dataset uses: none/hr/legal.
-# "legal" messages are tagged by the classifier as [privileged, legal] because
-# they contain "attorney-client" keywords — that is expected and correct.
+# Our smoke dataset uses: none/hr/privileged.
+# "privileged" messages (legal-msa thread) contain "attorney-client" keywords;
+# the LEGAL tag is separate and requires cfg.legal_domains to be configured.
 _SENS_MAP = {
     "none":       "none",
     "hr":         "hr",
@@ -226,10 +226,8 @@ def main(argv=None):
 
     rows, matched, unmatched = fill_labels(samples, pk_to_header, ground_truth)
 
-    write_label_csv(rows, out_path)
-
     print(f"\nFilled {matched} / {len(samples)} sample rows from ground truth.")
-    if unmatched:
+    if unmatched and not args.allow_unmatched:
         print(
             f"\nERROR: {unmatched} report row(s) could not be matched to ground truth.\n"
             "Common causes:\n"
@@ -237,12 +235,12 @@ def main(argv=None):
             "  - Ingest missed the generated messages (account not empty; increase --max-messages)\n"
             "  - Stale ground_truth.json (regenerate with --dry-run to verify Message-IDs)\n"
             "  - Report generated before ingest completed\n"
-            "\nUnmatched rows have blank labels and will be treated as unreviewed by the eval.\n"
-            "Pass --allow-unmatched to suppress this error and write the label file anyway."
+            "\nLabel file NOT written. Pass --allow-unmatched to write anyway (unmatched rows\n"
+            "will have blank labels and be excluded from eval metrics)."
         )
-        if not args.allow_unmatched:
-            sys.exit(1)
+        sys.exit(1)
 
+    write_label_csv(rows, out_path)
     print(f"\nLabel file written to: {out_path.resolve()}")
     print(f"\nRun eval:")
     print(f"  python scripts/eval_live_quality.py \\")

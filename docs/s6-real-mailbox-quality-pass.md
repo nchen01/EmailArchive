@@ -549,10 +549,10 @@ used to hide weak structure.
 
 ## Implementation Status (S6.7 — 2026-06-07)
 
-**Tooling complete.** S6.1–S6.5 are built and reviewed. The original S6.4
-labeling path (human review of the spam-heavy throwaway mailbox) has been
-superseded by the smoke dataset approach described below — a purpose-built
-high-signal dataset that makes the label pass automatic.
+**Tooling complete.** S6.1–S6.5 are built and reviewed. A smoke dataset
+(59 messages of known ground truth) has been added to validate the pipeline
+and eval tooling without a manual labeling pass. Real-inbox calibration
+against a work mailbox remains future work.
 
 ### Scripts built
 
@@ -576,11 +576,13 @@ a way that makes the human labeling pass unreliable as a pipeline test:
 - The eval soft targets (noise precision ≥ 0.85, etc.) were calibrated for
   that corpus and should not be treated as product thresholds.
 
-The smoke dataset replaces this with 59 messages of known ground truth:
-14 project threads covering the full range of content the pipeline must
-handle, plus 4 noise messages designed to exercise the classifier headers.
-The eval run against the smoke dataset should pass all hard checks and hit
-soft targets near 1.0 — validating the pipeline, not the mailbox.
+The smoke dataset provides 59 messages of known ground truth — 14 project
+threads and 4 noise messages — to validate that the pipeline and eval
+tooling work correctly end-to-end. It does not calibrate real inbox noise
+rates or project-email behavior, and it does not replace a real labeled
+workmail corpus for tuning. Some soft metrics may be low-confidence or not
+evaluated (e.g. `privileged_recall` has only 4 examples; `legal_recall`
+has none because `LEGAL` tagging requires `cfg.legal_domains`).
 
 ### Smoke dataset workflow
 
@@ -666,7 +668,7 @@ and `privileged_recall=1.0`. This is expected and correct.
 | S6.1 | **Done** | Reports generated, deterministic, no raw content. |
 | S6.2 | **Done** | Label template emitted by S6.1; `.local/` gitignored; schema locked. |
 | S6.3 | **Done** | Eval enforces all hard checks; 8 hard checks + 5 soft targets. |
-| S6.4 | **Superseded** | Smoke dataset replaces the spam-mailbox labeling pass. Run eval against smoke dataset to validate the pipeline. |
+| S6.4 | **Deferred** | Smoke dataset validates the eval tooling. Real-inbox L0 tuning requires a labeled workmail corpus — deferred to post-L2. |
 | S6.5 | **Done** | Identity/graph signals in `summary.json`. |
 | S6.6 | **Deferred to L2** | Clustering requires a production embedding model. |
 | S6.7 | **Done** | Smoke dataset tooling committed. Eval run pending fresh throwaway Gmail. |

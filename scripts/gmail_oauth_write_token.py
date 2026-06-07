@@ -84,10 +84,10 @@ def main() -> None:
     print("=" * 60)
     print("\nbash / zsh:")
     print(f"  export GMAIL_WRITE_TOKEN='{one_liner}'")
-    print("\nPowerShell:")
-    print("  $env:GMAIL_WRITE_TOKEN = @'")
-    print(f"  {token_json}")
-    print("  '@")
+    print("\nPowerShell (closing '@' must be at column 1 — do not indent):")
+    print("$env:GMAIL_WRITE_TOKEN = @'")
+    print(token_json)
+    print("'@")
     print("\nNever commit this value.")
 
 

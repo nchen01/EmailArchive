@@ -1272,19 +1272,19 @@ def _get_credentials(token_env: str = "GMAIL_WRITE_TOKEN"):
     if missing:
         sys.exit(f"ERROR: token JSON missing fields: {missing}")
 
-    scopes = td.get("scopes", [])
     _INSERT_SCOPE = "https://www.googleapis.com/auth/gmail.insert"
     _MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify"
     _FULL_SCOPE   = "https://mail.google.com/"
-    has_write = any(
-        s in scopes for s in (_INSERT_SCOPE, _MODIFY_SCOPE, _FULL_SCOPE)
-    )
-    if scopes and not has_write:
-        # Token has scopes listed but none allow insert — give a clear error
-        # rather than a confusing 403 from the Gmail API mid-import.
+    scopes = td.get("scopes") or []
+    # Always check — an absent or empty scopes field is treated as a missing
+    # write scope, not as "unknown scopes, proceed anyway".  A token obtained
+    # via gmail_oauth_token.py (gmail.readonly) will fail here rather than
+    # producing a confusing 403 mid-import.
+    has_write = any(s in scopes for s in (_INSERT_SCOPE, _MODIFY_SCOPE, _FULL_SCOPE))
+    if not has_write:
         sys.exit(
             "ERROR: the token does not have a write scope.\n"
-            f"  Token scopes : {scopes}\n"
+            f"  Token scopes : {scopes or '(none — field absent or empty)'}\n"
             f"  Required     : {_INSERT_SCOPE}\n"
             "Run: python scripts/gmail_oauth_write_token.py\n"
             "to obtain a token with gmail.insert scope.\n"
@@ -1297,7 +1297,7 @@ def _get_credentials(token_env: str = "GMAIL_WRITE_TOKEN"):
         token_uri=td["token_uri"],
         client_id=td["client_id"],
         client_secret=td["client_secret"],
-        scopes=scopes or [_INSERT_SCOPE],
+        scopes=scopes,
     )
 
 
