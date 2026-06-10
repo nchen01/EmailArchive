@@ -98,8 +98,8 @@ def fetch_message_id_headers(mailbox_id: str, pks: list[str]) -> dict[str, str]:
     from sqlalchemy import text
     from services.db.engine import SessionLocal
 
-    pk_ints = [int(pk) for pk in pks if pk.isdigit()]
-    if not pk_ints:
+    pk_ids = [pk for pk in pks if pk]
+    if not pk_ids:
         return {}
 
     session = SessionLocal()
@@ -107,9 +107,9 @@ def fetch_message_id_headers(mailbox_id: str, pks: list[str]) -> dict[str, str]:
         rows = session.execute(
             text(
                 "SELECT id, message_id_header FROM message "
-                "WHERE mailbox_id = :mid AND id = ANY(:pks)"
+                "WHERE mailbox_id = :mid AND id::text = ANY(:pks)"
             ),
-            {"mid": mailbox_id, "pks": pk_ints},
+            {"mid": mailbox_id, "pks": pk_ids},
         ).all()
         return {str(r.id): r.message_id_header for r in rows}
     finally:

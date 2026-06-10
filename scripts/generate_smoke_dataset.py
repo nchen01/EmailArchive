@@ -1319,7 +1319,7 @@ def import_messages(messages: list[dict]) -> list[str]:
             userId="me",
             body={"raw": encoded},
             neverMarkSpam=True,
-            internalDateSource="dateTimeHeader",
+            internalDateSource="dateHeader",
         ).execute()
         inserted_ids.append(result.get("id", ""))
         print(f"  [{i:2d}/{len(messages)}] imported {msg['thread_key']}-{msg['msg_index']} "
