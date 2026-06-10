@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from services.db import models as orm
 from services.retrieval.contracts import RetrievalHit
+from services.retrieval.embed_client import EmbedError
 from services.retrieval.params import RetrievalParams
 
 log = logging.getLogger(__name__)
@@ -40,6 +41,12 @@ def vector_search(
     array-adapter ambiguity with the pgvector type.
     """
     mid = str(mailbox_id)
+
+    if len(query_embedding) != params.embed_dim:
+        raise EmbedError(
+            f"query_embedding has {len(query_embedding)} dimensions, "
+            f"expected embed_dim={params.embed_dim}"
+        )
 
     # Format the query vector as a Postgres array literal for the CAST.
     # The values come from our own embed_client, never from user input.
@@ -68,7 +75,7 @@ def vector_search(
           AND me.embed_model = :model
           {noise_clause}
           {sens_clause}
-        ORDER BY me.embedding <=> CAST(:qvec AS vector)
+        ORDER BY me.embedding <=> CAST(:qvec AS vector), m.ts DESC, m.id
         LIMIT :k
     """)  # noqa: S608 — noise_clause/sens_clause are static strings, not user input
 

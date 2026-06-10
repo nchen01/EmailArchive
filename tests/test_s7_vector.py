@@ -83,6 +83,18 @@ def test_snippet_truncated_to_300_chars():
     assert len(long_text[:300]) == 300
 
 
+def test_wrong_query_dim_raises():
+    """vector_search must raise EmbedError when query length != embed_dim."""
+    from unittest.mock import MagicMock
+    from services.retrieval.embed_client import EmbedError
+    from services.retrieval.vector import vector_search
+
+    params = RetrievalParams(embed_model="fake-embed", embed_dim=1024)
+    # Pass a 8-dim vector when params says 1024.
+    with pytest.raises(EmbedError, match="embed_dim"):
+        vector_search(MagicMock(), "some-mailbox-id", [0.1] * 8, params)
+
+
 def test_hits_sorted_descending_by_vector_score():
     hits = [_make_hit(s) for s in (0.4, 0.9, 0.7, 0.55)]
     hits.sort(key=lambda h: h.vector_score or 0.0, reverse=True)
