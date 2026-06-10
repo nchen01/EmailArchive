@@ -10,12 +10,16 @@ Adds:
   messages whose text has not changed since last embedding.
 - HNSW index on embedding using cosine distance (vector_cosine_ops).
 - Covering index on (mailbox_id, embed_model) for backfill and retrieval.
+- schema_meta SCHEMA_VERSION bumped from 0.1.0 to 0.2.0 (spec 04 §9 DoD).
 
 Revision ID: 0006_message_embedding
 Revises: 0005_fix_event_citation_check
 Create Date: 2026-06-10
 """
 from alembic import op
+from ekc_schemas import SCHEMA_VERSION  # "0.2.0" — imported so the value stays in sync
+
+_PREV_SCHEMA_VERSION = "0.1.0"
 
 revision = "0006_message_embedding"
 down_revision = "0005_fix_event_citation_check"
@@ -79,8 +83,16 @@ def upgrade() -> None:
         "ON message_embedding (mailbox_id, embed_model);"
     )
 
+    # Bump schema_meta to match ekc_schemas.SCHEMA_VERSION (spec 04 §9 DoD).
+    op.execute(
+        f"UPDATE schema_meta SET v = '{SCHEMA_VERSION}' WHERE k = 'SCHEMA_VERSION';"
+    )
+
 
 def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS message_embedding;")
     op.execute("DROP INDEX IF EXISTS ix_message_subject_clean_fts;")
     op.execute("ALTER TABLE message DROP COLUMN IF EXISTS subject_clean_tsv;")
+    op.execute(
+        f"UPDATE schema_meta SET v = '{_PREV_SCHEMA_VERSION}' WHERE k = 'SCHEMA_VERSION';"
+    )

@@ -101,6 +101,78 @@ def test_message_embedding_record_rejects_length_mismatch():
         )
 
 
+# ── offline: mappers ─────────────────────────────────────────────────────────
+
+def test_embedding_to_row_shape():
+    """embedding_to_row returns the expected column dict without an id key."""
+    from ekc_schemas import MessageEmbeddingRecord
+    from services.db.mappers import embedding_to_row
+
+    mid = str(uuid.uuid4())
+    mbx = str(uuid.uuid4())
+    rec = MessageEmbeddingRecord(
+        message_id=mid,
+        mailbox_id=mbx,
+        embed_model="voyage-4",
+        embed_dim=4,
+        content_hash="deadbeef",
+        embedded_at=datetime(2026, 6, 10, tzinfo=timezone.utc),
+        embedding=[0.1, 0.2, 0.3, 0.4],
+    )
+    row = embedding_to_row(rec)
+
+    assert "id" not in row, "id must be DB-generated, not supplied by the mapper"
+    assert row["message_id"] == mid
+    assert row["mailbox_id"] == mbx
+    assert row["embed_model"] == "voyage-4"
+    assert row["embed_dim"] == 4
+    assert row["content_hash"] == "deadbeef"
+    assert row["embedding"] == [0.1, 0.2, 0.3, 0.4]
+
+
+def test_row_to_embedding_round_trip():
+    """row_to_embedding reconstructs a valid MessageEmbeddingRecord from a mock row."""
+    from types import SimpleNamespace
+    from services.db.mappers import row_to_embedding
+
+    mid = str(uuid.uuid4())
+    mbx = str(uuid.uuid4())
+    fake_row = SimpleNamespace(
+        message_id=mid,
+        mailbox_id=mbx,
+        embed_model="voyage-4",
+        embed_dim=4,
+        content_hash="deadbeef",
+        embedded_at=datetime(2026, 6, 10, tzinfo=timezone.utc),
+        embedding=[0.1, 0.2, 0.3, 0.4],
+    )
+    rec = row_to_embedding(fake_row)
+
+    assert rec.message_id == mid
+    assert rec.mailbox_id == mbx
+    assert rec.embed_model == "voyage-4"
+    assert rec.embed_dim == 4
+    assert rec.embedding == [0.1, 0.2, 0.3, 0.4]
+
+
+def test_row_to_embedding_enforces_length_validator():
+    """row_to_embedding must raise if DB vector length does not match embed_dim."""
+    from types import SimpleNamespace
+    from services.db.mappers import row_to_embedding
+
+    fake_row = SimpleNamespace(
+        message_id=str(uuid.uuid4()),
+        mailbox_id=str(uuid.uuid4()),
+        embed_model="voyage-4",
+        embed_dim=1024,          # claims 1024 ...
+        content_hash="x",
+        embedded_at=datetime(2026, 6, 10, tzinfo=timezone.utc),
+        embedding=[0.1, 0.2],   # ... but only 2 elements
+    )
+    with pytest.raises(Exception, match="embed_dim"):
+        row_to_embedding(fake_row)
+
+
 # ── offline: ORM model ────────────────────────────────────────────────────────
 
 def test_message_embedding_orm_importable():
@@ -153,6 +225,23 @@ def test_message_embedding_table_exists():
             )
         ).fetchone()
     assert result is not None, "message_embedding table not found"
+
+
+@_requires_db
+def test_schema_meta_version_after_upgrade():
+    """After alembic upgrade head, schema_meta.SCHEMA_VERSION must be 0.2.0."""
+    from sqlalchemy import text
+    from ekc_schemas import SCHEMA_VERSION
+    from services.db.engine import SessionLocal
+    with SessionLocal() as session:
+        row = session.execute(
+            text("SELECT v FROM schema_meta WHERE k = 'SCHEMA_VERSION'")
+        ).fetchone()
+    assert row is not None, "schema_meta row for SCHEMA_VERSION not found"
+    assert row[0] == SCHEMA_VERSION, (
+        f"schema_meta.SCHEMA_VERSION is {row[0]!r}, expected {SCHEMA_VERSION!r}. "
+        "Run alembic upgrade head to apply migration 0006."
+    )
 
 
 @_requires_db
