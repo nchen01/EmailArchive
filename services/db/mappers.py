@@ -24,6 +24,7 @@ from ekc_schemas import (
     Identity,
     LabelSource,
     Message,
+    MessageEmbeddingRecord,
     Org,
     Person,
     Project,
@@ -296,6 +297,41 @@ def event_to_row(event: Event, mailbox_id: str) -> dict:
         "source_message_ids": list(event.source_message_ids),
         "confidence": event.confidence,
     }
+
+
+# ── MessageEmbedding (L2, spec 04 §6, migration 0006) ────────────────────────
+
+def embedding_to_row(rec: MessageEmbeddingRecord) -> dict:
+    """Convert a MessageEmbeddingRecord to a column dict for DB upsert.
+
+    ``id`` is omitted — the DB generates it. Caller must supply the
+    ON CONFLICT (message_id, embed_model) DO UPDATE clause for idempotency.
+    """
+    return {
+        "mailbox_id":   rec.mailbox_id,
+        "message_id":   rec.message_id,
+        "embed_model":  rec.embed_model,
+        "embed_dim":    rec.embed_dim,
+        "content_hash": rec.content_hash,
+        "embedded_at":  rec.embedded_at,
+        "embedding":    rec.embedding,
+    }
+
+
+def row_to_embedding(row: orm.MessageEmbedding) -> MessageEmbeddingRecord:
+    """Reconstruct a MessageEmbeddingRecord from an ORM row.
+
+    pgvector returns the embedding as a list or numpy array; list() normalises both.
+    """
+    return MessageEmbeddingRecord(
+        message_id=str(row.message_id),
+        mailbox_id=str(row.mailbox_id),
+        embed_model=row.embed_model,
+        embed_dim=row.embed_dim,
+        content_hash=row.content_hash,
+        embedded_at=row.embedded_at,
+        embedding=list(row.embedding),
+    )
 
 
 def row_to_event(row: orm.Event) -> Event:

@@ -52,9 +52,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"  # bumped: added MessageEmbeddingRecord (S7.2)
 
 
 # ── Enums ───────────────────────────────────────────────────────────────────
@@ -251,6 +251,15 @@ class MessageEmbeddingRecord(BaseModel):
     content_hash: str
     embedded_at:  datetime
     embedding:    list[float]
+
+    @model_validator(mode="after")
+    def _embedding_length_matches_dim(self) -> "MessageEmbeddingRecord":
+        if len(self.embedding) != self.embed_dim:
+            raise ValueError(
+                f"embedding length {len(self.embedding)} does not match "
+                f"embed_dim {self.embed_dim}"
+            )
+        return self
 
 
 __all__ = [

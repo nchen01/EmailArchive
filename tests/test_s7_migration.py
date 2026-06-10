@@ -45,6 +45,12 @@ def _content_hash(subject: str, clean_text: str) -> str:
 
 # ── offline: schema model ─────────────────────────────────────────────────────
 
+def test_message_embedding_record_public_import():
+    """MessageEmbeddingRecord must be reachable via the canonical public path."""
+    from ekc_schemas import MessageEmbeddingRecord  # not ekc_schemas.models
+    assert MessageEmbeddingRecord is not None
+
+
 def test_message_embedding_record_importable():
     from ekc_schemas.models import MessageEmbeddingRecord
     assert MessageEmbeddingRecord is not None
@@ -77,6 +83,21 @@ def test_message_embedding_record_rejects_zero_dim():
             content_hash="abc",
             embedded_at=datetime(2026, 6, 10, tzinfo=timezone.utc),
             embedding=[],
+        )
+
+
+def test_message_embedding_record_rejects_length_mismatch():
+    """embed_dim=1024 with a 3-element vector must fail validation."""
+    from ekc_schemas.models import MessageEmbeddingRecord
+    with pytest.raises(Exception, match="embed_dim"):
+        MessageEmbeddingRecord(
+            message_id=str(uuid.uuid4()),
+            mailbox_id=str(uuid.uuid4()),
+            embed_model="voyage-4",
+            embed_dim=1024,
+            content_hash="abc",
+            embedded_at=datetime(2026, 6, 10, tzinfo=timezone.utc),
+            embedding=[0.1, 0.2, 0.3],  # wrong length
         )
 
 
