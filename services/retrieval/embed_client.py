@@ -20,7 +20,6 @@ import hashlib
 import logging
 import math
 import os
-import random
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -61,19 +60,22 @@ class EmbedClient(Protocol):
 class FakeEmbedClient:
     """Deterministic, offline embedder for tests and retrieval evals.
 
-    Each text is hashed with SHA-256, which seeds a PRNG to generate a
-    Gaussian vector that is then L2-normalised to a unit vector. The same
-    text always produces the same embedding; different texts produce different
-    embeddings with high probability.
+    Uses feature hashing over lowercased word tokens — the same technique as
+    services/enrich/clustering/testkit.py. Texts sharing vocabulary land close
+    in cosine space, just as a real sentence embedder would. This means retrieval
+    evals test actual retrievability, not just plumbing.
 
-    Document and query embeddings are distinct: "doc:<text>" and
-    "query:<text>" are hashed separately, mirroring how Voyage AI's
-    input_type parameter produces different representations for the same text.
+    embed_query and embed_documents produce the same vector for the same text.
+    Voyage AI's query/document modes are in the same comparable vector space; in
+    fake mode the distinction is dropped so an exact text match has cosine
+    similarity ≈ 1.0 and retrieval ranking is meaningful.
 
     No API key, network access, or installed voyageai package required.
     """
 
     def __init__(self, dim: int = 1024, model: str = "fake-embed") -> None:
+        if dim <= 0:
+            raise EmbedError(f"embed dim must be > 0, got {dim}")
         self._dim   = dim
         self._model = model
 
@@ -85,19 +87,35 @@ class FakeEmbedClient:
     def dim(self) -> int:
         return self._dim
 
-    def _vector(self, key: str) -> list[float]:
-        digest = hashlib.sha256(key.encode()).digest()
-        seed   = int.from_bytes(digest[:8], "big")
-        rng    = random.Random(seed)
-        vec    = [rng.gauss(0.0, 1.0) for _ in range(self._dim)]
-        mag    = math.sqrt(sum(x * x for x in vec))
+    def _vector(self, text: str) -> list[float]:
+        """Feature-hash over lowercased word tokens → unit vector."""
+        vec = [0.0] * self._dim
+        for tok in text.lower().split():
+            tok = "".join(ch for ch in tok if ch.isalnum())
+            if len(tok) < 3:
+                continue
+            h      = hashlib.sha256(tok.encode()).digest()
+            bucket = int.from_bytes(h[:4], "big") % self._dim
+            sh     = hashlib.sha256((tok + "#sign").encode()).digest()
+            sign   = 1.0 if (sh[0] & 1) else -1.0
+            vec[bucket] += sign
+
+        mag = math.sqrt(sum(x * x for x in vec))
+        if mag == 0.0:
+            # Fallback for empty or all-short-token text.
+            h   = hashlib.sha256(text.encode()).digest()
+            idx = int.from_bytes(h[:4], "big") % self._dim
+            vec[idx] = 1.0
+            mag = 1.0
         return [x / mag for x in vec]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [self._vector(f"doc:{t}") for t in texts]
+        return [self._vector(t) for t in texts]
 
     def embed_query(self, text: str) -> list[float]:
-        return self._vector(f"query:{text}")
+        # Identical to embed_documents in fake mode: query and document are in
+        # the same space, so an exact text match scores cosine ≈ 1.0.
+        return self._vector(text)
 
 
 # ── VoyageEmbedClient ─────────────────────────────────────────────────────────
@@ -118,6 +136,9 @@ class VoyageEmbedClient:
         model:   str        = "voyage-4",
         dim:     int        = 1024,
     ) -> None:
+        if dim <= 0:
+            raise EmbedError(f"embed dim must be > 0, got {dim}")
+
         try:
             import voyageai as _voyageai
         except ImportError as exc:
@@ -160,6 +181,7 @@ class VoyageEmbedClient:
                 texts,
                 model=self._model,
                 input_type=input_type,
+                output_dimension=self._dim,
             )
         except Exception as exc:
             raise EmbedError(
@@ -177,4 +199,12 @@ class VoyageEmbedClient:
                 "tokens":     tokens,
             },
         )
-        return result.embeddings
+        embeddings = result.embeddings
+        for i, vec in enumerate(embeddings):
+            if len(vec) != self._dim:
+                raise EmbedError(
+                    f"Voyage returned vector of length {len(vec)} at index {i}, "
+                    f"expected {self._dim} (model={self._model}, "
+                    f"output_dimension={self._dim})"
+                )
+        return embeddings

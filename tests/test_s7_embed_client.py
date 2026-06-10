@@ -36,13 +36,13 @@ def test_fake_embed_different_texts_differ():
     assert v1 != v2
 
 
-def test_fake_embed_query_differs_from_document():
-    # Document and query embeddings for the same text must be distinct,
-    # mirroring Voyage AI's input_type behaviour.
+def test_fake_embed_query_and_document_identical_for_same_text():
+    # In fake mode, query and document embeddings are the same vector for the
+    # same text. Voyage's query/document modes are in the same comparable space;
+    # making them identical here ensures an exact text match scores cosine ≈ 1.0
+    # in retrieval evals, so evals test retrievability not just plumbing.
     client = FakeEmbedClient(dim=32)
-    doc_vec   = client.embed_documents(["hello"])[0]
-    query_vec = client.embed_query("hello")
-    assert doc_vec != query_vec
+    assert client.embed_documents(["hello"])[0] == client.embed_query("hello")
 
 
 # ── FakeEmbedClient — shape and normalisation ─────────────────────────────────
@@ -78,6 +78,39 @@ def test_fake_embed_documents_batch():
 def test_fake_embed_documents_empty_batch():
     client = FakeEmbedClient(dim=8)
     assert client.embed_documents([]) == []
+
+
+def test_fake_embed_query_ranks_matching_document_first():
+    # The core retrievability requirement: a query for "atlas rollout" must
+    # score higher cosine similarity against a document containing those tokens
+    # than against unrelated content. Validates that the feature-hash embedding
+    # carries topical signal, not just plumbing.
+    client = FakeEmbedClient(dim=64)
+    query       = client.embed_query("atlas rollout deployment")
+    doc_match   = client.embed_documents(["atlas rollout deployment complete"])[0]
+    doc_noise   = client.embed_documents(["quarterly budget review finance"])[0]
+
+    def cosine(a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        na  = math.sqrt(sum(x * x for x in a))
+        nb  = math.sqrt(sum(x * x for x in b))
+        return dot / (na * nb)
+
+    assert cosine(query, doc_match) > cosine(query, doc_noise), (
+        f"Expected matching doc to rank higher: "
+        f"sim(match)={cosine(query, doc_match):.3f}, "
+        f"sim(noise)={cosine(query, doc_noise):.3f}"
+    )
+
+
+def test_fake_embed_dim_zero_raises():
+    with pytest.raises(EmbedError, match="dim"):
+        FakeEmbedClient(dim=0)
+
+
+def test_fake_embed_dim_negative_raises():
+    with pytest.raises(EmbedError, match="dim"):
+        FakeEmbedClient(dim=-1)
 
 
 # ── FakeEmbedClient — protocol conformance ───────────────────────────────────
