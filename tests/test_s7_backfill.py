@@ -147,6 +147,67 @@ def test_content_hash_is_deterministic():
     assert h1 == h2
 
 
+# ── embed output validation ───────────────────────────────────────────────────
+
+def test_mismatched_embed_count_raises():
+    """If embed_documents returns fewer vectors than texts, raise EmbedError."""
+    from scripts.embed_backfill import run_backfill
+    from services.retrieval.embed_client import EmbedError
+
+    mid  = str(uuid.uuid4())
+    msgs = [_make_msg(str(uuid.uuid4()), f"S{i}", f"B{i}") for i in range(3)]
+    sess = _FakeSession(candidate_rows=msgs, existing_rows=[])
+
+    client = FakeEmbedClient(dim=8)
+
+    def bad_embed(texts):
+        # Return one fewer vector than requested.
+        return client._FakeEmbedClient__class__  # trigger fallback below
+
+    # Simpler approach: monkey-patch to return wrong count.
+    real_embed = client.embed_documents
+
+    def short_embed(texts):
+        return real_embed(texts)[:-1]  # drop last vector
+
+    client.embed_documents = short_embed  # type: ignore[method-assign]
+
+    with pytest.raises(EmbedError, match="vectors for"):
+        run_backfill(
+            mailbox_id=mid,
+            embed_client=client,
+            dry_run=False,
+            confirm=True,
+            session=sess,
+        )
+
+
+def test_wrong_vector_dim_raises():
+    """If any returned vector has wrong length, raise EmbedError."""
+    from scripts.embed_backfill import run_backfill
+    from services.retrieval.embed_client import EmbedError
+
+    mid  = str(uuid.uuid4())
+    msgs = [_make_msg(str(uuid.uuid4()), "S", "B")]
+    sess = _FakeSession(candidate_rows=msgs, existing_rows=[])
+
+    client = FakeEmbedClient(dim=8)
+
+    def wrong_dim_embed(texts):
+        return [[0.1] * 4]  # dim=4 instead of dim=8
+
+    client.embed_documents = wrong_dim_embed  # type: ignore[method-assign]
+
+    with pytest.raises(EmbedError, match="vector length"):
+        run_backfill(
+            mailbox_id=mid,
+            embed_client=client,
+            dry_run=False,
+            confirm=True,
+            session=sess,
+        )
+
+
 # ── dry_run — no DB writes ────────────────────────────────────────────────────
 
 def test_dry_run_makes_no_db_writes():

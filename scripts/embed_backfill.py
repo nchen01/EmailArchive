@@ -44,7 +44,7 @@ from sqlalchemy import text  # noqa: E402
 from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: E402
 
 from services.db import models as orm  # noqa: E402
-from services.retrieval.embed_client import EmbedClient  # noqa: E402
+from services.retrieval.embed_client import EmbedClient, EmbedError  # noqa: E402
 
 
 _COST_PER_1K_TOKENS = 0.000006  # voyage-4 approximate; for dry-run estimate only
@@ -223,6 +223,20 @@ def run_backfill(
             t0 = time.monotonic()
             embeddings = embed_client.embed_documents(texts)
             elapsed = time.monotonic() - t0
+
+            # Validate before touching the DB: a length mismatch or wrong vector
+            # dimension here means the client is broken, not the data.
+            if len(embeddings) != len(batch):
+                raise EmbedError(
+                    f"batch {batch_num}: embed_documents returned {len(embeddings)} "
+                    f"vectors for {len(batch)} texts"
+                )
+            for vec_idx, emb in enumerate(embeddings):
+                if len(emb) != embed_client.dim:
+                    raise EmbedError(
+                        f"batch {batch_num} index {vec_idx}: vector length "
+                        f"{len(emb)} != embed_dim {embed_client.dim}"
+                    )
 
             _upsert_batch(
                 session,
