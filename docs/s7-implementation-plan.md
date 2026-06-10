@@ -27,21 +27,23 @@ Query
   │
   ├─► L1 exact routing (Person / Project / Event entity detection)
   │         │
-  │    hits? ──yes──► L1 structured evidence + optional L2 supporting evidence
-  │         │
-  │        no
-  │         │
-  └─► L2 retrieval (fallback)
-            │
+  │    L1 hits? ──yes──► L1 structured evidence (primary answer)
+  │         │                      │
+  │        no                      │ (always)
+  │         │                      │
+  ├─────────┴──────────────────────┘
+  │
+  └─► L2 hybrid retrieval (always runs — capped supporting evidence;
+            │              sole source when L1 has no match)
        vector search (HNSW cosine, voyage-4)
             +
-       FTS search (Postgres tsvector/tsquery)
+       FTS search (Postgres subject_clean_tsv)
             │
        hybrid merge + deterministic rerank
             │
        evidence quality gate
             │
-       hits? ──yes──► cited evidence to synthesis
+       hits? ──yes──► cited evidence to synthesis (L1 + L2 combined)
             │
            no──────► "insufficient evidence" (no fabrication)
 ```
@@ -285,10 +287,11 @@ Merge strategy:
    recency   = recency_weight * exp(-age_days / half_life_days)
    score     = relevance + boost + recency
    ```
-   All four weights (`vector_weight`, `fts_weight`, `recency_weight`,
-   `boost_weight`) are explicit fields in `RetrievalParams`, not inline
-   constants. Default values: `vector_weight=0.6`, `fts_weight=0.4`,
-   `recency_weight=0.05`, so recency cannot dominate relevance.
+   All weights (`vector_weight`, `fts_weight`, `recency_weight`) and boost
+   values (`project_boost`, `person_boost`) are explicit fields in
+   `RetrievalParams`, not inline constants. Default values:
+   `vector_weight=0.6`, `fts_weight=0.4`, `recency_weight=0.05`, so
+   recency cannot dominate relevance.
 4. Sort descending by combined score; take top `rerank_top_k`.
 5. If `params.enable_reranking` is True **and** `ENABLE_RERANKING` env is set,
    call the Voyage reranker as a post-processing step.
@@ -488,7 +491,7 @@ project mail; unexpected relevance is part of the value.
 | `packages/ekc_schemas/models.py` | Add `MessageEmbeddingRecord`. Do in S7.2. |
 | `services/db/models.py` | Add `MessageEmbedding`. Do in S7.2. |
 | `spec 04` ticket 4.5 | Resolved by D12b. Migration 0006 is now S7.1. |
-| `docs/implementation-plan.md` | L2 section references "external query router" — update lazily when S7.1 lands, not before. |
+| `docs/implementation-plan.md` | Updated — L2 and embedding-model deferral notes now reference D12 as resolved. |
 
 ## Definition of Done
 

@@ -187,6 +187,8 @@ email-archive/
 | S3 | Project clustering + project view surface | ✓ done | spec 03, spec 02 |
 | S4 | Event extraction + L3 grounded synthesis | ✓ done | spec 01 §7 |
 | S5 | Cover-for-me query (bounded L1-only, D11) | ✓ done | implementation-plan §6.3 |
+| S6 | Real-mailbox quality pass (live report, eval, smoke dataset, identity/graph inspection) | ✓ done | docs/s6-real-mailbox-quality-pass.md |
+| S7 | L2 hybrid retrieval (voyage-4 embeddings, pgvector HNSW, cover-for-me upgrade, D12) | ⬜ next | docs/s7-implementation-plan.md |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash
