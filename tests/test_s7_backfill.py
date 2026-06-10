@@ -82,6 +82,46 @@ class _FakeSession:
         pass
 
 
+# ── _DryRunEmbedClient ────────────────────────────────────────────────────────
+
+def test_dry_run_client_has_correct_model():
+    from scripts.embed_backfill import _DryRunEmbedClient
+    c = _DryRunEmbedClient(model="voyage-4")
+    assert c.model == "voyage-4"
+    assert c.dim   == 1024
+
+
+def test_dry_run_client_raises_on_embed_documents():
+    from scripts.embed_backfill import _DryRunEmbedClient
+    c = _DryRunEmbedClient(model="voyage-4")
+    with pytest.raises(RuntimeError, match="dry-run"):
+        c.embed_documents(["text"])
+
+
+def test_dry_run_main_does_not_require_voyage_key(monkeypatch, tmp_path):
+    """--dry-run must succeed even when VOYAGE_API_KEY is absent."""
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+
+    # run_backfill() needs a real session to talk to the DB, but we only
+    # want to test the CLI-level key bypass.  Patch run_backfill itself.
+    import scripts.embed_backfill as mod
+    calls = []
+
+    def _fake_run(**kwargs):
+        calls.append(kwargs)
+        return {"to_embed": 0, "embedded": 0, "total_messages": 0,
+                "already_embedded": 0, "est_tokens": 0, "est_cost_usd": 0.0,
+                "model": "voyage-4"}
+
+    monkeypatch.setattr(mod, "run_backfill", _fake_run)
+
+    mod.main(["--mailbox-id", str(uuid.uuid4()), "--dry-run", "--confirm"])
+
+    assert calls, "run_backfill should have been called"
+    client = calls[0]["embed_client"]
+    assert isinstance(client, mod._DryRunEmbedClient)
+
+
 # ── content_hash ──────────────────────────────────────────────────────────────
 
 def test_content_hash_matches_sha256():

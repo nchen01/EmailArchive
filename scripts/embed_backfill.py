@@ -51,6 +51,33 @@ _COST_PER_1K_TOKENS = 0.000006  # voyage-4 approximate; for dry-run estimate onl
 _CHARS_PER_TOKEN    = 4          # rough heuristic for token count estimation
 
 
+class _DryRunEmbedClient:
+    """Sentinel embed client for --dry-run mode.
+
+    Carries model/dim so run_backfill() can fetch existing hashes and report
+    correct stats without needing VOYAGE_API_KEY.  embed_documents() raises
+    loudly if called — that would be a bug in the dry-run path.
+    """
+
+    def __init__(self, model: str, dim: int = 1024) -> None:
+        self._model = model
+        self._dim   = dim
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("embed_documents called during --dry-run (this is a bug)")
+
+    def embed_query(self, text: str) -> list[float]:
+        raise RuntimeError("embed_query called during --dry-run (this is a bug)")
+
+
 def content_hash(subject: str, clean_text: str) -> str:
     """SHA-256 of subject + '\\n\\n' + clean_text (D12 spec, S7.5)."""
     payload = subject + "\n\n" + clean_text
@@ -248,7 +275,12 @@ def main(argv: list[str] | None = None) -> None:
                         help="Skip the interactive confirmation prompt.")
     args = parser.parse_args(argv)
 
-    client = _build_voyage_client(args.model)
+    # Dry-run never calls the API, so it must not require VOYAGE_API_KEY.
+    if args.dry_run:
+        client: EmbedClient = _DryRunEmbedClient(model=args.model)
+    else:
+        client = _build_voyage_client(args.model)
+
     run_backfill(
         mailbox_id=args.mailbox_id,
         embed_client=client,
