@@ -1,5 +1,12 @@
 # L2 Product Decisions and Drift Guardrails
 
+> **Superseded by D12.** The decisions in this document were the pre-S7
+> options analysis. The locked decisions are in `docs/decisions.md` (D12)
+> and `docs/s7-implementation-plan.md`. In particular, the recommended
+> embedding model here (`text-embedding-3-small`, 1536-dim) was not
+> adopted — S7 uses Voyage AI `voyage-4` at 1024 dimensions. Read this
+> doc for context and rationale history only.
+
 This note records the product decisions needed before implementing L2 retrieval.
 It is written for the product lead and future engineers so the project does not
 drift from the existing L0 -> L1 -> L2 -> L3 architecture.

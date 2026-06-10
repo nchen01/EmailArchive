@@ -1,7 +1,8 @@
 """L3 "What's been done" project synthesis (S4 ticket 4.7, spec 02 §6).
 
-Assembles grounded context from L1 objects (Events + recent threads) — it does
-NOT call a vector store (L2 is externally owned; S4 guide §1). The model call is
+Assembles grounded context from L1 objects (Events + recent threads). In S7
+this will be upgraded to also accept L2 retrieval hits as supporting evidence;
+for now it operates on L1 only. The model call is
 injected as ``synth_fn`` so tests stay offline and deterministic.
 
 Anti-patterns enforced in the system prompt (S4 guide §5):

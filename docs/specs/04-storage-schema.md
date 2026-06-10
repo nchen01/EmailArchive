@@ -220,8 +220,13 @@ CREATE TABLE event (
 
 ## 6. Embeddings & retrieval support
 
-Vectors live next to the relational data so the (externally owned) query router can do filtered ANN
-+ BM25 hybrid in one store. One row per message (chunk at message granularity for citation).
+Vectors live next to the relational data for filtered ANN + BM25 hybrid in one store.
+One row per message (chunk at message granularity for citation).
+
+> **D12 note:** the "externally owned query router" reference is rescinded. S7 builds a
+> local `services/retrieval` hybrid retriever (Voyage AI `voyage-4`, 1024-dim, HNSW cosine).
+> Migration 0006 implements the `message_embedding` table below. See `docs/decisions.md` D12
+> and `docs/s7-implementation-plan.md` for the full spec.
 
 ```sql
 CREATE TABLE message_embedding (
