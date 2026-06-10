@@ -311,6 +311,74 @@ def test_changed_hash_triggers_embed():
     assert stats.get("embedded", 0) == 1
 
 
+# ── batch_size validation ─────────────────────────────────────────────────────
+
+def test_batch_size_zero_raises():
+    from scripts.embed_backfill import run_backfill
+    mid  = str(uuid.uuid4())
+    sess = _FakeSession(candidate_rows=[], existing_rows=[])
+    with pytest.raises(ValueError, match="batch_size"):
+        run_backfill(
+            mailbox_id=mid,
+            embed_client=FakeEmbedClient(dim=8),
+            batch_size=0,
+            dry_run=False,
+            confirm=True,
+            session=sess,
+        )
+
+
+def test_batch_size_negative_raises():
+    from scripts.embed_backfill import run_backfill
+    mid  = str(uuid.uuid4())
+    sess = _FakeSession(candidate_rows=[], existing_rows=[])
+    with pytest.raises(ValueError, match="batch_size"):
+        run_backfill(
+            mailbox_id=mid,
+            embed_client=FakeEmbedClient(dim=8),
+            batch_size=-5,
+            dry_run=False,
+            confirm=True,
+            session=sess,
+        )
+
+
+# ── stats — "embedded" key always present ─────────────────────────────────────
+
+def test_stats_embedded_present_on_dry_run():
+    from scripts.embed_backfill import run_backfill
+    mid  = str(uuid.uuid4())
+    msgs = [_make_msg(str(uuid.uuid4()), "S", "B")]
+    sess = _FakeSession(candidate_rows=msgs, existing_rows=[])
+    stats = run_backfill(
+        mailbox_id=mid,
+        embed_client=FakeEmbedClient(dim=8),
+        dry_run=True,
+        confirm=True,
+        session=sess,
+    )
+    assert "embedded" in stats
+    assert stats["embedded"] == 0
+
+
+def test_stats_embedded_present_on_noop_run():
+    """All hashes match → embedded=0 must still be in the dict."""
+    from scripts.embed_backfill import content_hash, run_backfill
+    mid  = str(uuid.uuid4())
+    msgs = [_make_msg(str(uuid.uuid4()), "S", "B")]
+    existing = [(m["id"], content_hash(m["subject"], m["clean_text"])) for m in msgs]
+    sess = _FakeSession(candidate_rows=msgs, existing_rows=existing)
+    stats = run_backfill(
+        mailbox_id=mid,
+        embed_client=FakeEmbedClient(dim=8),
+        dry_run=False,
+        confirm=True,
+        session=sess,
+    )
+    assert "embedded" in stats
+    assert stats["embedded"] == 0
+
+
 # ── stats counts ─────────────────────────────────────────────────────────────
 
 def test_stats_already_embedded_count():

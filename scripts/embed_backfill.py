@@ -93,7 +93,7 @@ def _fetch_candidates(session, mailbox_id: str) -> list[dict]:
             WHERE mailbox_id = :mid
               AND noise = false
               AND sensitivity = '{none}'
-            ORDER BY ts
+            ORDER BY ts, id
         """),
         {"mid": mailbox_id},
     ).mappings().all()
@@ -164,6 +164,9 @@ def run_backfill(
     ``session`` is injectable for tests.  When None, the function creates and
     closes its own DB session.  The caller owns a passed-in session.
     """
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+
     own_session = session is None
     if own_session:
         from services.db.engine import SessionLocal
@@ -192,6 +195,7 @@ def run_backfill(
             "est_tokens":       est_tokens,
             "est_cost_usd":     est_cost_usd,
             "model":            embed_client.model,
+            "embedded":         0,  # updated below; always present so callers never need .get()
         }
 
         log.info(
@@ -248,12 +252,12 @@ def run_backfill(
             )
 
             embedded_count += len(batch)
+            stats["embedded"] = embedded_count
             log.info(
                 "batch %d: %d messages in %.1fs (total %d/%d)",
                 batch_num, len(batch), elapsed, embedded_count, len(to_embed),
             )
 
-        stats["embedded"] = embedded_count
         return stats
 
     finally:
