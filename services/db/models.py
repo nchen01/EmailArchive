@@ -1,19 +1,22 @@
-"""SQLAlchemy 2.0 ORM models — one class per physical table (spec 04 §3-5).
+"""SQLAlchemy 2.0 ORM models — one class per physical table (spec 04 §3-6).
 
 These mirror the authoritative SQL in spec 04. Shapes (the Pydantic contract)
 live in ``packages/ekc_schemas/models.py``; this module only describes *storage*.
 
 Notes
 -----
-- ``message.clean_text_tsv`` is a Postgres GENERATED column and is created in the
-  Alembic migration via ``op.execute`` (autogenerate can't express it). It is not
-  mapped here — the Python layer never reads it (FTS-only).
-- ``message_embedding`` (pgvector HNSW) is deferred — see TODO below.
+- ``message.clean_text_tsv`` and ``message.subject_clean_tsv`` are Postgres
+  GENERATED columns created in migrations via ``op.execute`` (autogenerate can't
+  express them). They are not mapped — the Python layer queries them via raw SQL.
+- ``MessageEmbedding`` uses ``pgvector.sqlalchemy.Vector`` (migration 0006, D12b).
+  Requires ``pip install pgvector``.
 """
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -210,8 +213,34 @@ class MessageAttachment(Base):
     )
 
 
-# TODO: ticket 4.5 — message_embedding table (pgvector HNSW, vector(D)).
-# Deferred: D depends on the embedding model, which isn't chosen yet.
+# ── L2 — embeddings (spec 04 §6, migration 0006, D12b) ───────────────────────
+
+class MessageEmbedding(Base):
+    __tablename__ = "message_embedding"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    mailbox_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("mailbox.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("message.id", ondelete="CASCADE"), nullable=False
+    )
+    embed_model: Mapped[str] = mapped_column(Text, nullable=False)
+    embed_dim: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    embedded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Vector(1024) is locked to voyage-4 for S7 (D12b). Future model changes
+    # require a new migration and backfill.
+    embedding: Mapped[Any] = mapped_column(Vector(1024), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("message_id", "embed_model", name="uq_message_embedding_msg_model"),
+        CheckConstraint("embed_dim > 0", name="ck_message_embedding_dim"),
+    )
 
 
 # ── L1 — people, graph (spec 04 §5) ──────────────────────────────────────────

@@ -235,10 +235,29 @@ class ClusteringResult(BaseModel):
         description="seed, params_hash, modularity, n_communities, orphan_ratio.")
 
 
+# ── L2 — embeddings (S7, migration 0006, D12b) ───────────────────────────────
+
+class MessageEmbeddingRecord(BaseModel):
+    """Persisted embedding for a single message (S7, migration 0006, D12b).
+
+    ``embedding`` is a list of floats of length ``embed_dim`` (1024 for voyage-4).
+    ``content_hash`` is SHA-256 of ``subject + "\\n\\n" + clean_text`` — used by
+    the backfill script to skip messages whose text has not changed.
+    """
+    message_id:   str
+    mailbox_id:   str
+    embed_model:  str
+    embed_dim:    int = Field(..., gt=0)
+    content_hash: str
+    embedded_at:  datetime
+    embedding:    list[float]
+
+
 __all__ = [
     "SCHEMA_VERSION",
     "Role", "Sensitivity", "EventType", "LabelSource",
     "Address", "AttachmentRef", "Message", "Thread",
     "Org", "Identity", "Person", "Edge", "Event",
     "ProjectMember", "ThreadProjectAssignment", "Project", "ClusteringResult",
+    "MessageEmbeddingRecord",
 ]
