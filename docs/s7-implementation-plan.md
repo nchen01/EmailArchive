@@ -446,49 +446,37 @@ S7.1 (migration)
               └── S7.12 (optional reranker — parallel with S7.6-S7.11)
 ```
 
-## Open Product and Privacy Questions
+## Locked Decisions (formerly open questions)
 
-These must be answered before S7 can be called complete for any non-demo mailbox.
-They do not block S7 coding against the smoke dataset.
+All seven questions are resolved. No open questions remain for S7.
 
-### Q1 — Voyage AI DPA
-Does Voyage AI's Data Processing Agreement cover personal business email
-content and the jurisdictions of future customers? Confirm before using
-this system with any real customer mailbox. Relevant contacts: Voyage AI
-enterprise sales / legal. This is a hard gate for production, not demo.
+**Q1 — Voyage AI DPA:** Hard gate before any real customer mailbox; not before
+smoke/demo use. Confirm DPA coverage before the first non-demo deployment.
+S7 coding against the smoke dataset is unblocked.
 
-### Q2 — API key management
-How is `VOYAGE_API_KEY` managed in production? Options:
-- Same env-var pattern as `GMAIL_TOKEN` (acceptable for demo/dev).
-- AWS Secrets Manager / GCP Secret Manager (required before any customer data).
-Decide before the first non-demo deployment.
+**Q2 — API key management:** `VOYAGE_API_KEY` via env var is acceptable for
+dev/demo (same pattern as `GMAIL_TOKEN`). Secrets manager required before any
+customer data. Decide the specific secrets backend (AWS/GCP) before the first
+non-demo deployment; that decision is out of S7 scope.
 
-### Q3 — Sensitive message embedding
-The default posture excludes `sensitivity != ['none']` from embedding.
-Should an operator be able to override this (e.g. for a legal team using
-the tool intentionally with HR/legal mail)? If yes, what is the access
-control model? Currently there is no per-user permission layer.
+**Q3 — Sensitive embedding override:** No override in S7. Sensitive messages
+(`sensitivity != ['none']`) are excluded from embedding and retrieval by
+default. Revisit after a permission model exists. S7.5 backfill reflects this.
 
-### Q4 — Thread-context expansion
-The `brain` assessment recommends expanding vector hits to same-thread
-messages (thread root + adjacent messages). Is this in S7 scope or deferred
-to S8? Recommend deferring unless retrieval eval shows it is needed.
+**Q4 — Thread-context neighbor expansion:** Deferred to S8 unless S7 retrieval
+eval fails badly. S7 retrieves at message level only.
 
-### ~~Q5 — L1/L2 routing in cover-for-me~~ — RESOLVED
-L2 always runs as capped supporting evidence; L1 determines answer type.
-When L1 has no match, L2 is the sole source. See S7.11 routing rule above.
+**Q5 — L1/L2 routing:** Resolved in S7.11 routing rule. Always hybrid once
+embeddings exist: L1 primary, L2 capped supporting evidence on every query,
+L2 sole source when L1 has no match.
 
-### Q6 — voyage-4 dimension truncation
-`voyage-4` supports `output_dimensions` truncation to 256 or 512. Should S7
-lock at 1024 (default, maximum quality) or use a smaller dimension to reduce
-storage and index size? At 1024 dims, 500k messages × 4 bytes = ~2 GB for
-vectors alone. Recommended: lock to 1024 for MVP, revisit at scale.
+**Q6 — voyage-4 dimension:** Locked at 1024 (default) for S7. The SDK
+parameter is `output_dimension` (singular — confirmed in Voyage docs). Optional
+truncation to 256/512/2048 is available but not used in S7. Revisit at scale.
 
-### Q7 — Backfill ordering
-Should the backfill prioritize non-noise, project-relevant messages, or embed
-all non-noise messages regardless of project signal? Recommended: all non-noise
-messages (noise filter is the only gate), so retrieval can surface unexpected
-relevant content.
+**Q7 — Backfill scope:** Embed all non-noise, non-sensitive messages. Not
+project-only. The retrieval surface should not be limited to pre-classified
+project mail; unexpected relevance is part of the value.
 
 ## Proposed Changes to Existing Specs Before Code Starts
 
