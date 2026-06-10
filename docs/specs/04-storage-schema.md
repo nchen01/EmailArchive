@@ -240,9 +240,9 @@ CREATE TABLE message_embedding (
   noise       boolean NOT NULL DEFAULT false
 );
 ```
-> The retrieval *logic* (routing, rerank) is the existing query router's, not this spec's. Storage
-> only guarantees: vectors are present, filterable metadata is denormalized alongside, and BM25 is
-> available via `message.clean_text_tsv`.
+> Storage guarantees: vectors are present, filterable metadata is denormalized alongside, and BM25 is
+> available via `message.clean_text_tsv` (and `subject_clean_tsv`, added in migration 0006).
+> Retrieval logic lives in `services/retrieval` (D12; S7). This spec covers storage only.
 
 ## 7. Indexes (Row-Level Security follows)
 
@@ -343,5 +343,5 @@ single-mailbox query path this is usually fine, but benchmark filtered ANN befor
   tombstone vs redact-in-place) — needs a product + legal decision.
 - **Embedding dimension** is single-valued in MVP; multi-model support means a per-model column or a
   separate index per model.
-- **Where the existing query router expects vectors** — confirm it reads `message_embedding` (or
-  adapt). `// TODO: align with the router's storage assumptions.`
+- **Retrieval storage contract** — resolved by D12. `services/retrieval` reads `message_embedding`
+  directly. No external query router. See `docs/decisions.md` D12 and `docs/s7-implementation-plan.md`.
