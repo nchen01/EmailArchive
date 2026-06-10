@@ -591,8 +591,8 @@ def _print_summary(result: dict) -> None:
     for key, st in result["soft_targets"].items():
         lc  = st.get("low_confidence")
         val = f"{st['value']:.3f}" if st["value"] is not None else "n/a"
-        if lc == "hard" and st["value"] is None:
-            status = "low-confidence / not evaluated"
+        if st["value"] is None:
+            status = "not evaluated"
         elif lc == "soft":
             status = "met (low-confidence)" if st["met"] else "MISS (low-confidence)"
         else:
