@@ -83,21 +83,25 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
 - **S5 ✓** — bounded L1-only cover-for-me query (D11). `POST /api/cover-for-me/{mailbox_id}`.
   Routes over Person, Project, Event, Edge, Thread in the DB; word-boundary entity detection;
   citation allow-list enforced; "insufficient structured evidence" on no match. 148 tests.
-  **All three MVP surfaces are now shipped.** Next: production hardening or L2 retrieval.
+  **All three MVP surfaces are now shipped. S6 quality-pass tooling complete.** Next: S7 L2 hybrid retrieval.
 
 ## 6. Known gaps — flag, don't fake
 
-- **L2 retrieval** is intentionally *not* specced here; an existing query router owns it. Integrate
-  against it; do not build a retrieval layer. The `message_embedding` table (spec 04 ticket 4.5,
-  pgvector HNSW) is deferred until the embedding model is chosen.
+- **L2 retrieval** — **D12 resolves this. Build `services/retrieval` locally.** The previous note
+  ("an existing query router owns it; do not build a retrieval layer") is rescinded. No external
+  router contract exists. S7 implements a minimal local hybrid retriever: Voyage AI `voyage-4`
+  embeddings (1024-dim) + pgvector HNSW cosine + Postgres FTS. See D12 in `docs/decisions.md`.
+- **`message_embedding` table + HNSW index** — resolved by D12b. Add as migration 0006 in S7.
+  Dimension: 1024 (voyage-4). Model/dim/content_hash/embedded_at stored per row.
+- **Cover-for-me** — same surface API (`POST /api/cover-for-me/{mailbox_id}`). S7 upgrades it
+  internally from L1-only to hybrid L1+L2: L1 exact entity routing first; L2 vector/FTS fallback
+  and supporting evidence second. Citation contract and "no citation, no claim" rule unchanged.
 - **L3 synthesis** — `services/synthesis/` is built (S4): project "What's been done" and contact
-  "Ask about this contact", both citation-validated. The **cover-for-me free-text query** (S5,
-  D11) is the remaining L3 surface; it routes over L1 structured objects, not L2 vector retrieval.
+  "Ask about this contact", both citation-validated. Cover-for-me (S5/S7, D11/D12) routes over
+  L1 structured objects first, with L2 recall support after S7.
 - **Role inference** (spec 01 §5, `services/enrich/roles.py`) is a rules-based v1. It correctly
   classifies all fixture contacts but is not a learned classifier. Upgrade path: labeled data →
   small classifier, logged in the spec.
-- **`message_embedding` table + HNSW index** — spec 04 ticket 4.5 deliberately deferred until the
-  embedding model dimension is chosen. Add as migration 0006 when that decision is made.
 - **M365 provider** (`services/ingest/providers/msgraph.py`) — raises `NotImplementedError`; Gmail
   is the only live provider. M365 drops in without pipeline changes (D2).
 - **Object store for raw MIME** — `Message.raw_uri = None` in all current runs. Wire when deploying

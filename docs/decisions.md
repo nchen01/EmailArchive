@@ -106,6 +106,80 @@ grounding discipline (cited Events must be present before synthesis runs).
 stays behind the injectable interface; tests never call the Anthropic API.
 **Scope.** S4. **Affects.** `services/enrich/events.py`; AGENTS §3 #9 (exception now documented).
 
+## D12 — L2 retrieval ownership, embedding model, reranking, and privacy posture
+
+**Decision — four sub-decisions locked together.**
+
+### D12a — Retrieval ownership: build local `services/retrieval`
+Build a minimal local retrieval module in this repo. No external query router
+contract exists; waiting for one blocks S7 indefinitely. The `brain` repo
+(nchen01/brain) is useful as prior art — evidence shape, neighbor expansion,
+reranking stage design — but is not ported. `AGENTS.md` §6 is updated to
+reflect this: the "existing query router owns L2" note is rescinded.
+
+### D12b — Embedding model: Voyage AI `voyage-4`, 1024 dimensions
+- Provider: **Voyage AI** (`voyageai` Python SDK).
+- Model: **`voyage-4`** — default 1024 dimensions, cosine similarity.
+- `input_type="document"` when indexing messages; `input_type="query"` when
+  encoding search queries.
+- Storage: pgvector `vector(1024)` in the `message_embedding` table.
+- Index: `HNSW (embedding vector_cosine_ops)` — migration 0006.
+- Each row stores `embed_model` (string), `embed_dim` (int), `content_hash`
+  (SHA-256 of the embedded text), and `embedded_at` (timestamp) alongside the
+  vector. This makes future model migrations detectable and backfill idempotent.
+- `text-embedding-3-small` (1536-dim, OpenAI) was considered and rejected for
+  S7; it remains an option in a future migration. `all-MiniLM-L6-v2` (384-dim,
+  local) is not adopted as the default (see D12c).
+
+### D12c — Reranking: Voyage `rerank-2.5`, optional, feature-flagged in S7
+- Reranker: **`voyage-rerank-2.5`** (Voyage AI).
+- Status in S7: **optional, behind `ENABLE_RERANKING=1` env flag**. Off by default.
+- S7 ships a deterministic local rerank first (vector score × weight + FTS score
+  × weight + project/person/event boost + recency tiebreaker). The hosted
+  reranker is a drop-in replacement when the flag is on.
+- External reranking is a separate product decision because it sends the query
+  and all candidate snippets to a third-party API. Treat it as a second hosted
+  call requiring its own privacy review.
+- Adoption: enable after retrieval eval shows that deterministic rerank misses
+  are significant enough to justify the additional API cost and latency.
+
+### D12d — Privacy posture for hosted embedding and reranking
+**Permitted inputs to Voyage AI APIs:**
+- `Message.clean_text` — boilerplate-stripped body text (no raw MIME, no
+  quoted-reply stack beyond the normalized excerpt).
+- `Message.subject` — plain subject string.
+- Free-text query strings from the cover-for-me and synthesis endpoints.
+
+**Never sent to any hosted API:**
+- Raw MIME or MIME part bytes.
+- OAuth tokens, session tokens, or any credential.
+- `message_id_header`, sender/recipient email addresses, or display names.
+- Attachment content.
+- Any content from messages tagged `sensitivity != ['none']` unless the caller
+  passes an explicit `include_sensitive=True` flag **and** the operator has
+  configured `allow_sensitive_embedding=True`.
+
+**Logging discipline:**
+- The embedding client must not log message body content, subjects, or query
+  text. Log only: model name, dimension, token count (if available), latency,
+  and error codes.
+- Same discipline applies to the reranker if enabled.
+
+**Provider DPA note:**
+Before using this system with any real customer mailbox data, confirm that
+Voyage AI's Data Processing Agreement covers the data category (personal
+business email) and jurisdiction. This note is a prerequisite gate for
+production use, not for demo/smoke-dataset use.
+
+**Why.** The S7 scope is demo and internal testing against throwaway mailboxes.
+The privacy posture is documented now so it is not revisited per-sprint.
+
+**Scope.** S7+. **Affects.** `services/retrieval/embed_client.py`;
+`services/retrieval/params.py`; migration 0006; cover-for-me upgrade (S7.11);
+`AGENTS.md` §6 (retrieval ownership rescinded); spec 04 ticket 4.5 (resolved).
+
+---
+
 ## D11 — S5 cover-for-me ships as bounded L1-only; no L2/vector retrieval
 **Decision.** The cover-for-me query (implementation-plan §6.3, the third MVP surface) is built
 in S5 as a bounded query over structured L1 objects — Person, Project, Event, Edge, Thread —

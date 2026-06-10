@@ -1,0 +1,474 @@
+# S7 Implementation Plan — L2 Hybrid Retrieval
+
+Source decisions: D12 (`docs/decisions.md`).
+Prior art: `docs/l2-brain-repo-assessment.md`, `docs/l2-product-decisions.md`.
+
+## Scope
+
+S7 adds L2 hybrid retrieval (vector + FTS) to the pipeline and upgrades
+cover-for-me from L1-only to L1+L2 hybrid internally. No new surface API.
+No "chat with mailbox." Every returned result carries a `message_id_header`
+citation. No citation, no claim.
+
+## Out of scope for S7
+
+- Chunk-level splitting (message-level only).
+- Attachment embedding.
+- Thread-context neighbor expansion (deferred to S8).
+- M365 provider.
+- Hosted reranker in production (feature-flagged off by default).
+- Answer generation changes beyond adding L2 evidence to existing synthesis prompts.
+- New UI surfaces (project view and network map are unchanged).
+
+## Architecture
+
+```
+Query
+  │
+  ├─► L1 exact routing (Person / Project / Event entity detection)
+  │         │
+  │    hits? ──yes──► L1 structured evidence + optional L2 supporting evidence
+  │         │
+  │        no
+  │         │
+  └─► L2 retrieval (fallback)
+            │
+       vector search (HNSW cosine, voyage-4)
+            +
+       FTS search (Postgres tsvector/tsquery)
+            │
+       hybrid merge + deterministic rerank
+            │
+       evidence quality gate
+            │
+       hits? ──yes──► cited evidence to synthesis
+            │
+           no──────► "insufficient evidence" (no fabrication)
+```
+
+## Task Breakdown
+
+### S7.1 — Migration 0006: `message_embedding` table
+
+File: `alembic/versions/0006_message_embedding.py`
+
+Schema:
+
+```sql
+CREATE TABLE message_embedding (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    mailbox_id  UUID NOT NULL REFERENCES mailbox(id) ON DELETE CASCADE,
+    message_id  UUID NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+    embed_model TEXT NOT NULL,
+    embed_dim   INT  NOT NULL,
+    content_hash TEXT NOT NULL,   -- SHA-256 of (subject + "\n\n" + clean_text)
+    embedded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    embedding   vector(1024) NOT NULL,
+    UNIQUE (message_id, embed_model)
+);
+
+CREATE INDEX ON message_embedding
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+CREATE INDEX ON message_embedding (mailbox_id, embed_model);
+```
+
+Notes:
+- `UNIQUE (message_id, embed_model)` enables idempotent upsert and multi-model
+  coexistence in the future.
+- `content_hash` lets the backfill skip messages whose text has not changed.
+- `m=16, ef_construction=64` are conservative defaults; tune after eval.
+
+Acceptance:
+- Migration applies cleanly with `alembic upgrade head`.
+- `alembic downgrade -1` drops the table and index cleanly.
+- Unit test: migration round-trip passes.
+
+### S7.2 — SQLAlchemy ORM model + Pydantic mapper
+
+Files:
+- `services/db/models.py` — add `MessageEmbedding` ORM class.
+- `services/db/mappers.py` — add `embedding_to_row` / `row_to_embedding`.
+- `packages/schemas/models.py` — add `MessageEmbeddingRecord` Pydantic model.
+
+`MessageEmbeddingRecord` fields:
+```python
+message_id:   UUID
+mailbox_id:   UUID
+embed_model:  str
+embed_dim:    int
+content_hash: str
+embedded_at:  datetime
+embedding:    list[float]
+```
+
+Acceptance:
+- Round-trip test: create a record, persist, reload, compare.
+- `embedding` round-trips without float precision loss beyond pgvector tolerance.
+
+### S7.3 — Embedding client seam
+
+File: `services/retrieval/embed_client.py`
+
+Protocol:
+
+```python
+class EmbedClient(Protocol):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]: ...
+    def embed_query(self, text: str) -> list[float]: ...
+    @property
+    def model(self) -> str: ...
+    @property
+    def dim(self) -> int: ...
+```
+
+Implementations:
+- `VoyageEmbedClient` — wraps `voyageai.Client`. Uses `input_type="document"`
+  for `embed_documents` and `input_type="query"` for `embed_query`.
+  Reads `VOYAGE_API_KEY` from env. Never logs text content.
+- `FakeEmbedClient` — deterministic test embedder. Returns seeded unit vectors
+  based on a hash of the input text. Allows offline tests.
+
+`VoyageEmbedClient` logging discipline:
+- Log: model name, batch size, latency, token count (if returned by API).
+- Never log: text content, subject, query string.
+
+Acceptance:
+- All tests use `FakeEmbedClient`. No test touches the Voyage API.
+- `VoyageEmbedClient` has an integration test, skipped unless
+  `VOYAGE_API_KEY` is set.
+- The client raises `EmbedError` (not a raw HTTP exception) on failure.
+
+### S7.4 — `RetrievalParams`
+
+File: `services/retrieval/params.py`
+
+```python
+@dataclass
+class RetrievalParams:
+    embed_model:          str   = "voyage-4"
+    embed_dim:            int   = 1024
+    vector_top_k:         int   = 20
+    fts_top_k:            int   = 20
+    rerank_top_k:         int   = 10
+    min_vector_score:     float = 0.60
+    include_noise:        bool  = False
+    include_sensitive:    bool  = False
+    enable_reranking:     bool  = False   # also gated by ENABLE_RERANKING env
+    project_boost:        float = 0.15
+    person_boost:         float = 0.10
+    recency_half_life_days: int = 180
+```
+
+All fields are dataclass defaults — injectable in tests, not hardcoded in logic.
+
+### S7.5 — Idempotent backfill script
+
+File: `scripts/embed_backfill.py`
+
+CLI:
+```text
+python scripts/embed_backfill.py --mailbox-id <uuid> [--batch-size 64]
+    [--model voyage-4] [--dry-run] [--confirm]
+```
+
+Behavior:
+- Selects messages where `noise=false` (default; skip noise).
+- Skips messages already in `message_embedding` with matching `content_hash`.
+- Embeds in batches of `--batch-size`.
+- Upserts with `ON CONFLICT (message_id, embed_model) DO UPDATE`.
+- Logs progress (message count, batch, latency) without logging body content.
+- `--dry-run`: print counts and estimated API cost, persist nothing.
+
+Privacy enforcement:
+- Only `subject + "\n\n" + clean_text` is sent to the embedding API.
+- Never sends raw headers, email addresses, or MIME bytes.
+
+Acceptance:
+- Re-running on an already-embedded mailbox produces zero new API calls
+  (all content_hashes match).
+- `--dry-run` exits 0 and prints counts without any DB write.
+- Offline test uses `FakeEmbedClient`.
+
+### S7.6 — Vector retrieval
+
+File: `services/retrieval/vector.py`
+
+```python
+def vector_search(
+    session,
+    mailbox_id: UUID,
+    query_embedding: list[float],
+    params: RetrievalParams,
+) -> list[RetrievalHit]: ...
+```
+
+SQL pattern:
+```sql
+SELECT m.id, m.message_id_header, m.thread_id, m.subject, m.clean_text,
+       m.ts, m.sensitivity, m.noise,
+       1 - (me.embedding <=> :qvec) AS vector_score
+FROM message_embedding me
+JOIN message m ON m.id = me.message_id
+WHERE me.mailbox_id = :mid
+  AND me.embed_model = :model
+  AND m.noise = false           -- unless include_noise
+  AND m.sensitivity = '{none}'  -- unless include_sensitive
+ORDER BY me.embedding <=> :qvec
+LIMIT :k;
+```
+
+Acceptance:
+- Returns `RetrievalHit` list sorted by descending `vector_score`.
+- Noise and sensitivity filters apply correctly.
+- Works with `FakeEmbedClient` in offline tests.
+
+### S7.7 — FTS / BM25 retrieval
+
+File: `services/retrieval/fts.py`
+
+Uses Postgres `to_tsvector` / `to_tsquery` / `ts_rank_cd` over `subject` and
+`clean_text`. No new column needed for MVP — computed on the fly with a GIN
+index (add to migration 0006 or as a separate migration 0006b).
+
+```python
+def fts_search(
+    session,
+    mailbox_id: UUID,
+    query: str,
+    params: RetrievalParams,
+) -> list[RetrievalHit]: ...
+```
+
+Acceptance:
+- Returns results with `fts_score` populated and `vector_score=None`.
+- Handles empty or stop-word-only queries gracefully (returns empty list).
+
+### S7.8 — Hybrid merge and deterministic rerank
+
+File: `services/retrieval/hybrid.py`
+
+Merge strategy:
+1. Collect vector hits and FTS hits; deduplicate by `message_id`.
+2. For each candidate compute:
+   ```
+   score = (vector_score * 0.6) + (fts_score * 0.4)
+             + project_boost (if message linked to any matched project)
+             + person_boost  (if message linked to any matched person)
+             + recency_score (exponential decay, half_life_days)
+   ```
+3. Sort descending by combined score; take top `rerank_top_k`.
+4. If `params.enable_reranking` is True **and** `ENABLE_RERANKING` env is set,
+   call the Voyage reranker as a post-processing step.
+
+Weights (0.6 / 0.4) are constants in `params.py`, not magic numbers inline.
+
+Acceptance:
+- Deterministic: same inputs always produce same ranked list.
+- Reranker path is tested with a mock; never calls the API in unit tests.
+- Boost and recency computations have isolated unit tests.
+
+### S7.9 — `RetrievalHit` shape and evidence quality gate
+
+File: `services/retrieval/contracts.py`
+
+```python
+@dataclass(frozen=True)
+class RetrievalHit:
+    message_id:        UUID
+    message_id_header: str        # citation key
+    thread_id:         UUID
+    project_ids:       list[UUID]
+    person_ids:        list[UUID]
+    ts:                datetime
+    subject:           str
+    snippet:           str        # first 300 chars of clean_text
+    vector_score:      float | None
+    fts_score:         float | None
+    rerank_score:      float
+    source:            Literal["vector", "fts", "hybrid"]
+    sensitivity:       list[str]
+    noise:             bool
+```
+
+Evidence quality gate (in `services/retrieval/hybrid.py`):
+- No hits → `InsufficientEvidence`
+- All hits filtered out by noise/sensitivity → `InsufficientEvidence`
+- All hits below `min_vector_score` (vector-only path) → `InsufficientEvidence`
+- Otherwise → list of `RetrievalHit`
+
+`InsufficientEvidence` is a typed return value, not an exception.
+
+### S7.10 — Retrieval eval
+
+Files:
+- `services/retrieval/eval/fixtures.py`
+- `services/retrieval/eval/run_eval.py`
+
+Fixture shape per query:
+
+```python
+@dataclass
+class RetrievalCase:
+    query:                    str
+    expected_headers:         list[str]   # must appear in top-k
+    forbidden_headers:        list[str]   # must not appear
+    expected_route:           Literal["l1_exact", "l2_fallback", "hybrid"]
+    allow_sensitive_in_result: bool = False
+```
+
+Hard eval gates (exit nonzero if any fail):
+- Every `expected_header` appears in the top-10 results.
+- No `forbidden_header` appears at any rank.
+- No sensitive message appears in results when `include_sensitive=False`.
+- No noise message appears in results.
+- Every returned `message_id_header` exists in the DB.
+- `InsufficientEvidence` is returned for a deliberately unanswerable query.
+
+Soft targets (reported, not blocking):
+- Mean reciprocal rank (MRR) ≥ 0.6 across eval cases.
+- Top-1 precision ≥ 0.5.
+
+Eval runs against the smoke dataset mailbox (S6 smoke dataset + embeddings).
+
+### S7.11 — Cover-for-me L2 upgrade
+
+File: `services/api/routers/cover_for_me.py`
+
+The endpoint signature (`POST /api/cover-for-me/{mailbox_id}`) and response
+schema are **unchanged**. The internal query path changes:
+
+Before S7:
+```
+query → L1 entity detection → structured evidence → synthesis
+```
+
+After S7:
+```
+query → L1 entity detection
+          │
+     L1 hits? ──yes──► L1 structured evidence
+          │                    +
+         no                L2 supporting evidence (hybrid search on same query)
+          │                    │
+          └──────────────── synthesis with all cited evidence
+                          (L2 fallback only when L1 returns nothing)
+```
+
+Acceptance:
+- Existing S5 tests pass unchanged (no API contract change).
+- New tests: L2-only path (no L1 entity match) returns cited messages.
+- "Insufficient evidence" path still returns correct response when both L1
+  and L2 produce no usable results.
+
+### S7.12 — Optional Voyage reranker integration
+
+File: `services/retrieval/reranker.py`
+
+Protocol:
+```python
+class Reranker(Protocol):
+    def rerank(self, query: str, candidates: list[RetrievalHit]) -> list[RetrievalHit]: ...
+```
+
+Implementations:
+- `VoyageReranker` — calls `voyage-rerank-2.5`. Gated by
+  `ENABLE_RERANKING=1` env var **and** `params.enable_reranking=True`.
+- `NoOpReranker` — returns input unchanged; used when flag is off.
+
+The reranker receives `query` and `[hit.snippet for hit in candidates]`.
+It does NOT receive full `clean_text` — snippets only (privacy boundary).
+
+Logging: model, candidate count, latency. Never log snippets or query text.
+
+## Dependency Chain
+
+```
+S7.1 (migration)
+  └── S7.2 (ORM model)
+        └── S7.3 (embed client)
+              ├── S7.4 (params)
+              ├── S7.5 (backfill)
+              ├── S7.6 (vector retrieval)
+              ├── S7.7 (FTS retrieval)
+              │     └── S7.8 (hybrid merge)
+              │               └── S7.9 (contracts + quality gate)
+              │                         ├── S7.10 (eval)
+              │                         └── S7.11 (cover-for-me upgrade)
+              └── S7.12 (optional reranker — parallel with S7.6-S7.11)
+```
+
+## Open Product and Privacy Questions
+
+These must be answered before S7 can be called complete for any non-demo mailbox.
+They do not block S7 coding against the smoke dataset.
+
+### Q1 — Voyage AI DPA
+Does Voyage AI's Data Processing Agreement cover personal business email
+content and the jurisdictions of future customers? Confirm before using
+this system with any real customer mailbox. Relevant contacts: Voyage AI
+enterprise sales / legal. This is a hard gate for production, not demo.
+
+### Q2 — API key management
+How is `VOYAGE_API_KEY` managed in production? Options:
+- Same env-var pattern as `GMAIL_TOKEN` (acceptable for demo/dev).
+- AWS Secrets Manager / GCP Secret Manager (required before any customer data).
+Decide before the first non-demo deployment.
+
+### Q3 — Sensitive message embedding
+The default posture excludes `sensitivity != ['none']` from embedding.
+Should an operator be able to override this (e.g. for a legal team using
+the tool intentionally with HR/legal mail)? If yes, what is the access
+control model? Currently there is no per-user permission layer.
+
+### Q4 — Thread-context expansion
+The `brain` assessment recommends expanding vector hits to same-thread
+messages (thread root + adjacent messages). Is this in S7 scope or deferred
+to S8? Recommend deferring unless retrieval eval shows it is needed.
+
+### Q5 — L1/L2 routing in cover-for-me
+Does L2 always run alongside L1 (hybrid from query 1), or only as a fallback
+when L1 returns zero structured hits? Proposed S7 behavior: L2 always runs
+for supporting evidence; L1 determines the primary answer. If this is wrong,
+decide before S7.11.
+
+### Q6 — voyage-4 dimension truncation
+`voyage-4` supports `output_dimensions` truncation to 256 or 512. Should S7
+lock at 1024 (default, maximum quality) or use a smaller dimension to reduce
+storage and index size? At 1024 dims, 500k messages × 4 bytes = ~2 GB for
+vectors alone. Recommended: lock to 1024 for MVP, revisit at scale.
+
+### Q7 — Backfill ordering
+Should the backfill prioritize non-noise, project-relevant messages, or embed
+all non-noise messages regardless of project signal? Recommended: all non-noise
+messages (noise filter is the only gate), so retrieval can surface unexpected
+relevant content.
+
+## Proposed Changes to Existing Specs Before Code Starts
+
+| Doc | Change |
+|---|---|
+| `docs/decisions.md` | D12 added (this commit). |
+| `AGENTS.md` §6 | "external query router" note rescinded; `services/retrieval` now local (this commit). |
+| `README.md` | Status updated to S6 complete, S7 next (this commit). |
+| `packages/schemas/models.py` | Add `MessageEmbeddingRecord`. Do in S7.2. |
+| `services/db/models.py` | Add `MessageEmbedding`. Do in S7.2. |
+| `spec 04` ticket 4.5 | Resolved by D12b. Migration 0006 is now S7.1. |
+| `docs/implementation-plan.md` | L2 section references "external query router" — update lazily when S7.1 lands, not before. |
+
+## Definition of Done
+
+S7 is complete when:
+
+- Migration 0006 applies and reverts cleanly.
+- `embed_backfill.py` runs without error on the smoke-dataset mailbox.
+- `RetrievalHit` citations are all verifiable in the DB.
+- Retrieval eval hard gates pass (expected headers in top-10, no sensitive
+  leakage, no noise, `InsufficientEvidence` on unanswerable query).
+- Existing 295 tests still pass (no regressions).
+- Cover-for-me endpoint returns L2-backed cited evidence on a query that
+  has no L1 entity match.
+- Frontend build is unchanged (no new UI in S7).
+- D12 privacy posture is enforced in code (embed client never logs text;
+  sensitivity filter is on by default).
