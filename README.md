@@ -105,7 +105,7 @@ email-archive/
       0005_fix_event_citation_check.py  # D8: cardinality() replaces array_length()
   docs/
     implementation-plan.md          # the why + end-to-end design
-    decisions.md                    # D1–D11 resolved build decisions (supersede spec open decisions)
+    decisions.md                    # D1–D12 resolved build decisions (supersede spec open decisions)
     specs/
       00-l0-ingest.md               # L0 ingest + normalization  ✓ S1
       01-layer1-enrichment.md       # L1: identity, graph, roles, clustering, events  ✓ S1-S4
@@ -144,7 +144,7 @@ email-archive/
       main.py  deps.py
       routers/network_map.py  routers/project_view.py  routers/synthesis.py
       schemas/network_map.py  schemas/project_view.py
-    retrieval/                      # L2 — not yet built (externally owned query router)
+    retrieval/                      # L2 — being built in S7 (D12; local hybrid retriever)
     synthesis/                      # L3  ✓ S4
       params.py  client.py  contracts.py
       project_summary.py  contact_summary.py

@@ -90,7 +90,7 @@ Acceptance:
 Files:
 - `services/db/models.py` — add `MessageEmbedding` ORM class.
 - `services/db/mappers.py` — add `embedding_to_row` / `row_to_embedding`.
-- `packages/schemas/models.py` — add `MessageEmbeddingRecord` Pydantic model.
+- `packages/ekc_schemas/models.py` — add `MessageEmbeddingRecord` Pydantic model.
 
 `MessageEmbeddingRecord` fields:
 ```python
@@ -153,6 +153,10 @@ class RetrievalParams:
     fts_top_k:            int   = 20
     rerank_top_k:         int   = 10
     min_vector_score:     float = 0.60
+    min_fts_score:        float = 0.0    # raise in eval if FTS noise is high
+    vector_weight:        float = 0.6
+    fts_weight:           float = 0.4
+    recency_weight:       float = 0.05   # kept small so recency never dominates
     include_noise:        bool  = False
     include_sensitive:    bool  = False
     enable_reranking:     bool  = False   # also gated by ENABLE_RERANKING env
@@ -174,7 +178,10 @@ python scripts/embed_backfill.py --mailbox-id <uuid> [--batch-size 64]
 ```
 
 Behavior:
-- Selects messages where `noise=false` (default; skip noise).
+- Selects messages where `noise=false AND sensitivity = '{none}'` (default).
+  Both gates are required: D12d excludes sensitive messages from embedding
+  by default; there is no `--include-sensitive` override in S7 because no
+  permission layer exists to govern it yet (see Q3).
 - Skips messages already in `message_embedding` with matching `content_hash`.
 - Embeds in batches of `--batch-size`.
 - Upserts with `ON CONFLICT (message_id, embed_model) DO UPDATE`.
@@ -183,7 +190,9 @@ Behavior:
 
 Privacy enforcement:
 - Only `subject + "\n\n" + clean_text` is sent to the embedding API.
-- Never sends raw headers, email addresses, or MIME bytes.
+- Structured address fields (sender email, recipients) are never sent.
+- See D12d incidental-PII caveat: body/subject may contain names or addresses
+  as natural prose; S7 does not scrub them.
 
 Acceptance:
 - Re-running on an already-embedded mailbox produces zero new API calls
@@ -228,9 +237,24 @@ Acceptance:
 
 File: `services/retrieval/fts.py`
 
-Uses Postgres `to_tsvector` / `to_tsquery` / `ts_rank_cd` over `subject` and
-`clean_text`. No new column needed for MVP — computed on the fly with a GIN
-index (add to migration 0006 or as a separate migration 0006b).
+The existing `message.clean_text_tsv` generated column covers `clean_text`
+only. `subject` is not indexed for FTS. Migration 0006 adds a combined
+generated column covering both:
+
+```sql
+-- Added in migration 0006 alongside message_embedding
+ALTER TABLE message ADD COLUMN IF NOT EXISTS subject_clean_tsv tsvector
+    GENERATED ALWAYS AS (
+        to_tsvector('english',
+            coalesce(subject, '') || ' ' || coalesce(clean_text, ''))
+    ) STORED;
+CREATE INDEX ix_message_subject_clean_fts ON message USING gin (subject_clean_tsv);
+```
+
+Query translation: use `websearch_to_tsquery` for user-typed queries (handles
+AND/OR/phrase/negation naturally without raising on malformed input). Fall back
+to `plainto_tsquery` for programmatic queries where `websearch_to_tsquery`
+semantics are unwanted.
 
 ```python
 def fts_search(
@@ -242,8 +266,10 @@ def fts_search(
 ```
 
 Acceptance:
+- Uses `subject_clean_tsv` and `websearch_to_tsquery`.
 - Returns results with `fts_score` populated and `vector_score=None`.
 - Handles empty or stop-word-only queries gracefully (returns empty list).
+- Noise and sensitivity filters match the same defaults as vector search.
 
 ### S7.8 — Hybrid merge and deterministic rerank
 
@@ -251,23 +277,35 @@ File: `services/retrieval/hybrid.py`
 
 Merge strategy:
 1. Collect vector hits and FTS hits; deduplicate by `message_id`.
-2. For each candidate compute:
+2. Normalize scores to [0, 1] within each pool before combining.
+3. For each candidate compute:
    ```
-   score = (vector_score * 0.6) + (fts_score * 0.4)
-             + project_boost (if message linked to any matched project)
-             + person_boost  (if message linked to any matched person)
-             + recency_score (exponential decay, half_life_days)
+   relevance = (vector_score * vector_weight) + (fts_score * fts_weight)
+   boost     = project_boost + person_boost          (additive, not multiplicative)
+   recency   = recency_weight * exp(-age_days / half_life_days)
+   score     = relevance + boost + recency
    ```
-3. Sort descending by combined score; take top `rerank_top_k`.
-4. If `params.enable_reranking` is True **and** `ENABLE_RERANKING` env is set,
+   All four weights (`vector_weight`, `fts_weight`, `recency_weight`,
+   `boost_weight`) are explicit fields in `RetrievalParams`, not inline
+   constants. Default values: `vector_weight=0.6`, `fts_weight=0.4`,
+   `recency_weight=0.05`, so recency cannot dominate relevance.
+4. Sort descending by combined score; take top `rerank_top_k`.
+5. If `params.enable_reranking` is True **and** `ENABLE_RERANKING` env is set,
    call the Voyage reranker as a post-processing step.
 
-Weights (0.6 / 0.4) are constants in `params.py`, not magic numbers inline.
+**Quality gate for non-vector paths:**
+- Vector-only: discard hits below `min_vector_score`.
+- FTS-only or hybrid with no vector component: discard hits below
+  `min_fts_score` (new param, default `0.0` — accept any FTS hit, but
+  the gate exists so it can be raised in eval if noise is high).
+- After all filtering: if zero candidates remain → `InsufficientEvidence`.
 
 Acceptance:
 - Deterministic: same inputs always produce same ranked list.
 - Reranker path is tested with a mock; never calls the API in unit tests.
 - Boost and recency computations have isolated unit tests.
+- Recency cannot push a low-relevance message above a high-relevance one
+  (unit test: old high-relevance > recent low-relevance).
 
 ### S7.9 — `RetrievalHit` shape and evidence quality gate
 
@@ -348,13 +386,22 @@ After S7:
 ```
 query → L1 entity detection
           │
-     L1 hits? ──yes──► L1 structured evidence
-          │                    +
-         no                L2 supporting evidence (hybrid search on same query)
-          │                    │
-          └──────────────── synthesis with all cited evidence
-                          (L2 fallback only when L1 returns nothing)
+          ├──── always ────► L2 hybrid search (capped supporting evidence)
+          │
+     L1 hits? ──yes──► L1 primary evidence + L2 supporting evidence
+          │                         │
+          no ──────────────────────►│ L2 becomes the sole source
+                                    │
+                              synthesis with all cited evidence
 ```
+
+Routing rule (locked, resolves Q5):
+- L2 **always** runs alongside L1 once embeddings exist.
+- L1 determines the *answer type* (person lookup, project state, etc.).
+- L2 contributes capped supporting evidence (≤ `rerank_top_k` hits) regardless
+  of whether L1 matched anything.
+- When L1 returns zero structured hits, L2 becomes the primary source.
+- "Insufficient evidence" fires only when both L1 and L2 return nothing.
 
 Acceptance:
 - Existing S5 tests pass unchanged (no API contract change).
@@ -427,11 +474,9 @@ The `brain` assessment recommends expanding vector hits to same-thread
 messages (thread root + adjacent messages). Is this in S7 scope or deferred
 to S8? Recommend deferring unless retrieval eval shows it is needed.
 
-### Q5 — L1/L2 routing in cover-for-me
-Does L2 always run alongside L1 (hybrid from query 1), or only as a fallback
-when L1 returns zero structured hits? Proposed S7 behavior: L2 always runs
-for supporting evidence; L1 determines the primary answer. If this is wrong,
-decide before S7.11.
+### ~~Q5 — L1/L2 routing in cover-for-me~~ — RESOLVED
+L2 always runs as capped supporting evidence; L1 determines answer type.
+When L1 has no match, L2 is the sole source. See S7.11 routing rule above.
 
 ### Q6 — voyage-4 dimension truncation
 `voyage-4` supports `output_dimensions` truncation to 256 or 512. Should S7
@@ -452,7 +497,7 @@ relevant content.
 | `docs/decisions.md` | D12 added (this commit). |
 | `AGENTS.md` §6 | "external query router" note rescinded; `services/retrieval` now local (this commit). |
 | `README.md` | Status updated to S6 complete, S7 next (this commit). |
-| `packages/schemas/models.py` | Add `MessageEmbeddingRecord`. Do in S7.2. |
+| `packages/ekc_schemas/models.py` | Add `MessageEmbeddingRecord`. Do in S7.2. |
 | `services/db/models.py` | Add `MessageEmbedding`. Do in S7.2. |
 | `spec 04` ticket 4.5 | Resolved by D12b. Migration 0006 is now S7.1. |
 | `docs/implementation-plan.md` | L2 section references "external query router" — update lazily when S7.1 lands, not before. |

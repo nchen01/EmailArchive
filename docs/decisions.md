@@ -150,14 +150,24 @@ reflect this: the "existing query router owns L2" note is rescinded.
 - `Message.subject` — plain subject string.
 - Free-text query strings from the cover-for-me and synthesis endpoints.
 
-**Never sent to any hosted API:**
+**Intentionally withheld from hosted APIs:**
 - Raw MIME or MIME part bytes.
 - OAuth tokens, session tokens, or any credential.
-- `message_id_header`, sender/recipient email addresses, or display names.
+- Structured address fields (`message_id_header`, parsed sender/recipient
+  email addresses and display names as separate fields).
 - Attachment content.
 - Any content from messages tagged `sensitivity != ['none']` unless the caller
   passes an explicit `include_sensitive=True` flag **and** the operator has
   configured `allow_sensitive_embedding=True`.
+
+**Incidental PII caveat:**
+Email bodies, subjects, snippets, and user queries may contain names, email
+addresses, or other personal identifiers as natural prose. S7 does not
+redact or scrub incidental PII from `clean_text`, `subject`, or query strings
+before sending them to the embedding API. The guarantee is: we do not
+*intentionally* send structured address fields; we cannot guarantee that
+incidental PII is absent from content fields. This must be disclosed in any
+customer-facing privacy policy before production use.
 
 **Logging discipline:**
 - The embedding client must not log message body content, subjects, or query

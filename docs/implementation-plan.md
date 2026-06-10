@@ -192,9 +192,9 @@ Where summaries get generated — and where the grounding discipline lives.
   when no entity matches — never bluffs. Third "Cover for Me" tab in the frontend. 148 tests.
 
 **Deferred:**
-- **L2 retrieval** (`message_embedding` table, spec 04 ticket 4.5): needs embedding model and
-  dimension choice. Deferred; `message_embedding` remains unbuilt. When L2 lands, cover-for-me
-  can be upgraded from L1-only to full hybrid retrieval without surface changes.
+- **L2 retrieval** — resolved by D12 (see `docs/decisions.md`). Being built in S7:
+  Voyage AI `voyage-4` (1024-dim), pgvector HNSW cosine, migration 0006. Cover-for-me
+  upgrades to hybrid L1+L2 internally with no surface API change (D12, S7.11).
 - **Multi-mailbox, offboarding motion, cross-channel ingestion** — v2 product scope.
 - **M365 provider** — stub now; drops in without pipeline changes (D2).
 - **Object store for raw MIME** — `raw_uri = None` until production deployment (D6).
@@ -218,7 +218,7 @@ current pipeline already extracts and where it slots in.`
   Fine-tuning per-tenant is deferred.
 - **Retention** after a coverage period ends: `retention_days` param in `IngestParams` (wired in
   params, not yet enforced in a scheduled job).
-- **Embedding model + dimension:** deferred; gates spec 04 ticket 4.5 (`message_embedding` HNSW
-  index) and L2 retrieval. Decide before implementing L2 / full hybrid retrieval.
+- **Embedding model + dimension:** resolved by D12b. `voyage-4`, 1024 dimensions,
+  HNSW cosine. Migration 0006 adds `message_embedding` table and combined FTS index.
 - **Data-subject deletion semantics** for third-party content inside shared threads — needs a
   product + legal decision (spec 04 §11, §13).
