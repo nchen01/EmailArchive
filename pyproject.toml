@@ -53,6 +53,12 @@ synthesis = [
     "anthropic>=0.40",
     "instructor>=1.3",
 ]
+# L2 retrieval (S7). voyageai is NOT in the test extra — unit tests and evals
+# use FakeEmbedClient (offline). Only install this extra for backfill/demo runs
+# where a live VOYAGE_API_KEY is available.
+retrieval = [
+    "voyageai>=0.2",
+]
 # test: everything pytest needs to *collect and run the full suite*.
 # db/api deps are included because tests import them at collection time;
 # a bare pip install -e .[test] must work in CI without hidden extras.
