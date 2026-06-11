@@ -263,6 +263,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
+    from scripts._env import load_local_env
+    load_local_env()
+
     embed_client = _build_embed_client(args.embed_client)
     print(
         f"embed client : {args.embed_client} "

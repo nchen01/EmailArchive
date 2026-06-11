@@ -120,8 +120,15 @@ def test_dry_run_does_not_need_voyage_key(monkeypatch):
 # ── 4. Live key path only activates for non-dry-run ──────────────────────────
 
 def test_non_dry_run_requires_voyage_key(monkeypatch):
-    """Without --dry-run, main() must raise SystemExit when VOYAGE_API_KEY is absent."""
+    """Without --dry-run, main() must raise SystemExit when VOYAGE_API_KEY is absent.
+
+    load_local_env is patched to a no-op so it cannot re-load the key from .env
+    (a real .env may contain the key; without the patch, delenv has no effect).
+    """
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+
+    import scripts._env as _env_mod
+    monkeypatch.setattr(_env_mod, "load_local_env", lambda: None)
 
     import scripts.embed_backfill as mod
 
