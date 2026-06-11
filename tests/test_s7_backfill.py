@@ -433,7 +433,7 @@ def test_backfill_upsert_and_idempotency():
         thread = orm.Thread(
             mailbox_id=mailbox_id,
             provider_thread_ids=[],
-            root_message_id_header="<root@test>",
+            root_message_id_header="root@test",
             subject_norm="test thread",
             participants=["a@test.com"],
             t_start=__import__("datetime").datetime(2024, 1, 1, tzinfo=__import__("datetime").timezone.utc),
@@ -445,7 +445,7 @@ def test_backfill_upsert_and_idempotency():
 
         msg = orm.Message(
             mailbox_id=mailbox_id,
-            message_id_header="<backfill-test@example.com>",
+            message_id_header="backfill-test@example.com",
             provider_id="provider-001",
             thread_id=str(thread.id),
             sender_email="a@test.com",

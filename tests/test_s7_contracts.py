@@ -13,7 +13,7 @@ _NOW = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
 def _make_hit(**overrides) -> RetrievalHit:
     defaults = dict(
         message_id="aaaa-bbbb",
-        message_id_header="<msg@example.com>",
+        message_id_header="msg@example.com",
         thread_id="cccc-dddd",
         project_ids=(),
         person_ids=(),

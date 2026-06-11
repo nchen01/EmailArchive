@@ -141,7 +141,7 @@ def _seed_mailbox(session, *, n: int = 3) -> tuple[str, list[str]]:
     thread = orm.Thread(
         mailbox_id=mailbox_id,
         provider_thread_ids=[],
-        root_message_id_header="<root-vec@x>",
+        root_message_id_header="root-vec@x",
         subject_norm="vector test thread",
         participants=["a@test.com", "b@test.com"],
         t_start=t0, t_end=t0, lineage_conflict=False,
@@ -154,7 +154,7 @@ def _seed_mailbox(session, *, n: int = 3) -> tuple[str, list[str]]:
     items: list[dict] = []
 
     for i in range(n):
-        hdr = f"<vec-{i}@example.com>"
+        hdr = f"vec-{i}@example.com"
         msg = orm.Message(
             mailbox_id=mailbox_id,
             message_id_header=hdr,
@@ -283,7 +283,7 @@ def test_vector_search_noise_filter(session):
     t0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
     thread = orm.Thread(
         mailbox_id=mailbox_id, provider_thread_ids=[],
-        root_message_id_header="<noise-root@x>", subject_norm="noise test",
+        root_message_id_header="noise-root@x", subject_norm="noise test",
         participants=["a@test.com"], t_start=t0, t_end=t0, lineage_conflict=False,
     )
     session.add(thread)
@@ -291,7 +291,7 @@ def test_vector_search_noise_filter(session):
 
     noise_msg = orm.Message(
         mailbox_id=mailbox_id,
-        message_id_header="<noise@example.com>",
+        message_id_header="noise@example.com",
         provider_id="p-noise",
         thread_id=str(thread.id),
         sender_email="a@test.com",
@@ -343,7 +343,7 @@ def test_vector_search_sensitivity_filter(session):
     t0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
     thread = orm.Thread(
         mailbox_id=mailbox_id, provider_thread_ids=[],
-        root_message_id_header="<sens-root@x>", subject_norm="sensitive test",
+        root_message_id_header="sens-root@x", subject_norm="sensitive test",
         participants=["hr@example.com"], t_start=t0, t_end=t0, lineage_conflict=False,
     )
     session.add(thread)
@@ -351,7 +351,7 @@ def test_vector_search_sensitivity_filter(session):
 
     sens_msg = orm.Message(
         mailbox_id=mailbox_id,
-        message_id_header="<sensitive@example.com>",
+        message_id_header="sensitive@example.com",
         provider_id="p-sens",
         thread_id=str(thread.id),
         sender_email="hr@example.com",

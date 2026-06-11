@@ -43,7 +43,7 @@ def _hit(
     score = vector_score if vector_score is not None else (fts_score or 0.0)
     return RetrievalHit(
         message_id=msg_id,
-        message_id_header=f"<{msg_id}@x>",
+        message_id_header=f"{msg_id}@x",
         thread_id=f"t-{msg_id}",
         project_ids=project_ids,
         person_ids=person_ids,
@@ -467,7 +467,7 @@ def test_reranker_mutated_evidence_fields_are_overwritten(monkeypatch):
     the original canonical hit regardless of what the reranker puts in them."""
     monkeypatch.setenv("ENABLE_RERANKING", "1")
 
-    tampered_header  = "<tampered@evil.com>"
+    tampered_header  = "tampered@evil.com"
     tampered_subject = "HACKED SUBJECT"
     tampered_snippet = "HACKED SNIPPET"
     new_rerank_score = 0.99
@@ -489,7 +489,7 @@ def test_reranker_mutated_evidence_fields_are_overwritten(monkeypatch):
         enable_reranking=True, min_vector_score=0.0,
         embed_model="fake-embed", embed_dim=1024,
     )
-    original_header  = "<m1@x>"
+    original_header  = "m1@x"
     original_subject = "Subject m1"
     original_snippet = "Snippet for m1"
 

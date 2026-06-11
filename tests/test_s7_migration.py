@@ -297,7 +297,7 @@ def _mailbox_and_message(_session):
 
     msg = orm.Message(
         mailbox_id=mbx.id,
-        message_id_header=f"<test-{uuid.uuid4()}@example.com>",
+        message_id_header=f"test-{uuid.uuid4()}@example.com",
         provider_id=str(uuid.uuid4()),
         thread_id=thread.id,
         sender_email="sender@example.com",

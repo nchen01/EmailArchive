@@ -68,7 +68,7 @@ def test_whitespace_only_query_returns_empty_without_db():
 def test_fts_hit_has_fts_score_and_no_vector_score():
     hit = RetrievalHit(
         message_id="m1",
-        message_id_header="<m1@x>",
+        message_id_header="m1@x",
         thread_id="t1",
         project_ids=(),
         person_ids=(),
@@ -124,7 +124,7 @@ def _seed_fts_mailbox(session, messages: list[tuple[str, str]]) -> str:
     thread = orm.Thread(
         mailbox_id=mailbox_id,
         provider_thread_ids=[],
-        root_message_id_header=f"<fts-root-{mailbox_id[:8]}@x>",
+        root_message_id_header=f"fts-root-{mailbox_id[:8]}@x",
         subject_norm="fts test thread",
         participants=["a@test.com"],
         t_start=t0, t_end=t0, lineage_conflict=False,
@@ -136,7 +136,7 @@ def _seed_fts_mailbox(session, messages: list[tuple[str, str]]) -> str:
     for i, (subj, body) in enumerate(messages):
         msg = orm.Message(
             mailbox_id=mailbox_id,
-            message_id_header=f"<fts-{mailbox_id[:8]}-{i}@example.com>",
+            message_id_header=f"fts-{mailbox_id[:8]}-{i}@example.com",
             provider_id=f"p-fts-{i}",
             thread_id=thread_id,
             sender_email="a@test.com",
@@ -270,7 +270,7 @@ def test_fts_noise_filter(session):
     t0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
     thread = orm.Thread(
         mailbox_id=mailbox_id, provider_thread_ids=[],
-        root_message_id_header="<fts-noise-root@x>", subject_norm="noise",
+        root_message_id_header="fts-noise-root@x", subject_norm="noise",
         participants=["a@test.com"], t_start=t0, t_end=t0, lineage_conflict=False,
     )
     session.add(thread)
@@ -279,7 +279,7 @@ def test_fts_noise_filter(session):
     # Noise message — should not appear in results
     session.add(orm.Message(
         mailbox_id=mailbox_id,
-        message_id_header="<fts-noise@example.com>",
+        message_id_header="fts-noise@example.com",
         provider_id="p-noise", thread_id=str(thread.id),
         sender_email="a@test.com", to_emails=[], cc_emails=[], addresses={},
         ts=t0, subject="Atlas unsubscribe notification",
@@ -314,7 +314,7 @@ def test_fts_sensitivity_filter(session):
     t0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
     thread = orm.Thread(
         mailbox_id=mailbox_id, provider_thread_ids=[],
-        root_message_id_header="<fts-sens-root@x>", subject_norm="sensitive",
+        root_message_id_header="fts-sens-root@x", subject_norm="sensitive",
         participants=["hr@example.com"], t_start=t0, t_end=t0, lineage_conflict=False,
     )
     session.add(thread)
@@ -322,7 +322,7 @@ def test_fts_sensitivity_filter(session):
 
     session.add(orm.Message(
         mailbox_id=mailbox_id,
-        message_id_header="<fts-sens@example.com>",
+        message_id_header="fts-sens@example.com",
         provider_id="p-sens", thread_id=str(thread.id),
         sender_email="hr@example.com", to_emails=[], cc_emails=[], addresses={},
         ts=t0, subject="Atlas salary review",
