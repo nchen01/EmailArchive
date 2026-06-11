@@ -34,11 +34,6 @@ LOCAL_DIR = ROOT / ".local"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev",
-)
-
 LABEL_FIELDS = [
     "sample_id", "message_pk", "actual_noise", "actual_sensitivity",
     "project_relevant", "notes", "reviewed_by", "reviewed_at",
@@ -204,6 +199,9 @@ def parse_args(argv=None):
 
 
 def main(argv=None):
+    from scripts._env import load_local_env
+    load_local_env()   # load .env before DATABASE_URL is read by db/engine.py
+
     args = parse_args(argv)
 
     report_dir  = Path(args.report_dir)

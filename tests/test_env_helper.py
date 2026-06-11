@@ -6,9 +6,10 @@ Four properties verified by the handoff doc, plus two regression guards:
 2. Missing python-dotenv does not break script imports or load_local_env calls.
 3. scripts/embed_backfill.py --dry-run still does not require VOYAGE_API_KEY.
 4. The live VOYAGE_API_KEY path only activates for non-dry-run.
-5. (Regression) scripts/dev_seed.py and scripts/gmail_smoke_ingest.py do NOT
-   set DATABASE_URL at import time — prevents the setdefault anti-pattern from
-   silently returning and blocking .env from taking effect.
+5. (Regression) scripts/dev_seed.py, scripts/gmail_smoke_ingest.py, and
+   scripts/fill_smoke_labels.py do NOT set DATABASE_URL at import time —
+   prevents the setdefault anti-pattern from silently returning and blocking
+   .env from taking effect.
 
 All tests are offline (no DB, no Voyage API).
 """
@@ -199,5 +200,20 @@ def test_gmail_smoke_ingest_does_not_set_database_url_at_import(monkeypatch):
 
     assert "DATABASE_URL" not in os.environ, (
         "scripts/gmail_smoke_ingest.py must not call os.environ.setdefault('DATABASE_URL', ...) "
+        "at import time — that prevents .env from being loaded by load_local_env()"
+    )
+
+
+def test_fill_smoke_labels_does_not_set_database_url_at_import(monkeypatch):
+    """Importing fill_smoke_labels must not write DATABASE_URL into the environment."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with patch("sqlalchemy.create_engine", return_value=MagicMock()):
+        import importlib
+        import scripts.fill_smoke_labels  # noqa: F401 — side-effect check only
+        importlib.invalidate_caches()
+
+    assert "DATABASE_URL" not in os.environ, (
+        "scripts/fill_smoke_labels.py must not call os.environ.setdefault('DATABASE_URL', ...) "
         "at import time — that prevents .env from being loaded by load_local_env()"
     )
