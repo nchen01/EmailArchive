@@ -66,7 +66,7 @@ def _fake_synth_fn_invalid_citation(header: str = "bogus@example.com"):
 
 def test_l2_hits_returns_cited_claim():
     """_synthesize_l2_hits: fake synth returns a valid citation → claim is returned."""
-    header = "<atlas-1@acme.com>"
+    header = "atlas-1@acme.com"
     hit = _make_hit(header, subject="Atlas cutover", snippet="Cutover completed on Friday.")
     synth_fn = _fake_synth_fn_with_header(header)
 
@@ -78,7 +78,7 @@ def test_l2_hits_returns_cited_claim():
 
 def test_l2_hits_drops_invalid_citation():
     """_synthesize_l2_hits: citation not in hit headers → allow-list drops it."""
-    header = "<atlas-1@acme.com>"
+    header = "atlas-1@acme.com"
     hit = _make_hit(header)
     synth_fn = _fake_synth_fn_invalid_citation("bogus-not-in-hits@x.com")
 
@@ -89,7 +89,7 @@ def test_l2_hits_drops_invalid_citation():
 
 def test_l2_hits_context_includes_header_and_snippet():
     """_synthesize_l2_hits: the context string passed to synth_fn includes hit metadata."""
-    header = "<thread-42@example.com>"
+    header = "thread-42@example.com"
     snippet = "Important finding about the project."
     hit = _make_hit(header, subject="Project status", snippet=snippet)
 
@@ -112,8 +112,8 @@ def test_l2_hits_context_includes_header_and_snippet():
 
 def test_l2_hits_multiple_hits_all_in_allow_list():
     """Multiple L2 hits: each cited header is allowed; uncited ones are dropped."""
-    h1 = "<msg-001@acme.com>"
-    h2 = "<msg-002@acme.com>"
+    h1 = "msg-001@acme.com"
+    h2 = "msg-002@acme.com"
     hits = [_make_hit(h1, subject="First"), _make_hit(h2, subject="Second")]
 
     def _fn(system: str, context: str, query: str) -> SynthesisResult:
@@ -136,7 +136,7 @@ def test_l2_hits_multiple_hits_all_in_allow_list():
 
 def test_synthesize_cfm_l2_only_returns_cited_result():
     """L2-only path: no L1 match, l2_hits present → _synthesize_l2_hits is called."""
-    header = "<l2-only@example.com>"
+    header = "l2-only@example.com"
     hits = [_make_hit(header, subject="L2 evidence")]
     synth_fn = _fake_synth_fn_with_header(header)
 
@@ -157,7 +157,7 @@ def test_synthesize_cfm_l2_only_returns_cited_result():
 
 def test_synthesize_cfm_l2_only_drops_invalid_citations():
     """L2-only path: fake synth cites a header not in any hit → filtered out."""
-    header = "<real@example.com>"
+    header = "real@example.com"
     hits = [_make_hit(header)]
     synth_fn = _fake_synth_fn_invalid_citation("invented@fake.com")
 

@@ -360,7 +360,7 @@ def test_s7_l2_only_endpoint_returns_cited_result(seeded, monkeypatch):
     from services.synthesis.contracts import SynthesisClaim, SynthesisResult
 
     client, mailbox_id, _, _ = seeded
-    l2_header = "<l2-only-test@example.com>"
+    l2_header = "l2-only-test@example.com"
     hit = _make_fake_retrieval_hit(l2_header, snippet="L2 evidence about deployment.")
 
     monkeypatch.setattr(
@@ -402,7 +402,7 @@ def test_s7_l1_project_plus_l2_context(seeded, monkeypatch):
     client, mailbox_id, result, _ = seeded
     label = _a_project_label(result)
 
-    l2_header = "<l2-project-test@example.com>"
+    l2_header = "l2-project-test@example.com"
     l2_snippet = "UNIQUE_L2_SNIPPET_XQ9Z_FOR_TESTING"
     hit = _make_fake_retrieval_hit(l2_header, snippet=l2_snippet)
 
