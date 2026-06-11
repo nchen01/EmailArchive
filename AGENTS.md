@@ -84,13 +84,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   Routes over Person, Project, Event, Edge, Thread in the DB; word-boundary entity detection;
   citation allow-list enforced; "insufficient structured evidence" on no match. 148 tests.
   **All three MVP surfaces are now shipped. S6 quality-pass tooling complete.**
-- **S7 ✓** — L2 hybrid retrieval. S7.1–S7.11 are implemented:
+- **S7 ✓** — L2 hybrid retrieval. S7.1–S7.11 implemented and live-validated:
   migration 0006, `MessageEmbedding` schema/ORM/mappers, embed client seam,
   `RetrievalParams`, idempotent embed backfill, vector retrieval (`pgvector` HNSW cosine),
   FTS retrieval (`subject_clean_tsv` + `websearch_to_tsquery`), hybrid merge/scoring/quality
-  gate, reranker boundary hardening, retrieval eval (7 hard gates, MRR 1.0 on fixture), and
-  cover-for-me L2 upgrade (L1+L2 hybrid routing, L2-only path, citation allow-list enforced).
-  Current verification: 445 passed, 1 skipped.
+  gate, reranker boundary hardening, retrieval eval (7/7 hard gates, MRR 1.0, top-1 1.0),
+  cover-for-me L2 upgrade (L1+L2 hybrid routing, L2-only path, citation allow-list enforced),
+  and live Voyage validation (15 messages embedded, 7/7 eval cases pass with voyage-4
+  query vectors against voyage-4 document vectors, MRR=1.000, top-1 precision=1.000).
   Remaining: optional S7.12 hosted Voyage reranker (feature-flagged off).
 
 ## 6. Known gaps — flag, don't fake

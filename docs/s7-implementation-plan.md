@@ -5,13 +5,15 @@ Prior art: `docs/l2-brain-repo-assessment.md`, `docs/l2-product-decisions.md`.
 
 ## Current Implementation Status
 
-- S7.1–S7.11 are implemented and reviewed.
+- S7.1–S7.11 are implemented, reviewed, and live-validated.
 - S7.9 is fully implemented via `services/retrieval/contracts.py` and the quality gates in `hybrid.py`.
-- S7.10 retrieval eval passes all 7 hard gates on the fixture mailbox (MRR 1.0, top-1 precision 1.0).
+- S7.10 retrieval eval passes all 7 hard gates on the fixture mailbox (MRR 1.0, top-1 precision 1.0)
+  with both FakeEmbedClient (offline CI) and VoyageEmbedClient (live validation, 2026-06-11).
 - S7.11 cover-for-me L2 upgrade is complete: L1+L2 hybrid routing, `_synthesize_l2_hits` for
   L2-only path, citation allow-list enforced, VOYAGE_API_KEY absent → L1-only graceful fallback.
 - S7.12 hosted Voyage reranker remains optional and feature-flagged; protocol and `NoOpReranker` stub exist in `services/retrieval/reranker.py`.
-- Latest verification: 445 passed, 1 skipped (live Voyage integration, expected).
+- Live validation (2026-06-11): 15 messages embedded in fixture mailbox (7b968739-...),
+  repeat dry-run to_embed=0, eval 7/7 hard gates passed, MRR=1.000, top-1 precision=1.000.
 
 ## Scope
 
