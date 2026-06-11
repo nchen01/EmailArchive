@@ -737,9 +737,12 @@ and sensitivity calibration require a labeled workmail corpus.
 
 ### Next step
 
-S6 is complete. Proceed to L2:
+S6 is complete. L2 retrieval through S7.10 is now complete. Remaining S7 work:
 
-- Decide embedding model and dimension (D11 — blocks everything else).
-- Add `message_embedding` as migration 0006 (spec 04 ticket 4.5).
-- Build HNSW index and retrieval integration.
-- Upgrade cover-for-me from L1-only to hybrid L1 + L2 retrieval.
+- S7.11 cover-for-me L1+L2 upgrade (eval gates are green; precondition satisfied).
+- S7.12 hosted Voyage reranker (optional, feature-flagged).
+
+> **Status as of 2026-06-11:** The L2 items listed in the original draft of this
+> section (decide embedding model, add migration 0006, build HNSW, upgrade
+> cover-for-me) have been completed by D12/S7.1–S7.10. See `docs/decisions.md`
+> D12 and `docs/s7-implementation-plan.md` for current state.
