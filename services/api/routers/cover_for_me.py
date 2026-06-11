@@ -213,13 +213,17 @@ def _build_supporting_evidence(
                 orm.Message.message_id_header.in_(l1_needed),
             )
         ).all()
-        for row in rows:
-            evidence.append(EvidenceMessage(
-                message_id_header=row.message_id_header,
-                subject=row.subject or "",
-                date=row.ts.isoformat() if row.ts else "",
-                snippet=(row.clean_text or "")[:200],
-            ))
+        # Build a lookup so we can append in cited_ordered sequence, not DB order.
+        rows_by_header = {row.message_id_header: row for row in rows}
+        for header in cited_ordered:
+            if header in rows_by_header:
+                row = rows_by_header[header]
+                evidence.append(EvidenceMessage(
+                    message_id_header=header,
+                    subject=row.subject or "",
+                    date=row.ts.isoformat() if row.ts else "",
+                    snippet=(row.clean_text or "")[:200],
+                ))
 
     return evidence
 

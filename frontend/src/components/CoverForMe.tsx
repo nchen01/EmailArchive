@@ -49,8 +49,7 @@ function RetrievalStatusNote({
     case "active_l1_only":
       return (
         <p className="mt-2 text-xs text-slate-400">
-          Searched structured data only — no matching messages found in
-          retrieval.
+          No matching retrieved messages — answer uses structured data only.
         </p>
       );
     case "disabled_no_key":
