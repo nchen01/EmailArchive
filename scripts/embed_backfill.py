@@ -29,11 +29,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev",
-)
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
