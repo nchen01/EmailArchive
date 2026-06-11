@@ -146,7 +146,7 @@ def test_eval_no_sensitive_leakage(eval_mailbox):
     session, mailbox_id = eval_mailbox
     result = run_eval(session, mailbox_id)
 
-    forbidden = {"<hr-1@acme.com>", "<legal-1@morrislaw.com>"}
+    forbidden = {"hr-1@acme.com", "legal-1@morrislaw.com"}  # no brackets; ingest strips them
     for cr in result.case_results:
         if not isinstance(cr.hits, list):
             continue
@@ -227,29 +227,40 @@ TOP1_TARGET = 0.5
 
 
 def test_eval_mrr_soft_target(eval_mailbox):
+    """Report MRR; emit a UserWarning (visible in pytest -W output) if below target.
+
+    Never fails the test — soft targets are informational, not blocking.
+    """
+    import warnings
     from services.retrieval.eval.run_eval import run_eval
 
     session, mailbox_id = eval_mailbox
     result = run_eval(session, mailbox_id)
 
-    if result.mrr < MRR_TARGET:
-        pytest.warns(
-            UserWarning,
-            match=f"MRR {result.mrr:.3f} below soft target {MRR_TARGET}",
-        )
-    # Always report the metric; never block CI on soft targets.
     print(f"\n  MRR = {result.mrr:.3f} (target >= {MRR_TARGET})")
+    if result.mrr < MRR_TARGET:
+        warnings.warn(
+            f"MRR {result.mrr:.3f} below soft target {MRR_TARGET}",
+            UserWarning,
+            stacklevel=1,
+        )
 
 
 def test_eval_top1_precision_soft_target(eval_mailbox):
+    """Report top-1 precision; emit a UserWarning if below target.
+
+    Never fails the test — soft targets are informational, not blocking.
+    """
+    import warnings
     from services.retrieval.eval.run_eval import run_eval
 
     session, mailbox_id = eval_mailbox
     result = run_eval(session, mailbox_id)
 
-    if result.top1_precision < TOP1_TARGET:
-        pytest.warns(
-            UserWarning,
-            match=f"top-1 precision {result.top1_precision:.3f} below soft target {TOP1_TARGET}",
-        )
     print(f"\n  Top-1 precision = {result.top1_precision:.3f} (target >= {TOP1_TARGET})")
+    if result.top1_precision < TOP1_TARGET:
+        warnings.warn(
+            f"Top-1 precision {result.top1_precision:.3f} below soft target {TOP1_TARGET}",
+            UserWarning,
+            stacklevel=1,
+        )
