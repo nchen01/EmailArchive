@@ -141,6 +141,11 @@ def _run_l2(
         # Empty result — distinguish "no embeddings" from "below threshold".
         if not _has_embeddings(db, mailbox_id):
             return ("no_embeddings", [])
+        # "active_l1_only" means L2 ran but produced no usable hits — embeddings
+        # exist, but no message scored above the quality threshold for this query.
+        # It does NOT mean L1 produced an answer; the caller decides that from
+        # result.state.  The UI should lean on result.state for answer quality
+        # and on retrieval_status for the operational L2 state.
         return ("active_l1_only", [])
     except Exception as exc:
         exc_name = type(exc).__name__
@@ -168,15 +173,23 @@ def _build_supporting_evidence(
     L2 hits provide subject/ts/snippet directly; L1-sourced headers get a
     single DB lookup.
     """
-    cited = {h for claim in result.claims for h in claim.source_message_ids}
-    if not cited:
+    # Walk claims in order, collecting first-seen headers — preserves claim order
+    # and is deterministic (a set would produce arbitrary ordering).
+    seen: set[str] = set()
+    cited_ordered: list[str] = []
+    for claim in result.claims:
+        for h in claim.source_message_ids:
+            if h not in seen:
+                seen.add(h)
+                cited_ordered.append(h)
+    if not cited_ordered:
         return []
 
     l2_by_header = {h.message_id_header: h for h in l2_hits}
     evidence: list[EvidenceMessage] = []
     l1_needed: list[str] = []
 
-    for header in cited:
+    for header in cited_ordered:
         if header in l2_by_header:
             hit = l2_by_header[header]
             evidence.append(EvidenceMessage(

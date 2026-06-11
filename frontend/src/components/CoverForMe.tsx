@@ -31,11 +31,28 @@ function CitationChips({
   );
 }
 
-function RetrievalStatusNote({ status }: { status: RetrievalStatus }) {
+function RetrievalStatusNote({
+  status,
+  evidenceCount,
+}: {
+  status: RetrievalStatus;
+  evidenceCount: number;
+}) {
   switch (status) {
     case "active":
+      return evidenceCount > 0 ? (
+        <p className="mt-2 text-xs text-slate-400">
+          Retrieved {evidenceCount} supporting message
+          {evidenceCount !== 1 ? "s" : ""}.
+        </p>
+      ) : null;
     case "active_l1_only":
-      return null;
+      return (
+        <p className="mt-2 text-xs text-slate-400">
+          Searched structured data only — no matching messages found in
+          retrieval.
+        </p>
+      );
     case "disabled_no_key":
       return (
         <p className="mt-2 text-xs text-slate-400">
@@ -172,7 +189,7 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
             </div>
           )}
 
-          <RetrievalStatusNote status={retrieval_status} />
+          <RetrievalStatusNote status={retrieval_status} evidenceCount={evidence.length} />
         </div>
       ) : null}
     </div>

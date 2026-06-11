@@ -3,6 +3,14 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+# Load .env before any service module reads environment variables.
+# This mirrors the pattern in CLI scripts (scripts/_env.py) so that running
+# `uvicorn services.api.main:app` picks up VOYAGE_API_KEY / ANTHROPIC_API_KEY
+# from .env without requiring the caller to export them manually.
+# Only called here, never inside shared service modules (no import-time side effects).
+from scripts._env import load_local_env
+load_local_env()
+
 from .routers import cover_for_me, network_map, project_view, synthesis
 
 app = FastAPI(title="Email Knowledge Continuity API")
