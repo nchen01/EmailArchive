@@ -92,7 +92,8 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   cover-for-me L2 upgrade (L1+L2 hybrid routing, L2-only path, citation allow-list enforced),
   and live Voyage validation (15 messages embedded, 7/7 eval cases pass with voyage-4
   query vectors against voyage-4 document vectors, MRR=1.000, top-1 precision=1.000).
-  Remaining: optional S7.12 hosted Voyage reranker (feature-flagged off).
+  S7 core retrieval is complete and live-validated. Optional S7.12 hosted Voyage reranker
+  remains off by default and is not required for MVP.
 
 ## 6. Known gaps — flag, don't fake
 

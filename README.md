@@ -3,7 +3,7 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S0–S6 complete. S7.1–S7.11 complete (L2 hybrid retrieval + cover-for-me upgrade). Optional S7.12 hosted Voyage reranker remains. See D12 in `docs/decisions.md`.
+**Status:** S0–S6 complete. S7 core retrieval complete and live-validated (S7.1–S7.11). Optional S7.12 hosted Voyage reranker remains off by default and is not required for MVP. See D12 in `docs/decisions.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
