@@ -11,13 +11,14 @@ from fastapi import FastAPI
 from scripts._env import load_local_env
 load_local_env()
 
-from .routers import cover_for_me, network_map, project_view, synthesis
+from .routers import cover_for_me, network_map, preflight, project_view, synthesis
 
 app = FastAPI(title="Email Knowledge Continuity API")
 app.include_router(network_map.router, prefix="/api")
 app.include_router(project_view.router, prefix="/api")
 app.include_router(synthesis.router, prefix="/api")
 app.include_router(cover_for_me.router, prefix="/api")
+app.include_router(preflight.router, prefix="/api")
 
 
 @app.get("/healthz")
