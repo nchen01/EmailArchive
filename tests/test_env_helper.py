@@ -1,11 +1,14 @@
 """Tests for scripts/_env.py (load_local_env helper).
 
-Four properties verified by the handoff doc:
+Four properties verified by the handoff doc, plus two regression guards:
 
 1. Existing environment variables are NOT overwritten by .env.
 2. Missing python-dotenv does not break script imports or load_local_env calls.
 3. scripts/embed_backfill.py --dry-run still does not require VOYAGE_API_KEY.
 4. The live VOYAGE_API_KEY path only activates for non-dry-run.
+5. (Regression) scripts/dev_seed.py and scripts/gmail_smoke_ingest.py do NOT
+   set DATABASE_URL at import time — prevents the setdefault anti-pattern from
+   silently returning and blocking .env from taking effect.
 
 All tests are offline (no DB, no Voyage API).
 """
@@ -159,3 +162,42 @@ def test_voyage_client_constructed_for_non_dry_run(monkeypatch):
     assert not isinstance(
         calls[0]["embed_client"], mod._DryRunEmbedClient
     ), "non-dry-run must not use _DryRunEmbedClient"
+
+
+# ── 5. Regression: no import-time DATABASE_URL mutation in CLI scripts ────────
+#
+# Both dev_seed.py and gmail_smoke_ingest.py previously called
+# os.environ.setdefault("DATABASE_URL", ...) at module level, which silently
+# blocked load_dotenv(override=False) from ever populating that key from .env.
+# These tests lock in the fix so the same pattern cannot silently return.
+
+def test_dev_seed_does_not_set_database_url_at_import(monkeypatch):
+    """Importing dev_seed must not write DATABASE_URL into the environment."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    # Importing dev_seed triggers several heavy service imports; patch
+    # create_engine to avoid actually connecting to a database.
+    with patch("sqlalchemy.create_engine", return_value=MagicMock()):
+        import importlib
+        import scripts.dev_seed  # noqa: F401 — side-effect check only
+        importlib.invalidate_caches()
+
+    assert "DATABASE_URL" not in os.environ, (
+        "scripts/dev_seed.py must not call os.environ.setdefault('DATABASE_URL', ...) "
+        "at import time — that prevents .env from being loaded by load_local_env()"
+    )
+
+
+def test_gmail_smoke_ingest_does_not_set_database_url_at_import(monkeypatch):
+    """Importing gmail_smoke_ingest must not write DATABASE_URL into the environment."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with patch("sqlalchemy.create_engine", return_value=MagicMock()):
+        import importlib
+        import scripts.gmail_smoke_ingest  # noqa: F401 — side-effect check only
+        importlib.invalidate_caches()
+
+    assert "DATABASE_URL" not in os.environ, (
+        "scripts/gmail_smoke_ingest.py must not call os.environ.setdefault('DATABASE_URL', ...) "
+        "at import time — that prevents .env from being loaded by load_local_env()"
+    )

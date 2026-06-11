@@ -3,9 +3,9 @@
 Runs L0 ingest + L1 identity/graph/role enrichment against a real Gmail mailbox.
 Designed for a controlled demo or test on a single mailbox before any customer data.
 
-NOTE: Project clustering is NOT run by this script. Clustering requires a
-production embedding model (deferred, D11/spec 04 ticket 4.5). This runner
-produces identity resolution, relationship graph, and role inference only.
+NOTE: Project clustering and L2 retrieval are NOT run by this script.
+This smoke runner is intentionally limited to L0 + L1 identity/graph/roles.
+Run the S7 embed backfill and retrieval tooling separately for L2 validation.
 
 BEFORE RUNNING
 --------------
