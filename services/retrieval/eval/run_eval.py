@@ -2,6 +2,7 @@
 
 Callable as a function (from tests or other scripts) and as a standalone CLI:
     python -m services.retrieval.eval.run_eval --mailbox-id <uuid>
+    python -m services.retrieval.eval.run_eval --mailbox-id <uuid> --embed-client voyage
 
 Hard gates (any failure → non-zero exit / raises EvalFailure):
   1. Every expected_header appears in the top-10 results.
@@ -16,8 +17,16 @@ Soft targets (reported, not blocking):
   - Mean Reciprocal Rank (MRR) >= 0.6 across cases that have expected_headers.
   - Top-1 precision >= 0.5 across the same subset.
 
-Embed model: FakeEmbedClient (dim=1024) is the default.  The eval does not
-use VOYAGE_API_KEY and must not — see CLAUDE.md authorization rules.
+Embed client (--embed-client flag):
+  fake   (default) FakeEmbedClient — deterministic, offline, no API key needed.
+                   Use this for CI and all automated tests.
+  voyage           VoyageEmbedClient — real voyage-4 queries against voyage-4
+                   indexed document embeddings.  Requires VOYAGE_API_KEY.
+                   Use this for live L2 validation after a real backfill.
+
+AUTHORIZATION: --embed-client voyage calls the Voyage AI API and must not be
+run without the repo owner's explicit instruction for that specific run
+(see CLAUDE.md Voyage API key rules).
 """
 from __future__ import annotations
 
@@ -215,6 +224,24 @@ def run_eval(
 
 # ── Standalone CLI ────────────────────────────────────────────────────────────
 
+def _build_embed_client(name: str) -> EmbedClient:
+    """Construct the requested embed client, failing fast on misconfiguration."""
+    if name == "fake":
+        return FakeEmbedClient(dim=1024, model="fake-embed")
+    if name == "voyage":
+        import os
+        key = os.environ.get("VOYAGE_API_KEY")
+        if not key:
+            print(
+                "ERROR: --embed-client voyage requires VOYAGE_API_KEY to be set.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        from services.retrieval.embed_client import VoyageEmbedClient
+        return VoyageEmbedClient(api_key=key)
+    raise ValueError(f"Unknown embed client: {name!r}. Choose 'fake' or 'voyage'.")
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
     from services.db.engine import SessionLocal
@@ -224,18 +251,35 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--mailbox-id", required=True, metavar="UUID")
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument(
+        "--embed-client",
+        choices=["fake", "voyage"],
+        default="fake",
+        help=(
+            "'fake' (default): FakeEmbedClient, offline, no key needed. "
+            "'voyage': VoyageEmbedClient, requires VOYAGE_API_KEY — use only "
+            "after a real voyage-4 backfill to validate end-to-end retrieval."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    embed_client = _build_embed_client(args.embed_client)
+    print(
+        f"embed client : {args.embed_client} "
+        f"(model={embed_client.model}, dim={embed_client.dim})"
+    )
 
     session = SessionLocal()
     try:
-        print(f"Running retrieval eval against mailbox {args.mailbox_id} ...")
-        result = run_eval(session, args.mailbox_id, verbose=args.verbose)
+        print(f"mailbox      : {args.mailbox_id}")
+        print("Running retrieval eval ...")
+        result = run_eval(session, args.mailbox_id, embed_client=embed_client, verbose=args.verbose)
         print(
             f"\nAll {len(result.case_results)} hard gates PASSED  "
             f"MRR={result.mrr:.3f}  top-1 precision={result.top1_precision:.3f}"
         )
-        mrr_target     = 0.6
-        top1_target    = 0.5
+        mrr_target  = 0.6
+        top1_target = 0.5
         if result.mrr < mrr_target:
             print(f"  ⚠  MRR {result.mrr:.3f} below soft target {mrr_target}")
         if result.top1_precision < top1_target:
