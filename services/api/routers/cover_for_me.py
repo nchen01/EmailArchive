@@ -27,8 +27,11 @@ Behaviour (unchanged from S5 contract):
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
+
+_log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -83,7 +86,11 @@ def _get_embed_client(mailbox: orm.Mailbox):
     try:
         from services.retrieval.embed_client import VoyageEmbedClient
         return VoyageEmbedClient(api_key=key)
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "L2 embed client construction failed (%s) — L2 disabled for this request",
+            type(exc).__name__,
+        )
         return None
 
 
@@ -106,7 +113,11 @@ def _run_l2(
         query_vec = embed_client.embed_query(query)
         result = hybrid_search(db, mailbox_id, query_vec, query, _CFM_RETRIEVAL_PARAMS)
         return result if isinstance(result, list) else []
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "L2 retrieval failed for mailbox %s (%s) — falling back to L1-only",
+            mailbox_id, type(exc).__name__,
+        )
         return []
 
 
@@ -230,18 +241,20 @@ async def cover_for_me_endpoint(
     mbx = _get_mailbox(db, mailbox_id)
     matched_person, matched_project = _route(body.query, db, mailbox_id)
 
-    # L2 runs alongside L1 when an embed client is available (spec Q5/S7.11).
-    # Returns [] when VOYAGE_API_KEY is absent — L1-only path preserved (S5).
-    embed_client = _get_embed_client(mbx)
-    l2_hits = _run_l2(body.query, embed_client, mailbox_id, db)
-
-    # "Who do I ask about <project>?" → pure L1; response is contact-centric,
-    # not message evidence-centric, so L2 hits do not contribute here.
+    # "Who do I ask about <project>?" → pure L1, no model call, no L2 retrieval.
+    # Short-circuit before embed client construction to avoid unnecessary cost
+    # and privacy exposure.
     if matched_project is not None and WHO_ASK.search(body.query):
         result, routed_to = synthesize_cover_for_me(
             body.query, None, matched_project, db=db, mailbox_id=mailbox_id, synth_fn=None
         )
         return CoverForMeResponse(query=body.query, routed_to=routed_to, result=result)
+
+    # L2 runs alongside L1 when an embed client is available (spec Q5/S7.11).
+    # Returns [] when VOYAGE_API_KEY is absent — L1-only path preserved (S5).
+    # Returns [] with a logged warning when retrieval fails (key present but error).
+    embed_client = _get_embed_client(mbx)
+    l2_hits = _run_l2(body.query, embed_client, mailbox_id, db)
 
     # No L1 entity match.
     if matched_person is None and matched_project is None:

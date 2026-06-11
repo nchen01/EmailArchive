@@ -318,3 +318,177 @@ def test_word_boundary_no_false_match(seeded):
     assert not _token_match("Ben", "benefits enrollment")
     # Exact word match must succeed (query_lower means it's already downcased).
     assert _token_match("Atlas", "what is the state of atlas?")
+
+
+# ── S7.11 endpoint integration tests ─────────────────────────────────────────
+#
+# These tests exercise the FastAPI endpoint directly with monkeypatched L2 so
+# they run against a real seeded DB but without Voyage AI or Anthropic API calls.
+# They prove endpoint-level behavior that the offline unit tests cannot cover:
+# routing, L2 context injection, WHO_ASK short-circuit, and failure fallback.
+
+
+def _make_fake_retrieval_hit(header: str, snippet: str = "Test snippet."):
+    from datetime import datetime, timezone
+    from services.retrieval.contracts import RetrievalHit
+    return RetrievalHit(
+        message_id="00000000-0000-0000-0000-000000000099",
+        message_id_header=header,
+        thread_id="00000000-0000-0000-0000-000000000098",
+        project_ids=(),
+        person_ids=(),
+        ts=datetime(2026, 1, 15, tzinfo=timezone.utc),
+        subject="Test subject",
+        snippet=snippet,
+        vector_score=0.9,
+        fts_score=None,
+        rerank_score=0.9,
+        source="vector",
+        sensitivity=("none",),
+        noise=False,
+    )
+
+
+@requires_db
+def test_s7_l2_only_endpoint_returns_cited_result(seeded, monkeypatch):
+    """No L1 entity match + L2 returns a hit → 200, routed_to=None, cited claim.
+
+    Proves the L2-only path through the FastAPI endpoint: _run_l2 is patched
+    to return a hit, synth_fn is patched to cite it, and the response must
+    contain that citation.
+    """
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    client, mailbox_id, _, _ = seeded
+    l2_header = "<l2-only-test@example.com>"
+    hit = _make_fake_retrieval_hit(l2_header, snippet="L2 evidence about deployment.")
+
+    monkeypatch.setattr(
+        "services.api.routers.cover_for_me._run_l2",
+        lambda query, embed_client, mid, db: [hit],
+    )
+
+    def _fake_factory(params):
+        def _fn(system, context, query):
+            return SynthesisResult(
+                claims=[SynthesisClaim(text="Deployment noted.", source_message_ids=[l2_header])],
+                model="fake", usage={},
+            )
+        return _fn
+
+    monkeypatch.setattr("services.api.routers.cover_for_me.make_anthropic_synth_fn", _fake_factory)
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": "what happened with the xyzzy widget deployment?"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["routed_to"] is None
+    claims = body["result"]["claims"]
+    assert len(claims) == 1
+    assert l2_header in claims[0]["source_message_ids"]
+
+
+@requires_db
+def test_s7_l1_project_plus_l2_context(seeded, monkeypatch):
+    """L1 project matched + L2 returns a hit → L2 snippet visible in synth context (P1 fix).
+
+    This is the critical regression test for P1: the L2 hit's snippet must appear
+    in the context string passed to synth_fn, not just in the citation allow-list.
+    """
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    client, mailbox_id, result, _ = seeded
+    label = _a_project_label(result)
+
+    l2_header = "<l2-project-test@example.com>"
+    l2_snippet = "UNIQUE_L2_SNIPPET_XQ9Z_FOR_TESTING"
+    hit = _make_fake_retrieval_hit(l2_header, snippet=l2_snippet)
+
+    monkeypatch.setattr(
+        "services.api.routers.cover_for_me._run_l2",
+        lambda query, embed_client, mid, db: [hit],
+    )
+
+    captured_contexts: list[str] = []
+
+    def _fake_factory(params):
+        def _fn(system, context, query):
+            captured_contexts.append(context)
+            return SynthesisResult(
+                claims=[SynthesisClaim(text="Project finding.", source_message_ids=[l2_header])],
+                model="fake", usage={},
+            )
+        return _fn
+
+    monkeypatch.setattr("services.api.routers.cover_for_me.make_anthropic_synth_fn", _fake_factory)
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": f"what is the status of {label}?"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["routed_to"] or "").startswith("project:")
+    assert captured_contexts, "synth_fn was never called"
+    assert any(l2_snippet in ctx for ctx in captured_contexts), (
+        "L2 snippet not found in synthesis context — L2 evidence not passed to model (P1 regression)"
+    )
+
+
+@requires_db
+def test_s7_who_ask_project_skips_l2(seeded, monkeypatch):
+    """WHO_ASK + project → _get_embed_client never called (P2b fix).
+
+    The pure-L1 who-to-ask path must short-circuit before L2 retrieval to avoid
+    unnecessary embedding cost and privacy exposure.
+    """
+    client, mailbox_id, result, _ = seeded
+    label = _a_project_label(result)
+
+    l2_call_log: list[bool] = []
+
+    def _should_not_be_called(mbx):
+        l2_call_log.append(True)
+        return None
+
+    monkeypatch.setattr(
+        "services.api.routers.cover_for_me._get_embed_client", _should_not_be_called
+    )
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": f"who do I ask about {label}?"},
+    )
+    assert r.status_code == 200
+    assert l2_call_log == [], "P2b: _get_embed_client must not be called for WHO_ASK + project"
+
+
+@requires_db
+def test_s7_l2_retrieval_failure_falls_back_gracefully(seeded, monkeypatch):
+    """L2 embed raises (key present but request errors) → 200 with insufficient evidence.
+
+    When there is no L1 entity match and L2 retrieval raises, the endpoint must
+    not propagate the exception. It logs a warning and falls back to the
+    insufficient-evidence path.
+    """
+    client, mailbox_id, _, _ = seeded
+
+    class _BrokenEmbedClient:
+        def embed_query(self, text):
+            raise RuntimeError("simulated Voyage AI failure")
+
+    monkeypatch.setattr(
+        "services.api.routers.cover_for_me._get_embed_client",
+        lambda mbx: _BrokenEmbedClient(),
+    )
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": "what is the meaning of life?"},  # no L1 entity match
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["routed_to"] is None
+    assert "insufficient" in (body["result"]["state"] or "").lower()
