@@ -200,6 +200,7 @@ email-archive/
 | S5 | Cover-for-me query (bounded L1-only, D11) | ✓ done | implementation-plan §6.3 |
 | S6 | Real-mailbox quality pass (live report, eval, smoke dataset, identity/graph inspection) | ✓ done | docs/s6-real-mailbox-quality-pass.md |
 | S7 | L2 hybrid retrieval (voyage-4 embeddings, pgvector HNSW, hybrid retrieval, D12) | ✓ done (S7.1–S7.11); optional S7.12 hosted Voyage reranker remains | docs/s7-implementation-plan.md |
+| S8 | Real-Mailbox Demo Readiness — real-mailbox backfill, evidence transparency, preflight, graceful failure UX, smoke eval | 🔄 next | docs/s8-implementation-plan.md |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash

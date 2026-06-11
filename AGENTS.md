@@ -94,6 +94,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   query vectors against voyage-4 document vectors, MRR=1.000, top-1 precision=1.000).
   S7 core retrieval is complete and live-validated. Optional S7.12 hosted Voyage reranker
   remains off by default and is not required for MVP.
+- **S8 🔄 next** — Real-Mailbox Demo Readiness. Five tasks:
+  S8.1 real-mailbox backfill validation (smoke Gmail mailbox);
+  S8.2 API/UI evidence transparency (`supporting_evidence` field + citation chips with subject/date);
+  S8.3 operational preflight (`scripts/preflight.py` + `GET /api/preflight`);
+  S8.4 graceful failure UX (`retrieval_status` enum, distinct states for missing key / rate-limit /
+  no embeddings / no hits);
+  S8.5 real-mailbox smoke eval (5–10 curated cases, `--embed-client voyage`).
+  See `docs/s8-implementation-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 
