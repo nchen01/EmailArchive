@@ -16,6 +16,9 @@ Prior art: `docs/l2-brain-repo-assessment.md`, `docs/l2-product-decisions.md`.
   `services/retrieval/reranker.py`.
 - Live validation (2026-06-11): 15 messages embedded in fixture mailbox (7b968739-...),
   repeat dry-run to_embed=0, eval 7/7 hard gates passed, MRR=1.000, top-1 precision=1.000.
+- Production note: configure a Voyage AI payment method before production rollout so
+  standard rate limits apply. The free-tier limits are acceptable for fixture/demo validation
+  but can throttle repeated cover-for-me requests.
 
 ## Scope
 

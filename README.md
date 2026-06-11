@@ -243,6 +243,8 @@ DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
 
 # For live embedding backfill or the live Voyage integration test, set VOYAGE_API_KEY.
 # Offline tests and --dry-run use FakeEmbedClient and do not require a key.
+# Production deployments should configure a Voyage AI payment method so standard
+# rate limits apply; free-tier limits are only appropriate for fixture/demo runs.
 # See CLAUDE.md for full authorization rules before using the key.
 ```
 

@@ -181,6 +181,13 @@ Voyage AI's Data Processing Agreement covers the data category (personal
 business email) and jurisdiction. This note is a prerequisite gate for
 production use, not for demo/smoke-dataset use.
 
+**Production rate-limit note:**
+Internal validation used Voyage AI's reduced free-tier limits, which are enough
+for small fixture and demo runs but can throttle repeated cover-for-me requests.
+Before production use, configure a Voyage AI payment method for the owning
+organization so the standard rate limits apply. This is an operational
+production gate alongside the DPA and secrets-management gates.
+
 **Why.** The S7 scope is demo and internal testing against throwaway mailboxes.
 The privacy posture is documented now so it is not revisited per-sprint.
 
