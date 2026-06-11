@@ -405,6 +405,63 @@ def test_reranker_not_called_without_param_flag(monkeypatch):
     assert not called, "Reranker must not be called when params.enable_reranking=False"
 
 
+# ── Reranker output validation ────────────────────────────────────────────────
+
+def test_reranker_invented_message_id_raises(monkeypatch):
+    """Reranker must not return a message_id that was not in the candidate set."""
+    monkeypatch.setenv("ENABLE_RERANKING", "1")
+
+    invented = _hit("invented-id", vector_score=0.9)
+
+    class InventingReranker:
+        def rerank(self, query: str, candidates: list[RetrievalHit]) -> list[RetrievalHit]:
+            return candidates + [invented]  # smuggle in a new hit
+
+    params = RetrievalParams(
+        enable_reranking=True, min_vector_score=0.0,
+        embed_model="fake-embed", embed_dim=1024,
+    )
+    vec = [_hit("m1", vector_score=0.9)]
+    with pytest.raises(ValueError, match="invented evidence"):
+        _run_hybrid(vec, [], params=params, reranker=InventingReranker())
+
+
+def test_reranker_duplicate_message_id_raises(monkeypatch):
+    """Reranker must not return the same message_id more than once."""
+    monkeypatch.setenv("ENABLE_RERANKING", "1")
+
+    class DuplicatingReranker:
+        def rerank(self, query: str, candidates: list[RetrievalHit]) -> list[RetrievalHit]:
+            return candidates + candidates  # every hit appears twice
+
+    params = RetrievalParams(
+        enable_reranking=True, min_vector_score=0.0,
+        embed_model="fake-embed", embed_dim=1024,
+    )
+    vec = [_hit("m1", vector_score=0.9), _hit("m2", vector_score=0.8)]
+    with pytest.raises(ValueError, match="duplicate"):
+        _run_hybrid(vec, [], params=params, reranker=DuplicatingReranker())
+
+
+def test_reranker_valid_subset_passes(monkeypatch):
+    """A reranker that returns a strict subset of candidates must succeed."""
+    monkeypatch.setenv("ENABLE_RERANKING", "1")
+
+    class SubsetReranker:
+        def rerank(self, query: str, candidates: list[RetrievalHit]) -> list[RetrievalHit]:
+            return candidates[:1]  # return only the top hit
+
+    params = RetrievalParams(
+        enable_reranking=True, min_vector_score=0.0,
+        embed_model="fake-embed", embed_dim=1024,
+    )
+    vec = [_hit("m1", vector_score=0.9), _hit("m2", vector_score=0.8)]
+    result = _run_hybrid(vec, [], params=params, reranker=SubsetReranker())
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0].message_id == "m1"
+
+
 @pytest.mark.parametrize("bad_value", ["0", "false", "no", "False", "NO", "true", "yes"])
 def test_reranker_not_called_for_non_one_env_values(monkeypatch, bad_value):
     """Only ENABLE_RERANKING=1 must activate the reranker; any other non-empty value

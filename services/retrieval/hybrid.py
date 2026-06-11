@@ -186,8 +186,27 @@ def hybrid_search(
     )
     result = active_reranker.rerank(query_text, top_hits)
 
-    # ── 9. Final check after reranker ─────────────────────────────────────────
+    # ── 9. Validate reranker output, then return ──────────────────────────────
     if not result:
         return InsufficientEvidence("reranker returned empty list")
+
+    # Enforce the "no invented evidence" invariant: every message_id in the
+    # reranker's output must have been in the input, and no message_id may
+    # appear more than once.  A bug or a misbehaving Voyage response that
+    # invents or duplicates citations would otherwise silently corrupt the
+    # answer the user sees.
+    allowed_ids  = {h.message_id for h in top_hits}
+    seen_ids: set[str] = set()
+    for hit in result:
+        if hit.message_id not in allowed_ids:
+            raise ValueError(
+                f"Reranker returned message_id {hit.message_id!r} that was not "
+                f"in the candidate set — invented evidence is not permitted"
+            )
+        if hit.message_id in seen_ids:
+            raise ValueError(
+                f"Reranker returned duplicate message_id {hit.message_id!r}"
+            )
+        seen_ids.add(hit.message_id)
 
     return result
