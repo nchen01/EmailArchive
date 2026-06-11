@@ -17,14 +17,10 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev",
-)
-
 from sqlalchemy import select  # noqa: E402
 
-from services.db.engine import SessionLocal  # noqa: E402
+# SessionLocal is imported inside seed() so the SQLAlchemy engine is not
+# constructed until after load_local_env() has run in main().
 from services.db import models as orm  # noqa: E402
 from services.db.store import persist_l0, persist_l1  # noqa: E402
 from services.enrich.clustering.params import FIXTURE_PARAMS  # noqa: E402
@@ -62,6 +58,7 @@ def get_or_create_mailbox(session) -> str:
 
 
 def seed() -> str:
+    from services.db.engine import SessionLocal  # delayed: engine uses DATABASE_URL at construction time
     session = SessionLocal()
     try:
         mailbox_id = get_or_create_mailbox(session)
