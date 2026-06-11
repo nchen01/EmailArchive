@@ -212,3 +212,94 @@ def test_synthesize_cfm_l2_empty_list_returns_insufficient():
 
     assert routed_to is None
     assert "insufficient" in (result.state or "").lower()
+
+
+# ── S8.2/S8.4 unit tests ─────────────────────────────────────────────────────
+
+def test_run_l2_returns_status_tuple_no_key(monkeypatch):
+    """_run_l2 with no embed_client and absent VOYAGE_API_KEY → disabled_no_key."""
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+    from services.api.routers.cover_for_me import _run_l2
+    status, hits = _run_l2("query", None, "mailbox-id", None)
+    assert status == "disabled_no_key"
+    assert hits == []
+
+
+def test_run_l2_returns_unavailable_when_key_set_but_client_none(monkeypatch):
+    """_run_l2 with no embed_client but key present → unavailable (construction failed)."""
+    monkeypatch.setenv("VOYAGE_API_KEY", "fake-key")
+    from services.api.routers.cover_for_me import _run_l2
+    status, hits = _run_l2("query", None, "mailbox-id", None)
+    assert status == "unavailable"
+    assert hits == []
+
+
+def test_run_l2_rate_limit_returns_degraded():
+    """_run_l2 when embed_query raises EmbedError wrapping RateLimitError → degraded_rate_limit."""
+    from services.retrieval.embed_client import EmbedError
+    from services.api.routers.cover_for_me import _run_l2
+
+    class _RateLimitClient:
+        def embed_query(self, text):
+            raise EmbedError("Voyage API call failed (RateLimitError)")
+
+    status, hits = _run_l2("query", _RateLimitClient(), "mailbox-id", None)
+    assert status == "degraded_rate_limit"
+    assert hits == []
+
+
+def test_build_supporting_evidence_only_cited_headers():
+    """_build_supporting_evidence includes only headers that appear in claims."""
+    from unittest.mock import MagicMock
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    cited_header = "cited@example.com"
+    uncited_header = "uncited@example.com"
+
+    result = SynthesisResult(
+        claims=[SynthesisClaim(text="Claim.", source_message_ids=[cited_header])],
+        model="fake", usage={},
+    )
+    cited_hit = _make_hit(cited_header, subject="Cited Subject", snippet="Cited snippet.")
+    uncited_hit = _make_hit(uncited_header, subject="Uncited Subject", snippet="Uncited snippet.")
+
+    evidence = _build_supporting_evidence(result, [cited_hit, uncited_hit], MagicMock(), "mailbox")
+
+    headers = [e.message_id_header for e in evidence]
+    assert cited_header in headers
+    assert uncited_header not in headers, "Uncited hit must not appear in supporting_evidence"
+
+
+def test_build_supporting_evidence_uses_hit_metadata():
+    """_build_supporting_evidence uses l2 hit subject/snippet directly (no DB call)."""
+    from unittest.mock import MagicMock
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    header = "hit@example.com"
+    hit = _make_hit(header, subject="Hit Subject", snippet="Hit snippet text.")
+    result = SynthesisResult(
+        claims=[SynthesisClaim(text="Claim.", source_message_ids=[header])],
+        model="fake", usage={},
+    )
+
+    db_mock = MagicMock()
+    db_mock.execute.side_effect = AssertionError("DB should not be queried for L2-sourced headers")
+
+    evidence = _build_supporting_evidence(result, [hit], db_mock, "mailbox")
+
+    assert len(evidence) == 1
+    assert evidence[0].subject == "Hit Subject"
+    assert evidence[0].snippet == "Hit snippet text."
+
+
+def test_build_supporting_evidence_empty_claims():
+    """_build_supporting_evidence with no claims returns empty list."""
+    from unittest.mock import MagicMock
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+    from services.synthesis.contracts import SynthesisResult
+
+    result = SynthesisResult(claims=[], model="fake", usage={})
+    evidence = _build_supporting_evidence(result, [], MagicMock(), "mailbox")
+    assert evidence == []

@@ -140,14 +140,35 @@ export interface SynthesisResult {
   state: string | null;
 }
 
-// ── Cover-for-me query (S5, D11) ─────────────────────────────────────────────
+// ── Cover-for-me query (S5/S8, D11) ──────────────────────────────────────────
 
 export interface CoverForMeRequest {
   query: string;
 }
 
+/** Metadata for one message cited in result.claims. Never contains uncited hits. */
+export interface EvidenceMessage {
+  message_id_header: string;
+  subject: string;
+  date: string; // ISO 8601
+  snippet: string; // first 200 chars of clean_text
+}
+
+/** Structured operational state for L2 retrieval (S8.4). */
+export type RetrievalStatus =
+  | "active"               // L2 ran and returned cited hits
+  | "active_l1_only"       // L2 ran (or was skipped for pure-L1 path) but L1 answered
+  | "disabled_no_key"      // VOYAGE_API_KEY absent — expected in dev
+  | "degraded_rate_limit"  // Voyage rate-limit hit this request
+  | "no_embeddings"        // No embeddings found for this mailbox
+  | "unavailable";         // Voyage client or request failed
+
 export interface CoverForMeResponse {
   query: string;
   routed_to: string | null; // "person:<name>" | "project:<label>" | null
   result: SynthesisResult;
+  /** S8.2: one entry per unique header cited across result.claims. */
+  supporting_evidence: EvidenceMessage[];
+  /** S8.4: structured operational state; defaults to "active". */
+  retrieval_status: RetrievalStatus;
 }

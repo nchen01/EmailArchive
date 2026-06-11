@@ -49,7 +49,12 @@ from services.synthesis.cover_for_me import synthesize_cover_for_me
 from services.synthesis.params import PARAMS
 
 from ..deps import get_db
-from ..schemas.cover_for_me import CoverForMeRequest, CoverForMeResponse
+from ..schemas.cover_for_me import (
+    CoverForMeRequest,
+    CoverForMeResponse,
+    EvidenceMessage,
+    RetrievalStatus,
+)
 
 router = APIRouter(tags=["cover-for-me"])
 
@@ -94,31 +99,116 @@ def _get_embed_client(mailbox: orm.Mailbox):
         return None
 
 
+def _has_embeddings(db: Session, mailbox_id: str) -> bool:
+    """True when at least one voyage-4 embedding row exists for this mailbox."""
+    from sqlalchemy import text
+    count = db.execute(
+        text(
+            "SELECT COUNT(*) FROM message_embedding "
+            "WHERE mailbox_id = :mid AND embed_model = :model LIMIT 1"
+        ),
+        {"mid": mailbox_id, "model": _CFM_RETRIEVAL_PARAMS.embed_model},
+    ).scalar()
+    return (count or 0) > 0
+
+
 def _run_l2(
     query: str,
     embed_client,
     mailbox_id: str,
     db: Session,
-) -> list[RetrievalHit]:
-    """Run L2 hybrid retrieval; return hits or [] on skip/failure.
+) -> tuple[RetrievalStatus, list[RetrievalHit]]:
+    """Run L2 hybrid retrieval; return (status, hits).
 
-    Returns [] immediately when embed_client is None (no VOYAGE_API_KEY set).
-    Exceptions from hybrid_search are swallowed so L2 failure never breaks
-    the endpoint — the caller falls back to L1-only evidence.
-    All returned hits use message_id_header (RFC 5322), not internal UUID.
+    When embed_client is None, determines the reason from the environment:
+      - VOYAGE_API_KEY absent → ("disabled_no_key", [])
+      - Key present but construction failed (already logged) → ("unavailable", [])
+
+    On empty results, runs a lazy COUNT to distinguish "no embeddings" from
+    "embeddings present but no hits above threshold" (Q2 decision, S8.4).
     """
     if embed_client is None:
-        return []
+        if not os.environ.get("VOYAGE_API_KEY"):
+            return ("disabled_no_key", [])
+        return ("unavailable", [])
+
     try:
         query_vec = embed_client.embed_query(query)
         result = hybrid_search(db, mailbox_id, query_vec, query, _CFM_RETRIEVAL_PARAMS)
-        return result if isinstance(result, list) else []
+        hits = result if isinstance(result, list) else []
+        if hits:
+            return ("active", hits)
+        # Empty result — distinguish "no embeddings" from "below threshold".
+        if not _has_embeddings(db, mailbox_id):
+            return ("no_embeddings", [])
+        return ("active_l1_only", [])
     except Exception as exc:
+        exc_name = type(exc).__name__
+        if "RateLimitError" in str(exc):
+            _log.warning(
+                "L2 rate limit for mailbox %s — falling back to L1-only", mailbox_id
+            )
+            return ("degraded_rate_limit", [])
         _log.warning(
             "L2 retrieval failed for mailbox %s (%s) — falling back to L1-only",
-            mailbox_id, type(exc).__name__,
+            mailbox_id, exc_name,
         )
+        return ("unavailable", [])
+
+
+def _build_supporting_evidence(
+    result,
+    l2_hits: list[RetrievalHit],
+    db: Session,
+    mailbox_id: str,
+) -> list[EvidenceMessage]:
+    """Build EvidenceMessage list for every header cited in result.claims.
+
+    Derives from cited source_message_ids only — never from all l2_hits.
+    L2 hits provide subject/ts/snippet directly; L1-sourced headers get a
+    single DB lookup.
+    """
+    cited = {h for claim in result.claims for h in claim.source_message_ids}
+    if not cited:
         return []
+
+    l2_by_header = {h.message_id_header: h for h in l2_hits}
+    evidence: list[EvidenceMessage] = []
+    l1_needed: list[str] = []
+
+    for header in cited:
+        if header in l2_by_header:
+            hit = l2_by_header[header]
+            evidence.append(EvidenceMessage(
+                message_id_header=header,
+                subject=hit.subject,
+                date=hit.ts.isoformat(),
+                snippet=hit.snippet[:200],
+            ))
+        else:
+            l1_needed.append(header)
+
+    if l1_needed:
+        rows = db.execute(
+            select(
+                orm.Message.message_id_header,
+                orm.Message.subject,
+                orm.Message.ts,
+                orm.Message.clean_text,
+            ).where(
+                orm.Message.mailbox_id == mailbox_id,
+                orm.Message.message_id_header.in_(l1_needed),
+            )
+        ).all()
+        for row in rows:
+            evidence.append(EvidenceMessage(
+                message_id_header=row.message_id_header,
+                subject=row.subject or "",
+                date=row.ts.isoformat() if row.ts else "",
+                snippet=(row.clean_text or "")[:200],
+            ))
+
+    return evidence
 
 
 def _token_match(name: str, query_lower: str) -> bool:
@@ -248,13 +338,15 @@ async def cover_for_me_endpoint(
         result, routed_to = synthesize_cover_for_me(
             body.query, None, matched_project, db=db, mailbox_id=mailbox_id, synth_fn=None
         )
-        return CoverForMeResponse(query=body.query, routed_to=routed_to, result=result)
+        return CoverForMeResponse(
+            query=body.query, routed_to=routed_to, result=result,
+            retrieval_status="active_l1_only",
+        )
 
     # L2 runs alongside L1 when an embed client is available (spec Q5/S7.11).
-    # Returns [] when VOYAGE_API_KEY is absent — L1-only path preserved (S5).
-    # Returns [] with a logged warning when retrieval fails (key present but error).
+    # _run_l2 now returns (RetrievalStatus, hits) so failures are surfaced.
     embed_client = _get_embed_client(mbx)
-    l2_hits = _run_l2(body.query, embed_client, mailbox_id, db)
+    retrieval_status, l2_hits = _run_l2(body.query, embed_client, mailbox_id, db)
 
     # No L1 entity match.
     if matched_person is None and matched_project is None:
@@ -263,7 +355,10 @@ async def cover_for_me_endpoint(
             result, routed_to = synthesize_cover_for_me(
                 body.query, None, None, db=db, mailbox_id=mailbox_id, synth_fn=None
             )
-            return CoverForMeResponse(query=body.query, routed_to=routed_to, result=result)
+            return CoverForMeResponse(
+                query=body.query, routed_to=routed_to, result=result,
+                retrieval_status=retrieval_status,
+            )
 
         # L2 is the primary source — model call required.
         try:
@@ -276,9 +371,13 @@ async def cover_for_me_endpoint(
             db=db, mailbox_id=mailbox_id, synth_fn=synth_fn,
             l2_hits=l2_hits,
         )
-        return CoverForMeResponse(query=body.query, routed_to=routed_to, result=result)
+        return CoverForMeResponse(
+            query=body.query, routed_to=routed_to, result=result,
+            supporting_evidence=_build_supporting_evidence(result, l2_hits, db, mailbox_id),
+            retrieval_status=retrieval_status,
+        )
 
-    # L1 matched — primary synthesis with L2 headers added to the allow-list.
+    # L1 matched — primary synthesis with L2 supporting evidence.
     try:
         synth_fn = make_anthropic_synth_fn(PARAMS)
     except MissingApiKeyError as exc:
@@ -293,4 +392,8 @@ async def cover_for_me_endpoint(
         synth_fn=synth_fn,
         l2_hits=l2_hits,
     )
-    return CoverForMeResponse(query=body.query, routed_to=routed_to, result=result)
+    return CoverForMeResponse(
+        query=body.query, routed_to=routed_to, result=result,
+        supporting_evidence=_build_supporting_evidence(result, l2_hits, db, mailbox_id),
+        retrieval_status=retrieval_status,
+    )

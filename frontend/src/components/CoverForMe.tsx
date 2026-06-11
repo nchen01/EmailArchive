@@ -1,20 +1,71 @@
 import { useState } from "react";
 import { useCoverForMe } from "../hooks/useCoverForMe";
+import type { EvidenceMessage, RetrievalStatus } from "../api/types";
 
 interface CoverForMeProps {
   mailboxId: string;
 }
 
-function CitationChips({ ids }: { ids: string[] }) {
+function CitationChips({
+  ids,
+  evidence,
+}: {
+  ids: string[];
+  evidence: EvidenceMessage[];
+}) {
+  const byHeader = Object.fromEntries(evidence.map((e) => [e.message_id_header, e]));
   return (
     <span className="activity-citations">
-      {ids.map((id) => (
-        <span key={id} className="citation-chip" title={id}>
-          {id}
-        </span>
-      ))}
+      {ids.map((id) => {
+        const ev = byHeader[id];
+        const label = ev
+          ? `${ev.subject} · ${new Date(ev.date).toLocaleDateString()}`
+          : id;
+        return (
+          <span key={id} className="citation-chip" title={ev?.snippet ?? id}>
+            {label}
+          </span>
+        );
+      })}
     </span>
   );
+}
+
+function RetrievalStatusNote({ status }: { status: RetrievalStatus }) {
+  switch (status) {
+    case "active":
+    case "active_l1_only":
+      return null;
+    case "disabled_no_key":
+      return (
+        <p className="mt-2 text-xs text-slate-400">
+          Evidence search not configured — set VOYAGE_API_KEY to enable message
+          retrieval.
+        </p>
+      );
+    case "degraded_rate_limit":
+      return (
+        <p className="mt-2 text-xs text-amber-600">
+          Evidence search temporarily limited (rate limit) — answer based on
+          structured data only.
+        </p>
+      );
+    case "no_embeddings":
+      return (
+        <p className="mt-2 text-xs text-amber-600">
+          Message embeddings not found — run <code>embed_backfill.py</code> to
+          enable retrieval.
+        </p>
+      );
+    case "unavailable":
+      return (
+        <p className="mt-2 text-xs text-amber-600">
+          Evidence search unavailable — answer based on structured data only.
+        </p>
+      );
+    default:
+      return null;
+  }
 }
 
 /**
@@ -38,6 +89,8 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
 
   const result = response?.result ?? null;
   const claims = result?.claims ?? [];
+  const evidence = response?.supporting_evidence ?? [];
+  const retrieval_status = response?.retrieval_status ?? "active";
   const isInsufficient =
     !!result &&
     claims.length === 0 &&
@@ -112,12 +165,14 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
                 {claims.map((c, i) => (
                   <li key={i} className="summary-claim">
                     <span className="claim-text">{c.text}</span>
-                    <CitationChips ids={c.source_message_ids} />
+                    <CitationChips ids={c.source_message_ids} evidence={evidence} />
                   </li>
                 ))}
               </ul>
             </div>
           )}
+
+          <RetrievalStatusNote status={retrieval_status} />
         </div>
       ) : null}
     </div>
