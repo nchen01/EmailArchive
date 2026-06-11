@@ -192,14 +192,16 @@ class CoverForMeResponse(BaseModel):
     retrieval_status: RetrievalStatus = "active"   # new
 ```
 
-Map each failure mode in `_run_l2`:
-- `embed_client is None` → `"disabled_no_key"`
-- `EmbedError` wrapping `RateLimitError` → `"degraded_rate_limit"`
-- `EmbedError` wrapping other → `"unavailable"`
-- Result is `InsufficientEvidence` or [] after search → `"active_l1_only"`
-- Result has hits → `"active"`
-- No `message_embedding` rows for the model → `"no_embeddings"` (detected in
-  `vector_search` when rowcount is 0 and there are messages in the mailbox)
+Change `_run_l2` to return `(RetrievalStatus, list[RetrievalHit])` instead of just
+`list[RetrievalHit]`.  Map each outcome:
+- `embed_client is None` → `("disabled_no_key", [])`
+- `EmbedError` wrapping `RateLimitError` → `("degraded_rate_limit", [])`
+- `EmbedError` wrapping other → `("unavailable", [])`
+- Result has hits → `("active", hits)`
+- Result is empty or `InsufficientEvidence`:
+  - Count `message_embedding` rows for this mailbox + model (cheap, indexed).
+  - Count == 0 → `("no_embeddings", [])`
+  - Count > 0 → `("active_l1_only", [])`   # hits exist but scored below threshold
 
 **Frontend change:**
 
@@ -311,22 +313,35 @@ S8.3 (preflight script + API endpoint)   [parallel with S8.2]
 S8.4 API (retrieval_status enum)
   └── S8.4 frontend (distinct UX per status)
 
-S8.2 and S8.4 share the same response schema file — implement together.
+S8.2 and S8.4 share the same response schema file — implement together in one PR.
 ```
 
 ---
 
-## Open Questions
+## Resolved Decisions
 
-**Q1 — Smoke mailbox choice:** which real mailbox to use for S8.1 and S8.5?
-`puluo1938@gmail.com` (460 messages) is the recommended starting point;
-`johncartergpt2024@gmail.com` (2162 messages) is available if broader coverage
-is needed but takes longer to backfill and curate.
-Resolve before starting S8.1.
+**Q1 — Smoke mailbox: `puluo1938@gmail.com` (460 messages). ✓ resolved**
+Right size and has real-mailbox messiness. `johncartergpt2024@gmail.com`
+(2162 messages) is kept as a later second-pass validation mailbox, not the S8 target.
 
-**Q2 — `no_embeddings` detection:** `vector_search` returns [] for both
-"no embeddings at all" and "embeddings present but no hits above threshold".
-Detecting `no_embeddings` requires a separate COUNT query:
-`SELECT COUNT(*) FROM message_embedding WHERE mailbox_id=:mid AND embed_model='voyage-4'`.
-Decide whether to add this check in `_run_l2` (one extra query per request)
-or gate it on a preflight flag cached at startup.
+**Q2 — `no_embeddings` detection: per-request COUNT, lazy (after empty results). ✓ resolved**
+Implement as a DB COUNT query run only when both vector and FTS searches return
+empty results. Never cache at startup — a mid-session backfill must be reflected
+immediately without a restart. The COUNT is cheap on an indexed table and only
+fires on the unhappy path.
+
+Implementation: in `_run_l2`, when `hybrid_search` returns `InsufficientEvidence`
+or an empty list, follow up with:
+```sql
+SELECT COUNT(*) FROM message_embedding
+WHERE mailbox_id = :mid AND embed_model = :model
+```
+If COUNT is 0, return `("no_embeddings", [])` instead of `("active_l1_only", [])`.
+`_run_l2` returns a `(retrieval_status, hits)` pair rather than `list[RetrievalHit]`
+alone.
+
+**S8.2 + S8.4 together: implement in one PR. ✓ resolved**
+Both tasks modify `CoverForMeResponse` in the same schema file. Splitting into two
+PRs would require two additive schema migrations with intermediate states that are
+only half-correct. One PR adds `supporting_evidence`, `retrieval_status`, and the
+frontend changes for both at once.
