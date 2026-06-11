@@ -303,3 +303,43 @@ def test_build_supporting_evidence_empty_claims():
     result = SynthesisResult(claims=[], model="fake", usage={})
     evidence = _build_supporting_evidence(result, [], MagicMock(), "mailbox")
     assert evidence == []
+
+
+def test_build_supporting_evidence_mixed_l1_l2_preserves_claim_order():
+    """Mixed L1/L2 citations in one claim preserve first-seen citation order.
+
+    Claim cites [l1-header, l2-header].  L1 requires a DB lookup; L2 is in
+    l2_hits.  supporting_evidence must return [l1-entry, l2-entry], not
+    all-L2-first then all-L1.
+    """
+    from unittest.mock import MagicMock
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    l1_header = "l1msg@example.com"
+    l2_header = "l2msg@example.com"
+
+    result = SynthesisResult(
+        claims=[SynthesisClaim(
+            text="Mixed claim.",
+            source_message_ids=[l1_header, l2_header],  # L1 first
+        )],
+        model="fake", usage={},
+    )
+    l2_hit = _make_hit(l2_header, subject="L2 Subject")
+
+    # Simulate a DB row for the L1 header
+    l1_row = MagicMock()
+    l1_row.message_id_header = l1_header
+    l1_row.subject = "L1 Subject"
+    l1_row.ts = _TS
+    l1_row.clean_text = "L1 snippet."
+
+    db_mock = MagicMock()
+    db_mock.execute.return_value.all.return_value = [l1_row]
+
+    evidence = _build_supporting_evidence(result, [l2_hit], db_mock, "mailbox")
+
+    assert len(evidence) == 2
+    assert evidence[0].message_id_header == l1_header, "L1 must come first (matches claim order)"
+    assert evidence[1].message_id_header == l2_header, "L2 must come second"

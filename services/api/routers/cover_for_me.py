@@ -185,22 +185,13 @@ def _build_supporting_evidence(
     if not cited_ordered:
         return []
 
+    # Build both lookup maps before the final walk so that a mixed
+    # [L1-header, L2-header] citation order is preserved exactly — not
+    # all-L2-first then all-L1.
     l2_by_header = {h.message_id_header: h for h in l2_hits}
-    evidence: list[EvidenceMessage] = []
-    l1_needed: list[str] = []
+    l1_needed = [h for h in cited_ordered if h not in l2_by_header]
 
-    for header in cited_ordered:
-        if header in l2_by_header:
-            hit = l2_by_header[header]
-            evidence.append(EvidenceMessage(
-                message_id_header=header,
-                subject=hit.subject,
-                date=hit.ts.isoformat(),
-                snippet=hit.snippet[:200],
-            ))
-        else:
-            l1_needed.append(header)
-
+    rows_by_header: dict = {}
     if l1_needed:
         rows = db.execute(
             select(
@@ -213,17 +204,28 @@ def _build_supporting_evidence(
                 orm.Message.message_id_header.in_(l1_needed),
             )
         ).all()
-        # Build a lookup so we can append in cited_ordered sequence, not DB order.
         rows_by_header = {row.message_id_header: row for row in rows}
-        for header in cited_ordered:
-            if header in rows_by_header:
-                row = rows_by_header[header]
-                evidence.append(EvidenceMessage(
-                    message_id_header=header,
-                    subject=row.subject or "",
-                    date=row.ts.isoformat() if row.ts else "",
-                    snippet=(row.clean_text or "")[:200],
-                ))
+
+    # Single walk over cited_ordered — emits L2 and L1 evidence interleaved
+    # in first-seen citation order.
+    evidence: list[EvidenceMessage] = []
+    for header in cited_ordered:
+        if header in l2_by_header:
+            hit = l2_by_header[header]
+            evidence.append(EvidenceMessage(
+                message_id_header=header,
+                subject=hit.subject,
+                date=hit.ts.isoformat(),
+                snippet=hit.snippet[:200],
+            ))
+        elif header in rows_by_header:
+            row = rows_by_header[header]
+            evidence.append(EvidenceMessage(
+                message_id_header=header,
+                subject=row.subject or "",
+                date=row.ts.isoformat() if row.ts else "",
+                snippet=(row.clean_text or "")[:200],
+            ))
 
     return evidence
 
