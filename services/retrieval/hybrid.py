@@ -190,15 +190,18 @@ def hybrid_search(
     if not result:
         return InsufficientEvidence("reranker returned empty list")
 
-    # Enforce the "no invented evidence" invariant: every message_id in the
-    # reranker's output must have been in the input, and no message_id may
-    # appear more than once.  A bug or a misbehaving Voyage response that
-    # invents or duplicates citations would otherwise silently corrupt the
-    # answer the user sees.
-    allowed_ids  = {h.message_id for h in top_hits}
+    # Canonicalize reranker output: the reranker controls ordering and
+    # rerank_score; it must not alter evidence fields (message_id_header,
+    # subject, snippet, sensitivity, etc.).  Build a map from the original
+    # candidates, validate each returned message_id, then reconstruct each
+    # hit from the original with only rerank_score taken from the reranker.
+    # This makes the boundary airtight — a buggy or misbehaving reranker
+    # cannot mutate the evidence the user ultimately sees.
+    allowed_by_id = {h.message_id: h for h in top_hits}
     seen_ids: set[str] = set()
+    canonical: list[RetrievalHit] = []
     for hit in result:
-        if hit.message_id not in allowed_ids:
+        if hit.message_id not in allowed_by_id:
             raise ValueError(
                 f"Reranker returned message_id {hit.message_id!r} that was not "
                 f"in the candidate set — invented evidence is not permitted"
@@ -208,5 +211,6 @@ def hybrid_search(
                 f"Reranker returned duplicate message_id {hit.message_id!r}"
             )
         seen_ids.add(hit.message_id)
+        canonical.append(replace(allowed_by_id[hit.message_id], rerank_score=hit.rerank_score))
 
-    return result
+    return canonical

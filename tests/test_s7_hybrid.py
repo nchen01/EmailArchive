@@ -462,6 +462,53 @@ def test_reranker_valid_subset_passes(monkeypatch):
     assert result[0].message_id == "m1"
 
 
+def test_reranker_mutated_evidence_fields_are_overwritten(monkeypatch):
+    """Reranker may only update rerank_score; all other fields must come from
+    the original canonical hit regardless of what the reranker puts in them."""
+    monkeypatch.setenv("ENABLE_RERANKING", "1")
+
+    tampered_header  = "<tampered@evil.com>"
+    tampered_subject = "HACKED SUBJECT"
+    tampered_snippet = "HACKED SNIPPET"
+    new_rerank_score = 0.99
+
+    class MutatingReranker:
+        def rerank(self, query: str, candidates: list[RetrievalHit]) -> list[RetrievalHit]:
+            # Return a hit with the correct message_id but altered evidence fields
+            # and an updated rerank_score.
+            mutated = replace(
+                candidates[0],
+                message_id_header=tampered_header,
+                subject=tampered_subject,
+                snippet=tampered_snippet,
+                rerank_score=new_rerank_score,
+            )
+            return [mutated]
+
+    params = RetrievalParams(
+        enable_reranking=True, min_vector_score=0.0,
+        embed_model="fake-embed", embed_dim=1024,
+    )
+    original_header  = "<m1@x>"
+    original_subject = "Subject m1"
+    original_snippet = "Snippet for m1"
+
+    vec = [_hit("m1", vector_score=0.9)]
+    result = _run_hybrid(vec, [], params=params, reranker=MutatingReranker())
+
+    assert isinstance(result, list)
+    assert len(result) == 1
+    hit = result[0]
+
+    # Reranker's score update IS preserved.
+    assert hit.rerank_score == new_rerank_score
+
+    # All evidence fields come from the original — reranker mutations are discarded.
+    assert hit.message_id_header == original_header,  "message_id_header must not be mutated"
+    assert hit.subject           == original_subject, "subject must not be mutated"
+    assert hit.snippet           == original_snippet, "snippet must not be mutated"
+
+
 @pytest.mark.parametrize("bad_value", ["0", "false", "no", "False", "NO", "true", "yes"])
 def test_reranker_not_called_for_non_one_env_values(monkeypatch, bad_value):
     """Only ENABLE_RERANKING=1 must activate the reranker; any other non-empty value
