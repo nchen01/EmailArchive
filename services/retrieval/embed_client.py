@@ -44,6 +44,15 @@ class EmbedClient(Protocol):
         """Embed a single query string. Returns one vector."""
         ...
 
+    def embed_queries_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed multiple query strings in one call. Returns one vector per text.
+
+        Prefer this over repeated embed_query() calls when many queries are
+        needed at once (e.g. eval runs) — VoyageEmbedClient sends one API
+        request instead of N, avoiding per-query rate-limit hits.
+        """
+        ...
+
     @property
     def model(self) -> str:
         """Model identifier string, e.g. 'voyage-4' or 'fake-embed'."""
@@ -117,6 +126,9 @@ class FakeEmbedClient:
         # the same space, so an exact text match scores cosine ≈ 1.0.
         return self._vector(text)
 
+    def embed_queries_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self._vector(t) for t in texts]
+
 
 # ── VoyageEmbedClient ─────────────────────────────────────────────────────────
 
@@ -173,6 +185,10 @@ class VoyageEmbedClient:
 
     def embed_query(self, text: str) -> list[float]:
         return self._embed([text], input_type="query")[0]
+
+    def embed_queries_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of query strings in a single Voyage API call."""
+        return self._embed(texts, input_type="query")
 
     def _embed(self, texts: list[str], input_type: str) -> list[list[float]]:
         t0 = time.monotonic()

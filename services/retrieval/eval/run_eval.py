@@ -40,8 +40,14 @@ if str(ROOT) not in sys.path:
 
 from services.retrieval.contracts import InsufficientEvidence, RetrievalHit
 from services.retrieval.embed_client import EmbedClient, FakeEmbedClient
-from services.retrieval.eval.fixtures import EVAL_CASES, EVAL_PARAMS, RetrievalCase
+from services.retrieval.eval.fixtures import (
+    EVAL_CASES,
+    EVAL_PARAMS,
+    VOYAGE_EVAL_PARAMS,
+    RetrievalCase,
+)
 from services.retrieval.hybrid import hybrid_search
+from services.retrieval.params import RetrievalParams
 
 
 # ── Result types ──────────────────────────────────────────────────────────────
@@ -144,20 +150,23 @@ def run_eval(
     mailbox_id: str,
     embed_client: EmbedClient | None = None,
     *,
+    params: RetrievalParams | None = None,
     verbose: bool = False,
 ) -> EvalResult:
     """Run all EVAL_CASES against hybrid_search for ``mailbox_id``.
 
     ``embed_client`` defaults to FakeEmbedClient(dim=1024, model='fake-embed').
-    Never constructs VoyageEmbedClient — see CLAUDE.md authorization rules.
+    ``params`` defaults to EVAL_PARAMS (fake-embed calibrated); pass
+    VOYAGE_EVAL_PARAMS when using VoyageEmbedClient so embed_model and
+    min_vector_score match the indexed documents.
 
-    Raises EvalFailure when any hard gate fails so the process exits non-zero
-    when called from the CLI.  Returns EvalResult in all cases so the caller
-    can inspect per-case details.
+    All eval queries are embedded in a single batch call (embed_queries_batch)
+    to avoid per-query API rate-limit hits when using VoyageEmbedClient.
     """
     from sqlalchemy import text
 
     _client = embed_client or FakeEmbedClient(dim=1024, model="fake-embed")
+    _params = params or EVAL_PARAMS
 
     # Load all message_id_headers present in the DB for gate 5.
     db_headers_rows = session.execute(
@@ -166,15 +175,19 @@ def run_eval(
     ).all()
     all_db_headers = {r[0] for r in db_headers_rows}
 
+    # Pre-embed all queries in one batch call — single API request regardless
+    # of how many eval cases exist, avoiding per-query rate-limit hits.
+    queries = [case.query for case in EVAL_CASES]
+    query_vecs = _client.embed_queries_batch(queries)
+
     case_results: list[CaseResult] = []
-    for case in EVAL_CASES:
-        query_vec = _client.embed_query(case.query)
-        result    = hybrid_search(
+    for case, query_vec in zip(EVAL_CASES, query_vecs):
+        result = hybrid_search(
             session,
             mailbox_id,
             query_vec,
             case.query,
-            EVAL_PARAMS,
+            _params,
         )
         cr = _check_case(case, result, all_db_headers)
         case_results.append(cr)
@@ -267,16 +280,26 @@ def main(argv: list[str] | None = None) -> None:
     load_local_env()
 
     embed_client = _build_embed_client(args.embed_client)
+    eval_params  = VOYAGE_EVAL_PARAMS if args.embed_client == "voyage" else EVAL_PARAMS
     print(
         f"embed client : {args.embed_client} "
         f"(model={embed_client.model}, dim={embed_client.dim})"
+    )
+    print(
+        f"eval params  : embed_model={eval_params.embed_model} "
+        f"min_vector_score={eval_params.min_vector_score}"
     )
 
     session = SessionLocal()
     try:
         print(f"mailbox      : {args.mailbox_id}")
-        print("Running retrieval eval ...")
-        result = run_eval(session, args.mailbox_id, embed_client=embed_client, verbose=args.verbose)
+        print("Running retrieval eval (queries batched into one embed call) ...")
+        result = run_eval(
+            session, args.mailbox_id,
+            embed_client=embed_client,
+            params=eval_params,
+            verbose=args.verbose,
+        )
         print(
             f"\nAll {len(result.case_results)} hard gates PASSED  "
             f"MRR={result.mrr:.3f}  top-1 precision={result.top1_precision:.3f}"

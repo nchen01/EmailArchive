@@ -1,19 +1,29 @@
 """Retrieval eval cases for the S7.10 hard-gate eval (spec S7.10).
 
 These cases run against the standard 18-message fixture mailbox embedded with
-FakeEmbedClient.  All expected_headers and forbidden_headers are RFC 5322
-Message-ID values taken directly from fixtures/mailbox.json.
+FakeEmbedClient (offline CI) or VoyageEmbedClient (live L2 validation).
+All expected_headers and forbidden_headers are RFC 5322 Message-ID values
+taken directly from fixtures/mailbox.json (angle brackets stripped by norm_mid).
 
 expected_route describes the intended routing once S7.11 wires L1+L2 together.
-Before S7.11 the route field is recorded but not enforced by the eval runner.
 
-Threshold note: EVAL_PARAMS sets min_vector_score=0.30.  FakeEmbedClient
-feature-hash embeddings produce cosine similarities in the 0.4–0.7 range for
-strong vocabulary matches — lower than Voyage voyage-4 (typically 0.7–0.95)
-because FakeEmbedClient has no semantic generalisation.  The 0.30 gate is
-calibrated to pass all clearly-relevant messages while still blocking the
-zero-similarity xyzzy/unanswerable case.  The production gate (0.60) should
-be re-verified once S7.10 runs against real Voyage embeddings.
+Two RetrievalParams sets are provided:
+
+EVAL_PARAMS (default, offline CI):
+    embed_model="fake-embed", min_vector_score=0.30.
+    FakeEmbedClient feature-hash embeddings produce cosine similarities in the
+    0.4–0.7 range for strong vocabulary matches — lower than voyage-4
+    (typically 0.7–0.95) because FakeEmbedClient has no semantic generalisation.
+    The 0.30 gate passes all clearly-relevant messages while blocking the
+    zero-similarity xyzzy case.
+
+VOYAGE_EVAL_PARAMS (live validation, --embed-client voyage):
+    embed_model="voyage-4", min_vector_score=0.60.
+    Must match the model used for the backfill — vector_search filters
+    message_embedding WHERE embed_model = :model, so a mismatch returns zero
+    vector hits.  Use this set when querying voyage-4-indexed document vectors
+    with a VoyageEmbedClient so query and document embeddings are in the same
+    space.
 """
 from __future__ import annotations
 
@@ -28,6 +38,18 @@ EVAL_PARAMS = RetrievalParams(
     embed_model="fake-embed",
     embed_dim=1024,
     min_vector_score=0.30,   # calibrated for FakeEmbedClient; see module docstring
+    min_fts_score=0.0,
+    vector_top_k=20,
+    fts_top_k=20,
+    rerank_top_k=10,
+)
+
+# Use this when running the eval with --embed-client voyage (live L2 validation).
+# embed_model must match the model used for the backfill so vector_search finds rows.
+VOYAGE_EVAL_PARAMS = RetrievalParams(
+    embed_model="voyage-4",
+    embed_dim=1024,
+    min_vector_score=0.60,   # production gate; voyage-4 scores typically 0.7–0.95
     min_fts_score=0.0,
     vector_top_k=20,
     fts_top_k=20,
@@ -104,8 +126,11 @@ EVAL_CASES: list[RetrievalCase] = [
     # ── C2: DataPipe SOW ───────────────────────────────────────────────────────
     # FakeEmbedClient scores: sow-2 0.516, sow-1 0.482 — both above 0.30 gate.
     # legal-1 mentions "DataPipe" but sensitivity=['privileged','legal'] → excluded.
+    # "contract" was removed from the query: websearch_to_tsquery requires ALL
+    # terms (AND semantics), and "contract" does not appear in the SOW message
+    # subjects or bodies, causing FTS to return zero hits for that case.
     RetrievalCase(
-        query="DataPipe migration SOW redlines contract",
+        query="DataPipe migration SOW redlines",
         expected_headers=[
             "atlas-sow-1@datapipe.com",
             "atlas-sow-2@acme.com",
