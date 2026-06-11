@@ -42,6 +42,29 @@ end-of-sprint wrap-ups, and any other message where you describe what you did.
 
 ---
 
+## Voyage AI API key — authorization required
+
+**VOYAGE_API_KEY is stored in `.env` (gitignored). It must never be used
+without the owner's explicit instruction for that specific run.**
+
+Rules that apply in every session, without exception:
+
+1. Do not run `scripts/embed_backfill.py` without `--dry-run` unless the user
+   explicitly says to embed (e.g. "run the backfill", "use the key").
+2. Do not run any code path that constructs `VoyageEmbedClient` or calls the
+   Voyage embed/rerank API.
+3. Do not run the live integration test (`test_voyage_embed_documents_live`)
+   — it is skip-guarded on `VOYAGE_API_KEY` and that guard must stay.
+4. `FakeEmbedClient` is the correct default for all automated tests and CI.
+5. If a task could plausibly trigger an API call, stop and ask for explicit
+   confirmation before proceeding.
+
+These rules apply even if `VOYAGE_API_KEY` is present in the environment.
+The key costs money per token and may transmit mailbox content to a third
+party. Full authorization from the user is required before every real use.
+
+---
+
 ## Project orientation
 
 Read `AGENTS.md` first before starting any implementation task. It contains
