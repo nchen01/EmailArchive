@@ -114,6 +114,9 @@ def seed() -> str:
 
 
 def main() -> None:
+    from scripts._env import load_local_env
+    load_local_env()   # load .env before DATABASE_URL is read by db/engine.py
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--serve", action="store_true", help="start uvicorn after seeding")
     args = parser.parse_args()

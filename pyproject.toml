@@ -93,10 +93,12 @@ test = [
     # automatically, so the full test suite passes without hnswlib.
     # Add pip install .[clustering] on Linux/prod where hnswlib builds cleanly.
 ]
-# dev: one-shot local-development install (test suite + Gmail provider).
-# Python extras cannot reference sibling extras portably, so deps are listed
-# explicitly. Use: pip install -r requirements.txt
+# dev: one-shot local-development install (test suite + Gmail provider + dotenv).
+# python-dotenv is dev-only: it loads .env for CLI scripts (scripts/_env.py).
+# It is NOT in the test or production extras so shared service modules cannot
+# accidentally depend on it.  Use: pip install -r requirements.txt
 dev = [
+    "python-dotenv>=1.0",
     "pytest>=8.0",
     "pytest-timeout>=2.1",
     "httpx>=0.27",

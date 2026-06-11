@@ -273,6 +273,9 @@ def _build_voyage_client(model: str) -> EmbedClient:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from scripts._env import load_local_env
+    load_local_env()   # load .env before reading VOYAGE_API_KEY or DATABASE_URL
+
     parser = argparse.ArgumentParser(
         description="Embed all non-noise, non-sensitive messages for a mailbox."
     )

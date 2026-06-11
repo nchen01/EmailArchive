@@ -382,6 +382,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    from scripts._env import load_local_env
+    load_local_env()   # load .env before GMAIL_TOKEN or DATABASE_URL are read
+
     args = parse_args()
 
     if args.max_messages is not None and args.max_messages < 1:
