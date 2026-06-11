@@ -196,6 +196,15 @@ in S5 as a bounded query over structured L1 objects — Person, Project, Event, 
 already persisted in Postgres. It does NOT use vector retrieval, embeddings, or the
 `message_embedding` table. That table remains deferred pending embedding model choice
 (spec 04 ticket 4.5).
+
+> **Status as of 2026-06-11 (post-S7.10):** The deferral above was the S5 decision.
+> D12 (see above) has since resolved the embedding model choice (Voyage AI `voyage-4`, 1024-dim),
+> and migration 0006 now implements `message_embedding` with the HNSW index.
+> S7.11 will upgrade cover-for-me internally to hybrid L1+L2 without changing the
+> surface API or citation contract — the "upgrade path" described below is now underway.
+> The D11 decision text is preserved as the original S5 rationale; D12 and migration 0006
+> are the authoritative current state.
+
 **What it answers:** "Who do I ask about X?" (route to Person/Edge/Role) and "What's the
 state of project Z?" (route to Project/Event/Thread). Bounded, cited, grounded on L1 data.
 **What it explicitly does not bluff:** queries that cannot be answered from structured evidence
