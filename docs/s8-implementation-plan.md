@@ -97,11 +97,22 @@ class CoverForMeResponse(BaseModel):
     supporting_evidence: list[EvidenceMessage] = []  # new
 ```
 
-Populate from L2 hits in the router (already available as `l2_hits`) for the
-L2 paths. For L1-cited messages, do a lightweight DB lookup:
-`SELECT subject, ts, clean_text FROM message WHERE message_id_header IN (...)`.
-Include only messages whose headers appear in at least one claim's
-`source_message_ids`.
+**Source rule: derive from the final claims' `source_message_ids`, not from all
+L2 hits.**  A retrieved message that the model did not cite must not appear in
+`supporting_evidence` — exposing uncited retrieval hits as if they supported the
+answer would violate "no citation, no claim".
+
+Population:
+1. Collect the union of all `source_message_ids` across `result.claims`.
+2. For any header in that set that came from an L2 hit (already in memory as
+   `l2_hits`), use the hit's subject/ts/snippet directly — no extra DB query.
+3. For any header that is L1-sourced (not in `l2_hits`), do one lightweight DB
+   lookup: `SELECT subject, ts, clean_text FROM message WHERE message_id_header IN (...)`.
+4. Build one `EvidenceMessage` per unique cited header.
+
+This means `supporting_evidence` may be shorter than `l2_hits` when the model
+cited only a subset of the retrieved messages, and it correctly includes L1-cited
+messages when those were the source of a claim.
 
 **Frontend change (`CitationChips`):**
 
@@ -119,8 +130,8 @@ panel for the snippet. Keep the header as a `title` attribute for copy-ability.
 **Acceptance:**
 - `CoverForMeResponse` always includes `supporting_evidence` (may be empty
   for L1-only paths where claims cite L1 message headers).
-- Every `message_id_header` that appears in any claim's `source_message_ids`
-  has a corresponding `EvidenceMessage` entry.
+- `supporting_evidence` contains exactly the messages cited in `result.claims`
+  — no more, no fewer. Uncited retrieval hits are never exposed.
 - UI shows subject + date in citation chips; hover/tooltip shows snippet.
 - Old clients that ignore the new field are unaffected.
 
