@@ -3,7 +3,7 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S0–S6 complete. S7.1–S7.10 complete; S7.11 cover-for-me L2 upgrade is next. See D12 in `docs/decisions.md`.
+**Status:** S0–S6 complete. S7.1–S7.11 complete (L2 hybrid retrieval + cover-for-me upgrade). Optional S7.12 hosted Voyage reranker remains. See D12 in `docs/decisions.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
@@ -199,7 +199,7 @@ email-archive/
 | S4 | Event extraction + L3 grounded synthesis | ✓ done | spec 01 §7 |
 | S5 | Cover-for-me query (bounded L1-only, D11) | ✓ done | implementation-plan §6.3 |
 | S6 | Real-mailbox quality pass (live report, eval, smoke dataset, identity/graph inspection) | ✓ done | docs/s6-real-mailbox-quality-pass.md |
-| S7 | L2 hybrid retrieval (voyage-4 embeddings, pgvector HNSW, hybrid retrieval, D12) | 🔄 in progress: S7.1–S7.10 done; S7.11 cover-for-me L2 upgrade next | docs/s7-implementation-plan.md |
+| S7 | L2 hybrid retrieval (voyage-4 embeddings, pgvector HNSW, hybrid retrieval, D12) | ✓ done (S7.1–S7.11); optional S7.12 hosted Voyage reranker remains | docs/s7-implementation-plan.md |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash

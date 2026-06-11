@@ -84,13 +84,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   Routes over Person, Project, Event, Edge, Thread in the DB; word-boundary entity detection;
   citation allow-list enforced; "insufficient structured evidence" on no match. 148 tests.
   **All three MVP surfaces are now shipped. S6 quality-pass tooling complete.**
-- **S7 🔄 in progress** — L2 hybrid retrieval. S7.1–S7.10 are implemented:
+- **S7 ✓** — L2 hybrid retrieval. S7.1–S7.11 are implemented:
   migration 0006, `MessageEmbedding` schema/ORM/mappers, embed client seam,
   `RetrievalParams`, idempotent embed backfill, vector retrieval (`pgvector` HNSW cosine),
   FTS retrieval (`subject_clean_tsv` + `websearch_to_tsquery`), hybrid merge/scoring/quality
-  gate, reranker boundary hardening, and retrieval eval (7 hard gates, MRR 1.0 on fixture).
-  Current verification: 437 passed, 1 skipped.
-  Remaining: S7.11 cover-for-me L2 upgrade, optional S7.12 hosted Voyage reranker.
+  gate, reranker boundary hardening, retrieval eval (7 hard gates, MRR 1.0 on fixture), and
+  cover-for-me L2 upgrade (L1+L2 hybrid routing, L2-only path, citation allow-list enforced).
+  Current verification: 445 passed, 1 skipped.
+  Remaining: optional S7.12 hosted Voyage reranker (feature-flagged off).
 
 ## 6. Known gaps — flag, don't fake
 
@@ -101,9 +102,9 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
 - **`message_embedding` table + HNSW index** — implemented by migration 0006 in S7.1.
   Dimension: 1024 (`voyage-4`). Each row stores `embed_model`, `embed_dim`, `content_hash`,
   and `embedded_at` alongside the vector.
-- **Cover-for-me L2 upgrade** — same surface API (`POST /api/cover-for-me/{mailbox_id}`).
-  S5 is currently bounded L1-only. S7.11 will upgrade it internally to L1 exact routing plus
-  L2 hybrid supporting evidence. API contract is unchanged; no new UI surface.
+- **Cover-for-me L2 upgrade** — completed in S7.11. Same surface API (`POST /api/cover-for-me/{mailbox_id}`).
+  Internally upgraded to L1 exact routing plus L2 hybrid supporting evidence. L2 becomes the
+  primary source when L1 has no entity match. API contract unchanged; no new UI surface.
 - **L3 synthesis** — `services/synthesis/` is built (S4): project "What's been done" and contact
   "Ask about this contact", both citation-validated. Cover-for-me (S5/S7, D11/D12) routes over
   L1 structured objects first, with L2 recall support after S7.

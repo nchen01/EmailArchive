@@ -1,20 +1,27 @@
-"""S5 cover-for-me orchestration (D11, implementation-plan §6.3).
+"""Cover-for-me orchestration (D11/D12, S5 + S7.11 L2 upgrade).
 
 A thin layer between the API router and the existing S4 synthesis functions.
 It assembles L1 context (Edge / Threads / Events) from the DB for whichever
 entity the router matched, then delegates to ``synthesize_project`` or
-``synthesize_contact``. There is NO new model prompt here — the grounding and
-citation discipline live in the S4 synthesis functions we reuse.
+``synthesize_contact``. There is NO new model prompt for the L1 paths — the
+grounding and citation discipline live in the S4 synthesis functions we reuse.
 
-Bounded by design (D11): this routes over structured L1 objects only — Person,
-Project, Event, Edge, Thread already in Postgres. No vector retrieval / L2. When
-nothing matches, the router returns an "insufficient structured evidence" result
-without ever calling the model.
+S7.11 addition: accepts an optional ``l2_hits`` list of RetrievalHit objects.
+  - For L1-matched paths: l2_hits headers are unioned into allowed_message_id_headers
+    so the model may cite them alongside L1 evidence.
+  - For the L2-only path (no L1 match, l2_hits non-empty): ``_synthesize_l2_hits``
+    builds a context from hit subjects/snippets and calls synth_fn.
+
+"No citation, no claim" is enforced in all paths: the allow-list filter in
+synthesize_project/synthesize_contact drops any claim whose source_message_ids
+are not in the permitted set; _synthesize_l2_hits applies the same filter
+against the l2_hits headers.
 """
 from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,8 +36,24 @@ from .contracts import SynthesisClaim, SynthesisResult
 from .params import PARAMS, SynthesisParams
 from .project_summary import synthesize_project
 
+if TYPE_CHECKING:
+    from services.retrieval.contracts import RetrievalHit
+
 # Intent signal: "who do I ask / who owns / who handles ..."
 _WHO_ASK = re.compile(r"who\s+(do\s+i\s+ask|owns?|handles?|is\s+responsible)", re.I)
+
+# System prompt for L2-only synthesis (no L1 entity match available).
+_L2_SYSTEM_PROMPT = """\
+You write a grounded, cited answer to the user's question, using ONLY the email
+evidence provided below. This is a partial record: email is one channel.
+
+Rules — every one is mandatory:
+  - Every claim MUST cite the message_id_header value(s) from the provided messages.
+    No citation, no claim. Cite only the message_id_header values shown in the
+    evidence block.
+  - One factual clause per claim, no adjectives.
+  - If the evidence does not answer the question, say so explicitly; do not fabricate.
+"""
 
 
 def synthesize_cover_for_me(
@@ -42,16 +65,23 @@ def synthesize_cover_for_me(
     mailbox_id: str,
     synth_fn=None,
     params: SynthesisParams = PARAMS,
+    l2_hits: "list[RetrievalHit] | None" = None,
 ) -> tuple[SynthesisResult, str | None]:
     """Route a cover-for-me query to project- or contact-state synthesis.
 
     Returns ``(result, routed_to_label)`` where ``routed_to_label`` is
     ``"project:<label>"`` or ``"person:<name>"`` or ``None`` (no route).
 
-    The router decides which entity (if any) matched; this function only
-    assembles the L1 context and delegates. ``synth_fn`` is injected so tests
-    stay offline. With neither entity matched, no model call is made.
+    S7.11: ``l2_hits`` carries RetrievalHit objects from hybrid_search.
+      - For L1-matched paths, their message_id_header values are unioned into
+        allowed_message_id_headers so the model may cite them.
+      - For the L2-only path (both matched_* are None, l2_hits non-empty),
+        synthesis runs on the L2 hits directly.
     """
+    l2_headers: set[str] = (
+        {h.message_id_header for h in l2_hits} if l2_hits else set()
+    )
+
     if matched_project is not None:
         if _WHO_ASK.search(query):
             # "Who do I ask about X?" → pure L1 who-to-ask (no model call).
@@ -59,18 +89,28 @@ def synthesize_cover_for_me(
                 matched_project, db=db, mailbox_id=mailbox_id, params=params
             )
         else:
-            # "What's the state of X?" → project-state synthesis.
+            # "What's the state of X?" → project-state synthesis with L2 support.
             result = _project_state(
-                matched_project, db=db, mailbox_id=mailbox_id, synth_fn=synth_fn, params=params
+                matched_project, db=db, mailbox_id=mailbox_id,
+                synth_fn=synth_fn, params=params,
+                l2_extra_headers=l2_headers,
             )
         return result, f"project:{matched_project.label}"
 
     if matched_person is not None:
         result = _who_to_ask(
-            matched_person, db=db, mailbox_id=mailbox_id, synth_fn=synth_fn, params=params
+            matched_person, db=db, mailbox_id=mailbox_id,
+            synth_fn=synth_fn, params=params,
+            l2_extra_headers=l2_headers,
         )
         name = matched_person.names[0] if matched_person.names else matched_person.canonical_email
         return result, f"person:{name}"
+
+    # No L1 match.
+    if l2_hits:
+        # L2 is the primary source — synthesize from message evidence.
+        result = _synthesize_l2_hits(l2_hits, query, synth_fn=synth_fn, params=params)
+        return result, None
 
     return (
         SynthesisResult(
@@ -188,6 +228,7 @@ def _project_state(
     mailbox_id: str,
     synth_fn,
     params: SynthesisParams,
+    l2_extra_headers: set[str] = frozenset(),
 ) -> SynthesisResult:
     event_rows = list(
         db.execute(
@@ -233,7 +274,7 @@ def _project_state(
         messages_by_thread,
         synth_fn=synth_fn,
         params=params,
-        allowed_message_id_headers=allowed_headers,  # always a non-empty set here
+        allowed_message_id_headers=allowed_headers | l2_extra_headers,
     )
 
 
@@ -246,6 +287,7 @@ def _who_to_ask(
     mailbox_id: str,
     synth_fn,
     params: SynthesisParams,
+    l2_extra_headers: set[str] = frozenset(),
 ) -> SynthesisResult:
     edge_row = db.execute(
         select(orm.Edge).where(
@@ -337,8 +379,49 @@ def _who_to_ask(
         events,
         synth_fn=synth_fn,
         params=params,
-        allowed_message_id_headers=allowed_headers,  # always a non-empty set here
+        allowed_message_id_headers=allowed_headers | l2_extra_headers,
     )
+
+
+# ── L2-only synthesis (no L1 entity match) ───────────────────────────────────
+
+def _synthesize_l2_hits(
+    hits: "list[RetrievalHit]",
+    query: str,
+    *,
+    synth_fn,
+    params: SynthesisParams,
+) -> SynthesisResult:
+    """Synthesize an answer from L2 retrieval hits when L1 has no entity match.
+
+    Builds a context block from hit message_id_header / subject / snippet, calls
+    synth_fn with _L2_SYSTEM_PROMPT, then filters claims against the L2
+    allow-list before returning. "No citation, no claim" applies: any claim
+    whose source_message_ids are not all within the set of hit headers is dropped.
+
+    synth_fn is required — the router ensures it is set (503 otherwise) before
+    this path is reached.
+    """
+    allow_list = {h.message_id_header for h in hits}
+
+    lines = ["The following email messages are relevant to the query.", ""]
+    for hit in hits:
+        lines.append(f"[{hit.message_id_header}]")
+        lines.append(f"Subject: {hit.subject}")
+        lines.append(f"Date: {hit.ts.isoformat()}")
+        lines.append(f"Snippet: {hit.snippet}")
+        lines.append("")
+    context = "\n".join(lines)
+
+    result = synth_fn(_L2_SYSTEM_PROMPT, context, query)
+
+    result = result.model_copy(update={
+        "claims": [
+            c for c in result.claims
+            if all(h in allow_list for h in c.source_message_ids)
+        ]
+    })
+    return result
 
 
 # ── shared DB helpers (same shape as routers/synthesis.py) ───────────────────

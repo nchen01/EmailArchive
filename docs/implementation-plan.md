@@ -193,11 +193,12 @@ Where summaries get generated — and where the grounding discipline lives.
 
 **Implemented / in progress (S7):**
 - **L2 retrieval** is underway per D12 (see `docs/decisions.md`, `docs/s7-implementation-plan.md`).
-- Implemented through S7.10: migration 0006, `message_embedding` table and HNSW index,
+- Implemented through S7.11: migration 0006, `message_embedding` table and HNSW index,
   `subject_clean_tsv` FTS column, embed client seam (`FakeEmbedClient` + `VoyageEmbedClient`),
   idempotent backfill script, vector search, FTS search, hybrid merge, retrieval contracts,
-  reranker boundary hardening, and retrieval eval (7 hard gates pass on fixture).
-- Remaining S7 work: S7.11 cover-for-me L2 upgrade, optional S7.12 hosted Voyage reranker.
+  reranker boundary hardening, retrieval eval (7 hard gates pass on fixture), and
+  cover-for-me L2 upgrade (L1+L2 hybrid routing, L2-only path, citation allow-list enforced).
+- Remaining S7 work: optional S7.12 hosted Voyage reranker (feature-flagged off).
 
 **Deferred beyond S7:**
 - **Thread-context neighbor expansion** (S8 per spec).

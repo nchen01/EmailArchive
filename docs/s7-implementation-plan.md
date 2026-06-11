@@ -5,12 +5,13 @@ Prior art: `docs/l2-brain-repo-assessment.md`, `docs/l2-product-decisions.md`.
 
 ## Current Implementation Status
 
-- S7.1–S7.10 are implemented and reviewed.
+- S7.1–S7.11 are implemented and reviewed.
 - S7.9 is fully implemented via `services/retrieval/contracts.py` and the quality gates in `hybrid.py`.
 - S7.10 retrieval eval passes all 7 hard gates on the fixture mailbox (MRR 1.0, top-1 precision 1.0).
-- S7.11 cover-for-me L2 upgrade is next (eval gates are now green, precondition satisfied).
+- S7.11 cover-for-me L2 upgrade is complete: L1+L2 hybrid routing, `_synthesize_l2_hits` for
+  L2-only path, citation allow-list enforced, VOYAGE_API_KEY absent → L1-only graceful fallback.
 - S7.12 hosted Voyage reranker remains optional and feature-flagged; protocol and `NoOpReranker` stub exist in `services/retrieval/reranker.py`.
-- Latest verification: 437 passed, 1 skipped (live Voyage integration, expected).
+- Latest verification: 445 passed, 1 skipped (live Voyage integration, expected).
 
 ## Scope
 
