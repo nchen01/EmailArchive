@@ -44,7 +44,7 @@ _requires_db = pytest.mark.skipif(
 def _make_hit(score: float) -> RetrievalHit:
     return RetrievalHit(
         message_id=str(uuid.uuid4()),
-        message_id_header=f"<{score}@x>",
+        message_id_header=f"{score}@x",
         thread_id=str(uuid.uuid4()),
         project_ids=(),
         person_ids=(),
