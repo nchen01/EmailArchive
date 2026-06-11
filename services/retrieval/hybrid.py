@@ -174,12 +174,14 @@ def hybrid_search(
     # ── 7. Take top rerank_top_k ──────────────────────────────────────────────
     top_hits = scored[:params.rerank_top_k]
 
-    # ── 8. Optional reranker (gated by flag AND env var) ─────────────────────
+    # ── 8. Optional reranker (gated by flag AND env var == "1") ─────────────
+    # Explicit "1" check prevents ENABLE_RERANKING=0/false/no from accidentally
+    # activating the reranker (D12/S7: gate is ENABLE_RERANKING=1 exactly).
     active_reranker: Reranker = (
         reranker
         if reranker is not None
            and params.enable_reranking
-           and os.environ.get("ENABLE_RERANKING")
+           and os.environ.get("ENABLE_RERANKING") == "1"
         else NoOpReranker()
     )
     result = active_reranker.rerank(query_text, top_hits)

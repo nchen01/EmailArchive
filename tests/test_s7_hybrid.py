@@ -403,3 +403,29 @@ def test_reranker_not_called_without_param_flag(monkeypatch):
     _run_hybrid(vec, [], params=params, reranker=SentinelReranker())
 
     assert not called, "Reranker must not be called when params.enable_reranking=False"
+
+
+@pytest.mark.parametrize("bad_value", ["0", "false", "no", "False", "NO", "true", "yes"])
+def test_reranker_not_called_for_non_one_env_values(monkeypatch, bad_value):
+    """Only ENABLE_RERANKING=1 must activate the reranker; any other non-empty value
+    must be treated as disabled to prevent accidental hosted API calls."""
+    monkeypatch.setenv("ENABLE_RERANKING", bad_value)
+
+    called = []
+
+    class SentinelReranker:
+        def rerank(self, query: str, candidates: list[RetrievalHit]) -> list[RetrievalHit]:
+            called.append(bad_value)
+            return candidates
+
+    params = RetrievalParams(
+        enable_reranking=True, min_vector_score=0.0,
+        embed_model="fake-embed", embed_dim=1024,
+    )
+    vec = [_hit("m1", vector_score=0.9)]
+    _run_hybrid(vec, [], params=params, reranker=SentinelReranker())
+
+    assert not called, (
+        f"ENABLE_RERANKING={bad_value!r} must NOT activate the reranker "
+        f"(only '1' is accepted)"
+    )
