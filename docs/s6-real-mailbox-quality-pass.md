@@ -545,6 +545,14 @@ If S6 shows acceptable L0/L1 quality, proceed to L2:
 If S6 finds serious L0/L1 quality issues, fix them first. Retrieval should not be
 used to hide weak structure.
 
+> **Status as of 2026-06-11 (post-S7.10):** The L2 recommendation above has been
+> completed. D12 resolved the embedding model (Voyage AI `voyage-4`, 1024-dim);
+> migration 0006 implements `message_embedding` and the HNSW index; S7.1–S7.10
+> deliver vector retrieval, FTS retrieval, hybrid merge, retrieval contracts, and
+> the retrieval eval (all hard gates pass on the fixture mailbox).
+> S7.11 (cover-for-me L1+L2 upgrade) is the remaining step.
+> See `docs/decisions.md` D12 and `docs/s7-implementation-plan.md` for current state.
+
 ---
 
 ## Implementation Status (S6.7 — 2026-06-07)
