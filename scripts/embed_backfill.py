@@ -3,6 +3,10 @@
 Usage:
     python scripts/embed_backfill.py --mailbox-id <uuid> [--batch-size 64]
         [--model voyage-4] [--dry-run] [--confirm]
+        [--batch-delay-seconds 0]
+
+Free-tier rate limits (3 RPM / 10K TPM): use --batch-size 20 --batch-delay-seconds 65.
+Paid accounts with standard limits can keep the defaults (--batch-size 64).
 
 Selects all non-noise, non-sensitive messages whose embedding is absent or
 whose content_hash has changed, then upserts embeddings into message_embedding.
@@ -150,6 +154,7 @@ def run_backfill(
     mailbox_id: str,
     embed_client: EmbedClient,
     batch_size: int = 64,
+    batch_delay_seconds: float = 0.0,
     dry_run: bool = False,
     confirm: bool = False,
     session=None,
@@ -215,12 +220,29 @@ def run_backfill(
                 return stats
 
         embedded_count = 0
+        num_batches = (len(to_embed) + batch_size - 1) // batch_size
         for batch_num, start in enumerate(range(0, len(to_embed), batch_size), 1):
             batch = to_embed[start : start + batch_size]
             texts = [c["subject"] + "\n\n" + c["clean_text"] for c in batch]
 
+            # Retry on rate-limit up to 3 times (waits batch_delay_seconds or
+            # 70s, whichever is larger) so free-tier accounts complete without
+            # manual intervention.  70s covers the rolling 1-minute RPM window.
             t0 = time.monotonic()
-            embeddings = embed_client.embed_documents(texts)
+            _max_retries = 3
+            for _attempt in range(_max_retries + 1):
+                try:
+                    embeddings = embed_client.embed_documents(texts)
+                    break
+                except EmbedError as exc:
+                    if "RateLimitError" not in str(exc) or _attempt == _max_retries:
+                        raise
+                    wait = max(batch_delay_seconds, 70.0)
+                    log.warning(
+                        "rate limit on batch %d (attempt %d/%d) — waiting %.0fs",
+                        batch_num, _attempt + 1, _max_retries, wait,
+                    )
+                    time.sleep(wait)
             elapsed = time.monotonic() - t0
 
             # Validate before touching the DB: a length mismatch or wrong vector
@@ -249,9 +271,14 @@ def run_backfill(
             embedded_count += len(batch)
             stats["embedded"] = embedded_count
             log.info(
-                "batch %d: %d messages in %.1fs (total %d/%d)",
-                batch_num, len(batch), elapsed, embedded_count, len(to_embed),
+                "batch %d/%d: %d messages in %.1fs (total %d/%d)",
+                batch_num, num_batches, len(batch), elapsed,
+                embedded_count, len(to_embed),
             )
+
+            if batch_delay_seconds > 0 and batch_num < num_batches:
+                log.info("batch delay %.0fs before next batch", batch_delay_seconds)
+                time.sleep(batch_delay_seconds)
 
         return stats
 
@@ -282,7 +309,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--mailbox-id", required=True, metavar="UUID",
                         help="UUID of the mailbox to backfill.")
     parser.add_argument("--batch-size", type=int, default=64, metavar="N",
-                        help="Number of messages per embedding API call (default 64).")
+                        help="Number of messages per embedding API call (default 64). "
+                             "Use 20 on Voyage free-tier (10K TPM limit).")
+    parser.add_argument("--batch-delay-seconds", type=float, default=0.0, metavar="S",
+                        help="Sleep between batches in seconds (default 0). "
+                             "Use 65 on Voyage free-tier (3 RPM limit). "
+                             "Also applied as the minimum wait on a rate-limit retry.")
     parser.add_argument("--model", default="voyage-4", metavar="MODEL",
                         help="Voyage AI model name (default voyage-4).")
     parser.add_argument("--dry-run", action="store_true",
@@ -301,6 +333,7 @@ def main(argv: list[str] | None = None) -> None:
         mailbox_id=args.mailbox_id,
         embed_client=client,
         batch_size=args.batch_size,
+        batch_delay_seconds=args.batch_delay_seconds,
         dry_run=args.dry_run,
         confirm=args.confirm,
     )
