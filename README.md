@@ -3,7 +3,7 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S0–S6 complete. S7 (L2 hybrid retrieval — Voyage AI embeddings + pgvector HNSW + cover-for-me upgrade) is next. See D12 in `docs/decisions.md`.
+**Status:** S0–S6 complete. S7.1–S7.10 complete; S7.11 cover-for-me L2 upgrade is next. See D12 in `docs/decisions.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
@@ -103,6 +103,7 @@ email-archive/
       0003_l1_tables.py             # org + person + identity + edge
       0004_l1_projects.py           # project + event + assignments (S3)
       0005_fix_event_citation_check.py  # D8: cardinality() replaces array_length()
+      0006_message_embedding.py        # message_embedding + HNSW + subject_clean_tsv; schema v0.2.0 (S7.1)
   docs/
     implementation-plan.md          # the why + end-to-end design
     decisions.md                    # D1–D12 resolved build decisions (supersede spec open decisions)
@@ -144,7 +145,15 @@ email-archive/
       main.py  deps.py
       routers/network_map.py  routers/project_view.py  routers/synthesis.py
       schemas/network_map.py  schemas/project_view.py
-    retrieval/                      # L2 — being built in S7 (D12; local hybrid retriever)
+    retrieval/                      # L2 hybrid retrieval (S7.1–S7.10 done)
+      contracts.py                  #   RetrievalHit + InsufficientEvidence
+      embed_client.py               #   FakeEmbedClient + VoyageEmbedClient seam
+      params.py                     #   RetrievalParams
+      vector.py                     #   pgvector HNSW retrieval
+      fts.py                        #   Postgres FTS retrieval
+      hybrid.py                     #   vector + FTS merge, scoring, quality gates
+      reranker.py                   #   Reranker protocol + NoOpReranker
+      eval/                         #   S7.10 hard-gate retrieval eval
     synthesis/                      # L3  ✓ S4
       params.py  client.py  contracts.py
       project_summary.py  contact_summary.py
@@ -157,7 +166,9 @@ email-archive/
   scripts/
     dev_seed.py                     # seed fixture mailbox + all L1 layers; --serve starts uvicorn
     download_models.py              # download spaCy en_core_web_sm for production runs
-  tests/                            # 138 tests (DB-gated tests skip cleanly without DATABASE_URL)
+    embed_backfill.py               # idempotent embedding backfill for a mailbox (S7.5)
+    _env.py                         # load_local_env() helper for CLI scripts (dotenv, dev-only)
+  tests/                            # 437 passed, 1 skipped as of S7.10 (DB-gated tests skip without DATABASE_URL)
     test_l0_*.py   test_l1_*.py   test_clustering_*.py
     test_db_roundtrip.py   test_api_network_map.py
 ```
@@ -188,7 +199,7 @@ email-archive/
 | S4 | Event extraction + L3 grounded synthesis | ✓ done | spec 01 §7 |
 | S5 | Cover-for-me query (bounded L1-only, D11) | ✓ done | implementation-plan §6.3 |
 | S6 | Real-mailbox quality pass (live report, eval, smoke dataset, identity/graph inspection) | ✓ done | docs/s6-real-mailbox-quality-pass.md |
-| S7 | L2 hybrid retrieval (voyage-4 embeddings, pgvector HNSW, cover-for-me upgrade, D12) | ⬜ next | docs/s7-implementation-plan.md |
+| S7 | L2 hybrid retrieval (voyage-4 embeddings, pgvector HNSW, hybrid retrieval, D12) | 🔄 in progress: S7.1–S7.10 done; S7.11 cover-for-me L2 upgrade next | docs/s7-implementation-plan.md |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash
@@ -209,7 +220,7 @@ python scripts/gmail_smoke_ingest.py --owner-email you@example.com --max-message
 python scripts/gmail_smoke_ingest.py --mailbox-id <uuid> --owner-email you@example.com --confirm
 ```
 
-**Quick start (S0–S5 running):**
+**Quick start (S0–S7.10 local stack):**
 ```bash
 # 1. Python deps (one time)
 pip install -e .[dev]      # app + all dev/test/api/db/gmail deps
@@ -228,7 +239,11 @@ cd frontend && npm install && VITE_MAILBOX_ID=<uuid> npm run dev  # UI on :5173
 
 # 4. Tests
 DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
-  pytest                                                      # 148 tests (DB-gated tests skip without DATABASE_URL)
+  pytest                                                      # 437 passed, 1 skipped (DB-gated tests skip without DATABASE_URL)
+
+# For live embedding backfill or the live Voyage integration test, set VOYAGE_API_KEY.
+# Offline tests and --dry-run use FakeEmbedClient and do not require a key.
+# See CLAUDE.md for full authorization rules before using the key.
 ```
 
 ## Privacy guardrails (non-negotiable)

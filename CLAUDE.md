@@ -77,5 +77,5 @@ Key docs:
 - `docs/implementation-plan.md` — overall pipeline architecture
 
 Current sprint: **S7 — L2 hybrid retrieval** (Voyage AI voyage-4, pgvector
-HNSW, cover-for-me upgrade). S7.1 and S7.2 are complete. Next: S7.3 embed
-client seam.
+HNSW, cover-for-me upgrade). S7.1–S7.10 are complete. Next: S7.11 cover-for-me
+L2 upgrade (do not wire until S7.10 eval gates pass — they do).

@@ -3,6 +3,15 @@
 Source decisions: D12 (`docs/decisions.md`).
 Prior art: `docs/l2-brain-repo-assessment.md`, `docs/l2-product-decisions.md`.
 
+## Current Implementation Status
+
+- S7.1–S7.10 are implemented and reviewed.
+- S7.9 is fully implemented via `services/retrieval/contracts.py` and the quality gates in `hybrid.py`.
+- S7.10 retrieval eval passes all 7 hard gates on the fixture mailbox (MRR 1.0, top-1 precision 1.0).
+- S7.11 cover-for-me L2 upgrade is next (eval gates are now green, precondition satisfied).
+- S7.12 hosted Voyage reranker remains optional and feature-flagged; protocol and `NoOpReranker` stub exist in `services/retrieval/reranker.py`.
+- Latest verification: 437 passed, 1 skipped (live Voyage integration, expected).
+
 ## Scope
 
 S7 adds L2 hybrid retrieval (vector + FTS) to the pipeline and upgrades
@@ -485,13 +494,14 @@ project mail; unexpected relevance is part of the value.
 
 | Doc | Change |
 |---|---|
-| `docs/decisions.md` | D12 added (this commit). |
-| `AGENTS.md` §6 | "external query router" note rescinded; `services/retrieval` now local (this commit). |
-| `README.md` | Status updated to S6 complete, S7 next (this commit). |
-| `packages/ekc_schemas/models.py` | Add `MessageEmbeddingRecord`. Do in S7.2. |
-| `services/db/models.py` | Add `MessageEmbedding`. Do in S7.2. |
-| `spec 04` ticket 4.5 | Resolved by D12b. Migration 0006 is now S7.1. |
-| `docs/implementation-plan.md` | Updated — L2 and embedding-model deferral notes now reference D12 as resolved. |
+| `docs/decisions.md` | D12 added. ✓ done |
+| `AGENTS.md` §6 | "external query router" note rescinded; `services/retrieval` now local. ✓ done |
+| `README.md` | Status updated to S7.1–S7.10 complete, S7.11 next. ✓ done |
+| `packages/ekc_schemas/models.py` | `MessageEmbeddingRecord` added; `SCHEMA_VERSION=0.2.0`. ✓ done (S7.2) |
+| `services/db/models.py` | `MessageEmbedding` ORM class added. ✓ done (S7.2) |
+| `services/db/mappers.py` | `embedding_to_row` / `row_to_embedding` added. ✓ done (S7.2) |
+| `spec 04` ticket 4.5 | Resolved by D12b. Migration 0006 applied. ✓ done (S7.1) |
+| `docs/implementation-plan.md` | L2 moved from Deferred to Implemented/in-progress. ✓ done |
 
 ## Definition of Done
 
@@ -502,7 +512,7 @@ S7 is complete when:
 - `RetrievalHit` citations are all verifiable in the DB.
 - Retrieval eval hard gates pass (expected headers in top-10, no sensitive
   leakage, no noise, `InsufficientEvidence` on unanswerable query).
-- Existing 295 tests still pass (no regressions).
+- Existing full suite remains green. Current reported baseline after S7.10: 437 passed, 1 skipped.
 - Cover-for-me endpoint returns L2-backed cited evidence on a query that
   has no L1 entity match.
 - Frontend build is unchanged (no new UI in S7).

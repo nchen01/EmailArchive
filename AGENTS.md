@@ -19,7 +19,7 @@ exist; your job is to realize them faithfully, not to redesign them. **Read befo
 | `01-layer1-enrichment.md` | L1: identity (§3), graph (§4), roles (§5), clustering (§6), events (§7) | ✓ all sections done (S1–S4) |
 | `02-project-view.md` | Project-view surface + its API contract | ✓ implemented (S3–S4) |
 | `03-project-clustering.md` | Deep dive of L1 §6 (build-ready) | ✓ implemented (S3) |
-| `04-storage-schema.md` | Postgres + pgvector schema & migrations | ✓ implemented (S2, migrations 0001–0005) |
+| `04-storage-schema.md` | Postgres + pgvector schema & migrations | ✓ implemented through migration 0006 (`message_embedding`, S7.1) |
 | `05-network-map.md` | Network-map surface + API contract | ✓ implemented (S2) |
 
 ## 2. The mental model
@@ -83,19 +83,27 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
 - **S5 ✓** — bounded L1-only cover-for-me query (D11). `POST /api/cover-for-me/{mailbox_id}`.
   Routes over Person, Project, Event, Edge, Thread in the DB; word-boundary entity detection;
   citation allow-list enforced; "insufficient structured evidence" on no match. 148 tests.
-  **All three MVP surfaces are now shipped. S6 quality-pass tooling complete.** Next: S7 L2 hybrid retrieval.
+  **All three MVP surfaces are now shipped. S6 quality-pass tooling complete.**
+- **S7 🔄 in progress** — L2 hybrid retrieval. S7.1–S7.10 are implemented:
+  migration 0006, `MessageEmbedding` schema/ORM/mappers, embed client seam,
+  `RetrievalParams`, idempotent embed backfill, vector retrieval (`pgvector` HNSW cosine),
+  FTS retrieval (`subject_clean_tsv` + `websearch_to_tsquery`), hybrid merge/scoring/quality
+  gate, reranker boundary hardening, and retrieval eval (7 hard gates, MRR 1.0 on fixture).
+  Current verification: 437 passed, 1 skipped.
+  Remaining: S7.11 cover-for-me L2 upgrade, optional S7.12 hosted Voyage reranker.
 
 ## 6. Known gaps — flag, don't fake
 
-- **L2 retrieval** — **D12 resolves this. Build `services/retrieval` locally.** The previous note
-  ("an existing query router owns it; do not build a retrieval layer") is rescinded. No external
-  router contract exists. S7 implements a minimal local hybrid retriever: Voyage AI `voyage-4`
-  embeddings (1024-dim) + pgvector HNSW cosine + Postgres FTS. See D12 in `docs/decisions.md`.
-- **`message_embedding` table + HNSW index** — resolved by D12b. Add as migration 0006 in S7.
-  Dimension: 1024 (voyage-4). Model/dim/content_hash/embedded_at stored per row.
-- **Cover-for-me** — same surface API (`POST /api/cover-for-me/{mailbox_id}`). S7 upgrades it
-  internally from L1-only to hybrid L1+L2: L1 exact entity routing first; L2 vector/FTS fallback
-  and supporting evidence second. Citation contract and "no citation, no claim" rule unchanged.
+- **L2 retrieval** — implemented in S7.1–S7.10 under `services/retrieval/`. See D12 in
+  `docs/decisions.md` and `docs/s7-implementation-plan.md` for the full design.
+  The previous note ("an external query router owns it") is rescinded by D12 and superseded
+  by the local hybrid retriever now in production.
+- **`message_embedding` table + HNSW index** — implemented by migration 0006 in S7.1.
+  Dimension: 1024 (`voyage-4`). Each row stores `embed_model`, `embed_dim`, `content_hash`,
+  and `embedded_at` alongside the vector.
+- **Cover-for-me L2 upgrade** — same surface API (`POST /api/cover-for-me/{mailbox_id}`).
+  S5 is currently bounded L1-only. S7.11 will upgrade it internally to L1 exact routing plus
+  L2 hybrid supporting evidence. API contract is unchanged; no new UI surface.
 - **L3 synthesis** — `services/synthesis/` is built (S4): project "What's been done" and contact
   "Ask about this contact", both citation-validated. Cover-for-me (S5/S7, D11/D12) routes over
   L1 structured objects first, with L2 recall support after S7.

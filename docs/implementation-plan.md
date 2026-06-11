@@ -191,10 +191,19 @@ Where summaries get generated — and where the grounding discipline lives.
   enforced (invalid headers filtered post-model). "Insufficient structured evidence" fallback
   when no entity matches — never bluffs. Third "Cover for Me" tab in the frontend. 148 tests.
 
-**Deferred:**
-- **L2 retrieval** — resolved by D12 (see `docs/decisions.md`). Being built in S7:
-  Voyage AI `voyage-4` (1024-dim), pgvector HNSW cosine, migration 0006. Cover-for-me
-  upgrades to hybrid L1+L2 internally with no surface API change (D12, S7.11).
+**Implemented / in progress (S7):**
+- **L2 retrieval** is underway per D12 (see `docs/decisions.md`, `docs/s7-implementation-plan.md`).
+- Implemented through S7.10: migration 0006, `message_embedding` table and HNSW index,
+  `subject_clean_tsv` FTS column, embed client seam (`FakeEmbedClient` + `VoyageEmbedClient`),
+  idempotent backfill script, vector search, FTS search, hybrid merge, retrieval contracts,
+  reranker boundary hardening, and retrieval eval (7 hard gates pass on fixture).
+- Remaining S7 work: S7.11 cover-for-me L2 upgrade, optional S7.12 hosted Voyage reranker.
+
+**Deferred beyond S7:**
+- **Thread-context neighbor expansion** (S8 per spec).
+- **Chunk-level splitting, attachment embeddings** — message-level only for S7.
+- **Permissioned sensitive-message embedding override** — requires a permission model first (Q3).
+- **Full production secrets manager, DPA/customer deployment gates** — before any non-demo mailbox.
 - **Multi-mailbox, offboarding motion, cross-channel ingestion** — v2 product scope.
 - **M365 provider** — stub now; drops in without pipeline changes (D2).
 - **Object store for raw MIME** — `raw_uri = None` until production deployment (D6).
