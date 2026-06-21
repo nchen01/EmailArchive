@@ -243,8 +243,11 @@ def _token_match(name: str, query_lower: str) -> bool:
     return bool(re.search(pattern, query_lower))
 
 
-def _call_synthesis(mailbox_id: str, **kwargs) -> tuple:
+def _call_synthesis(log_mailbox_id: str, **kwargs) -> tuple:
     """Call synthesize_cover_for_me, mapping Anthropic provider errors to 502.
+
+    ``log_mailbox_id`` is used only for logging — it does not shadow the
+    ``mailbox_id`` kwarg that is forwarded to synthesize_cover_for_me.
 
     Logs error type and HTTP status (when present) but never logs prompt text,
     query content, or key values.  Raises HTTPException(502) for any exception
@@ -260,7 +263,7 @@ def _call_synthesis(mailbox_id: str, **kwargs) -> tuple:
         status = getattr(exc, "status_code", None)
         _log.error(
             "Synthesis provider error for mailbox %s: %s%s",
-            mailbox_id,
+            log_mailbox_id,
             exc_name,
             f" (http {status})" if status else "",
         )

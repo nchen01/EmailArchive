@@ -365,7 +365,7 @@ def test_s7_l2_only_endpoint_returns_cited_result(seeded, monkeypatch):
 
     monkeypatch.setattr(
         "services.api.routers.cover_for_me._run_l2",
-        lambda query, embed_client, mid, db: [hit],
+        lambda query, embed_client, mid, db: ("active", [hit]),  # must be (status, hits) tuple
     )
 
     def _fake_factory(params):
@@ -492,3 +492,65 @@ def test_s7_l2_retrieval_failure_falls_back_gracefully(seeded, monkeypatch):
     body = r.json()
     assert body["routed_to"] is None
     assert "insufficient" in (body["result"]["state"] or "").lower()
+
+
+# ── _call_synthesis unit tests (offline, no DB required) ─────────────────────
+
+def test_call_synthesis_no_mailbox_id_collision():
+    """_call_synthesis(log_mailbox_id, ..., mailbox_id=...) must not raise
+    TypeError: got multiple values for argument 'mailbox_id'.
+
+    Regression for c77fe46 where the first positional param was named 'mailbox_id',
+    colliding with the same-named kwarg forwarded to synthesize_cover_for_me.
+    """
+    from unittest.mock import patch
+    from services.synthesis.contracts import SynthesisResult
+    from services.api.routers.cover_for_me import _call_synthesis
+
+    fake_result = SynthesisResult(claims=[], model="test", usage={})
+
+    with patch(
+        "services.api.routers.cover_for_me.synthesize_cover_for_me",
+        return_value=(fake_result, None),
+    ):
+        result, routed_to = _call_synthesis(
+            "test-mailbox-id",                 # log_mailbox_id — must not shadow kwargs
+            query="xyzzy query",
+            matched_person=None,
+            matched_project=None,
+            db=None,
+            mailbox_id="test-mailbox-id",      # forwarded kwarg — previously collided
+            synth_fn=lambda s, c, q: fake_result,
+        )
+
+    assert result is fake_result
+    assert routed_to is None
+
+
+def test_call_synthesis_provider_error_becomes_502():
+    """Anthropic provider error escaping synthesize_cover_for_me → HTTPException(502)."""
+    import pytest
+    from unittest.mock import patch
+    from fastapi import HTTPException
+    from services.api.routers.cover_for_me import _call_synthesis
+
+    class _FakeAuthError(Exception):
+        status_code = 401
+
+    with patch(
+        "services.api.routers.cover_for_me.synthesize_cover_for_me",
+        side_effect=_FakeAuthError("invalid key"),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            _call_synthesis(
+                "test-mailbox-id",
+                query="some query",
+                matched_person=None,
+                matched_project=None,
+                db=None,
+                mailbox_id="test-mailbox-id",
+                synth_fn=lambda s, c, q: None,
+            )
+
+    assert exc_info.value.status_code == 502
+    assert "check ANTHROPIC_API_KEY" in exc_info.value.detail
