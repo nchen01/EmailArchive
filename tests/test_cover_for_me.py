@@ -408,7 +408,7 @@ def test_s7_l1_project_plus_l2_context(seeded, monkeypatch):
 
     monkeypatch.setattr(
         "services.api.routers.cover_for_me._run_l2",
-        lambda query, embed_client, mid, db: [hit],
+        lambda query, embed_client, mid, db: ("active", [hit]),
     )
 
     captured_contexts: list[str] = []
