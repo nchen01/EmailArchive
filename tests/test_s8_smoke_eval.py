@@ -118,15 +118,14 @@ def test_smoke_sensitive_forbidden_are_smoke_generated():
 
 # ── run_eval() cases parameter ────────────────────────────────────────────────
 
-def test_run_eval_accepts_cases_kwarg(tmp_path):
+def test_run_eval_accepts_cases_kwarg():
     """run_eval() must accept a custom cases list without touching the DB."""
     from unittest.mock import MagicMock, patch
-    from services.retrieval.eval.run_eval import run_eval, EvalFailure
+    from services.retrieval.eval.run_eval import run_eval
     from services.retrieval.contracts import InsufficientEvidence
     from services.retrieval.embed_client import FakeEmbedClient
     from services.retrieval.eval.fixtures import EVAL_PARAMS
 
-    # One trivial case with no expected or forbidden headers.
     custom_case = RetrievalCase(
         query="xyzzy sentinel test",
         expected_headers=[],
@@ -135,10 +134,10 @@ def test_run_eval_accepts_cases_kwarg(tmp_path):
     )
 
     session = MagicMock()
-    # gate 5: db headers query
     session.execute.return_value.all.return_value = []
 
-    with patch("services.retrieval.hybrid.hybrid_search",
+    # Patch at the binding site inside run_eval, not the original module.
+    with patch("services.retrieval.eval.run_eval.hybrid_search",
                return_value=InsufficientEvidence()):
         result = run_eval(
             session,
@@ -163,24 +162,30 @@ def test_run_eval_default_cases_are_eval_cases():
     assert "cases is not None" in src or "cases if cases" in src
 
 
-# ── CLI fixture argument ──────────────────────────────────────────────────────
+# ── CLI parser tests (use the real _build_parser, not a fake) ────────────────
 
-def test_cli_accepts_fixture_smoke(monkeypatch):
-    """--fixture smoke must be a valid choice in the CLI argument parser."""
-    import argparse
+def test_cli_parser_accepts_fixture_smoke():
+    """_build_parser() must accept --fixture smoke --embed-client voyage."""
+    from services.retrieval.eval.run_eval import _build_parser
+    parser = _build_parser()
+    args = parser.parse_args([
+        "--mailbox-id", "test-uuid",
+        "--fixture", "smoke",
+        "--embed-client", "voyage",
+    ])
+    assert args.fixture == "smoke"
+    assert args.embed_client == "voyage"
+    assert args.mailbox_id == "test-uuid"
+
+
+def test_cli_smoke_requires_voyage():
+    """--fixture smoke --embed-client fake must exit(2) before constructing any client."""
+    from unittest.mock import patch
     from services.retrieval.eval.run_eval import main
 
-    captured_args = {}
+    with patch("services.retrieval.eval.run_eval._build_embed_client") as mock_client:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--mailbox-id", "test-uuid", "--fixture", "smoke", "--embed-client", "fake"])
 
-    def fake_main_body(argv):
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--mailbox-id", required=True)
-        parser.add_argument("--embed-client", choices=["fake", "voyage"], default="fake")
-        parser.add_argument("--fixture", choices=["fixture", "smoke"], default="fixture")
-        parser.add_argument("--verbose", action="store_true")
-        args = parser.parse_args(argv)
-        captured_args.update(vars(args))
-
-    fake_main_body(["--mailbox-id", "test-uuid", "--fixture", "smoke", "--embed-client", "fake"])
-    assert captured_args["fixture"] == "smoke"
-    assert captured_args["mailbox_id"] == "test-uuid"
+    assert exc_info.value.code == 2  # argparse error exit code
+    mock_client.assert_not_called()  # must fail before any client construction

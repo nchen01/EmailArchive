@@ -261,16 +261,15 @@ def _build_embed_client(name: str) -> EmbedClient:
     raise ValueError(f"Unknown embed client: {name!r}. Choose 'fake' or 'voyage'.")
 
 
-def main(argv: list[str] | None = None) -> None:
+def _build_parser():
+    """Build and return the CLI argument parser. Extracted for testability."""
     import argparse
-    from services.db.engine import SessionLocal
-
-    parser = argparse.ArgumentParser(
+    p = argparse.ArgumentParser(
         description="Run the S7.10 retrieval eval against a seeded mailbox."
     )
-    parser.add_argument("--mailbox-id", required=True, metavar="UUID")
-    parser.add_argument("--verbose", "-v", action="store_true")
-    parser.add_argument(
+    p.add_argument("--mailbox-id", required=True, metavar="UUID")
+    p.add_argument("--verbose", "-v", action="store_true")
+    p.add_argument(
         "--embed-client",
         choices=["fake", "voyage"],
         default="fake",
@@ -280,7 +279,7 @@ def main(argv: list[str] | None = None) -> None:
             "after a real voyage-4 backfill to validate end-to-end retrieval."
         ),
     )
-    parser.add_argument(
+    p.add_argument(
         "--fixture",
         choices=list(_FIXTURE_CHOICES),
         default="fixture",
@@ -292,7 +291,20 @@ def main(argv: list[str] | None = None) -> None:
             "--embed-client voyage and a completed voyage-4 backfill."
         ),
     )
+    return p
+
+
+def main(argv: list[str] | None = None) -> None:
+    from services.db.engine import SessionLocal
+
+    parser = _build_parser()
     args = parser.parse_args(argv)
+
+    if args.fixture == "smoke" and args.embed_client != "voyage":
+        parser.error(
+            "--fixture smoke requires --embed-client voyage "
+            "(smoke eval targets voyage-4 indexed rows in the real puluo mailbox)"
+        )
 
     from scripts._env import load_local_env
     load_local_env()
@@ -334,9 +346,9 @@ def main(argv: list[str] | None = None) -> None:
         mrr_target  = 0.6
         top1_target = 0.5
         if result.mrr < mrr_target:
-            print(f"  ⚠  MRR {result.mrr:.3f} below soft target {mrr_target}")
+            print(f"  WARNING: MRR {result.mrr:.3f} below soft target {mrr_target}")
         if result.top1_precision < top1_target:
-            print(f"  ⚠  top-1 precision {result.top1_precision:.3f} below soft target {top1_target}")
+            print(f"  WARNING: top-1 precision {result.top1_precision:.3f} below soft target {top1_target}")
     except EvalFailure as exc:
         print(f"\n{exc}", file=sys.stderr)
         sys.exit(1)
