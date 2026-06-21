@@ -145,10 +145,11 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
         </div>
       ) : null}
 
-      {/* Generic transport/server error. */}
+      {/* Generic transport/server error — show the API detail so the operator
+          can diagnose auth/rate-limit/provider failures without a stack trace. */}
       {error ? (
         <div className="summary-error mt-4" role="alert">
-          Could not answer that. Please try again.
+          {error}
         </div>
       ) : null}
 

@@ -10,7 +10,10 @@ production ``synth_fn`` from this client.
 """
 from __future__ import annotations
 
+import logging
 import os
+
+_log = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -65,33 +68,42 @@ def make_anthropic_synth_fn(
     client = get_anthropic_client(api_key=api_key, timeout_s=params.timeout_s)
 
     def synth_fn(system: str, context: str, query: str) -> SynthesisResult:
-        resp = client.messages.create(
-            model=params.model,
-            max_tokens=params.max_tokens,
-            system=[{"type": "text", "text": system}],
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": context,
-                            # Cache the stable context across repeat queries.
-                            "cache_control": {"type": "ephemeral"},
-                        },
-                        {"type": "text", "text": query},
-                    ],
-                }
-            ],
-            tools=[
-                {
-                    "name": "emit_synthesis",
-                    "description": "Emit the grounded, cited synthesis.",
-                    "input_schema": _LLMSynthesis.model_json_schema(),
-                }
-            ],
-            tool_choice={"type": "tool", "name": "emit_synthesis"},
-        )
+        try:
+            resp = client.messages.create(
+                model=params.model,
+                max_tokens=params.max_tokens,
+                system=[{"type": "text", "text": system}],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": context,
+                                # Cache the stable context across repeat queries.
+                                "cache_control": {"type": "ephemeral"},
+                            },
+                            {"type": "text", "text": query},
+                        ],
+                    }
+                ],
+                tools=[
+                    {
+                        "name": "emit_synthesis",
+                        "description": "Emit the grounded, cited synthesis.",
+                        "input_schema": _LLMSynthesis.model_json_schema(),
+                    }
+                ],
+                tool_choice={"type": "tool", "name": "emit_synthesis"},
+            )
+        except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            _log.error(
+                "Anthropic API call failed (%s%s)",
+                type(exc).__name__,
+                f" status={status}" if status else "",
+            )
+            raise
 
         claims: list[SynthesisClaim] = []
         for block in resp.content:

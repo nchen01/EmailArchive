@@ -243,6 +243,37 @@ def _token_match(name: str, query_lower: str) -> bool:
     return bool(re.search(pattern, query_lower))
 
 
+def _call_synthesis(mailbox_id: str, **kwargs) -> tuple:
+    """Call synthesize_cover_for_me, mapping Anthropic provider errors to 502.
+
+    Logs error type and HTTP status (when present) but never logs prompt text,
+    query content, or key values.  Raises HTTPException(502) for any exception
+    that escapes the synthesis layer so the caller always gets a typed HTTP
+    response rather than an unhandled 500.
+    """
+    try:
+        return synthesize_cover_for_me(**kwargs)
+    except HTTPException:
+        raise  # already typed; pass through unchanged
+    except Exception as exc:
+        exc_name = type(exc).__name__
+        status = getattr(exc, "status_code", None)
+        _log.error(
+            "Synthesis provider error for mailbox %s: %s%s",
+            mailbox_id,
+            exc_name,
+            f" (http {status})" if status else "",
+        )
+        detail = f"Synthesis provider unavailable ({exc_name})"
+        if status == 401:
+            detail += " — check ANTHROPIC_API_KEY"
+        elif status == 429:
+            detail += " — rate limit; retry in a moment"
+        elif status == 500:
+            detail += " — Anthropic server error"
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+
 def _get_mailbox(db: Session, mailbox_id: str) -> orm.Mailbox:
     mbx = db.get(orm.Mailbox, mailbox_id)
     if mbx is None:
@@ -385,8 +416,9 @@ async def cover_for_me_endpoint(
         except MissingApiKeyError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-        result, routed_to = synthesize_cover_for_me(
-            body.query, None, None,
+        result, routed_to = _call_synthesis(
+            mailbox_id,
+            query=body.query, matched_person=None, matched_project=None,
             db=db, mailbox_id=mailbox_id, synth_fn=synth_fn,
             l2_hits=l2_hits,
         )
@@ -402,10 +434,11 @@ async def cover_for_me_endpoint(
     except MissingApiKeyError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    result, routed_to = synthesize_cover_for_me(
-        body.query,
-        matched_person,
-        matched_project,
+    result, routed_to = _call_synthesis(
+        mailbox_id,
+        query=body.query,
+        matched_person=matched_person,
+        matched_project=matched_project,
         db=db,
         mailbox_id=mailbox_id,
         synth_fn=synth_fn,
