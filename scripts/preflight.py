@@ -23,6 +23,11 @@ _STATUS_ICON = {
 
 
 def main() -> None:
+    from pathlib import Path
+    _root = str(Path(__file__).resolve().parent.parent)
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
     from scripts._env import load_local_env
     load_local_env()
 

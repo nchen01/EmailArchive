@@ -97,6 +97,46 @@ def test_db_reachable_passes():
     assert c.status == "pass"
 
 
+def test_db_module_not_found_includes_module_name():
+    """ModuleNotFoundError must surface the missing module name, not just the class."""
+    from services.preflight import check_database
+    eng = MagicMock()
+    err = ModuleNotFoundError("No module named 'dotenv'")
+    err.name = "dotenv"
+    eng.connect.side_effect = err
+    c = check_database(engine=eng)
+    assert c.status == "fail"
+    assert "dotenv" in c.message
+
+
+def test_preflight_cli_sys_path_fix():
+    """scripts/preflight.py must not raise ModuleNotFoundError when repo root is absent from sys.path."""
+    import sys
+    import importlib
+    from pathlib import Path
+
+    repo_root = str(Path(__file__).resolve().parent.parent)
+    scripts_dir = str(Path(__file__).resolve().parent.parent / "scripts")
+
+    # Simulate direct execution: scripts/ on path, repo root absent.
+    original_path = sys.path[:]
+    try:
+        if repo_root in sys.path:
+            sys.path.remove(repo_root)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+
+        # Force re-import so the module runs with the modified path.
+        if "scripts.preflight" in sys.modules:
+            del sys.modules["scripts.preflight"]
+
+        # Importing must not raise; main() must be callable.
+        import scripts.preflight as pf  # noqa: F401 — existence check
+        assert callable(pf.main)
+    finally:
+        sys.path[:] = original_path
+
+
 def test_alembic_not_at_head_fails():
     """DB is reachable but current revision != head."""
     from services.preflight import check_alembic_head

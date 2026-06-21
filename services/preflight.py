@@ -30,6 +30,13 @@ class PreflightCheck:
         return self.status == "fail"
 
 
+def _exc_label(exc: Exception) -> str:
+    """Human-readable exception label; surfaces missing module name when relevant."""
+    if isinstance(exc, ModuleNotFoundError) and exc.name:
+        return f"ModuleNotFoundError('{exc.name}')"
+    return type(exc).__name__
+
+
 # ── Individual check functions ────────────────────────────────────────────────
 
 def check_voyage_api_key() -> PreflightCheck:
@@ -61,7 +68,7 @@ def check_database(engine=None) -> PreflightCheck:
     except Exception as exc:
         return PreflightCheck(
             "database", "fail",
-            f"Database unreachable ({type(exc).__name__}) — check DATABASE_URL",
+            f"Database unreachable ({_exc_label(exc)}) — check DATABASE_URL",
         )
 
 
@@ -92,7 +99,7 @@ def check_alembic_head(engine=None) -> PreflightCheck:
     except Exception as exc:
         return PreflightCheck(
             "alembic_head", "fail",
-            f"Could not verify Alembic revision ({type(exc).__name__})",
+            f"Could not verify Alembic revision ({_exc_label(exc)})",
         )
 
 
@@ -122,7 +129,7 @@ def check_embeddings(mailbox_id: str, session=None) -> PreflightCheck:
     except Exception as exc:
         return PreflightCheck(
             "embeddings", "fail",
-            f"Could not check embeddings ({type(exc).__name__})",
+            f"Could not check embeddings ({_exc_label(exc)})",
         )
     finally:
         if own_session and session is not None:
