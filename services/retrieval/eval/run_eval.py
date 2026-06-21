@@ -49,6 +49,8 @@ from services.retrieval.eval.fixtures import (
 from services.retrieval.hybrid import hybrid_search
 from services.retrieval.params import RetrievalParams
 
+_FIXTURE_CHOICES = ("fixture", "smoke")
+
 
 # ── Result types ──────────────────────────────────────────────────────────────
 
@@ -151,14 +153,17 @@ def run_eval(
     embed_client: EmbedClient | None = None,
     *,
     params: RetrievalParams | None = None,
+    cases: list[RetrievalCase] | None = None,
     verbose: bool = False,
 ) -> EvalResult:
-    """Run all EVAL_CASES against hybrid_search for ``mailbox_id``.
+    """Run eval cases against hybrid_search for ``mailbox_id``.
 
     ``embed_client`` defaults to FakeEmbedClient(dim=1024, model='fake-embed').
     ``params`` defaults to EVAL_PARAMS (fake-embed calibrated); pass
     VOYAGE_EVAL_PARAMS when using VoyageEmbedClient so embed_model and
     min_vector_score match the indexed documents.
+    ``cases`` defaults to EVAL_CASES (fixture mailbox); pass SMOKE_EVAL_CASES
+    for the S8.5 real-mailbox eval.
 
     All eval queries are embedded in a single batch call (embed_queries_batch)
     to avoid per-query API rate-limit hits when using VoyageEmbedClient.
@@ -167,6 +172,7 @@ def run_eval(
 
     _client = embed_client or FakeEmbedClient(dim=1024, model="fake-embed")
     _params = params or EVAL_PARAMS
+    _cases  = cases if cases is not None else EVAL_CASES
 
     # Load all message_id_headers present in the DB for gate 5.
     db_headers_rows = session.execute(
@@ -177,11 +183,11 @@ def run_eval(
 
     # Pre-embed all queries in one batch call — single API request regardless
     # of how many eval cases exist, avoiding per-query rate-limit hits.
-    queries = [case.query for case in EVAL_CASES]
+    queries = [case.query for case in _cases]
     query_vecs = _client.embed_queries_batch(queries)
 
     case_results: list[CaseResult] = []
-    for case, query_vec in zip(EVAL_CASES, query_vecs):
+    for case, query_vec in zip(_cases, query_vecs):
         result = hybrid_search(
             session,
             mailbox_id,
@@ -196,7 +202,7 @@ def run_eval(
             status = "PASS" if cr.passed else "FAIL"
             print(f"  [{status}] {case.query!r}")
             for f in cr.failures:
-                print(f"         ✗ {f}")
+                print(f"         x {f}")
             if not isinstance(result, InsufficientEvidence):
                 for h in result[:3]:
                     print(f"         -> {h.message_id_header} (score={h.rerank_score:.3f})")
@@ -274,6 +280,18 @@ def main(argv: list[str] | None = None) -> None:
             "after a real voyage-4 backfill to validate end-to-end retrieval."
         ),
     )
+    parser.add_argument(
+        "--fixture",
+        choices=list(_FIXTURE_CHOICES),
+        default="fixture",
+        help=(
+            "'fixture' (default): run EVAL_CASES against the standard 18-message "
+            "fixture mailbox (FakeEmbedClient or voyage). "
+            "'smoke': run SMOKE_EVAL_CASES (S8.5) against the real puluo mailbox "
+            "(mailbox_id e21c187a-956a-47ee-92aa-b21badd16f4d) — requires "
+            "--embed-client voyage and a completed voyage-4 backfill."
+        ),
+    )
     args = parser.parse_args(argv)
 
     from scripts._env import load_local_env
@@ -281,6 +299,13 @@ def main(argv: list[str] | None = None) -> None:
 
     embed_client = _build_embed_client(args.embed_client)
     eval_params  = VOYAGE_EVAL_PARAMS if args.embed_client == "voyage" else EVAL_PARAMS
+
+    if args.fixture == "smoke":
+        from services.retrieval.eval.smoke_fixtures import SMOKE_EVAL_CASES
+        selected_cases = SMOKE_EVAL_CASES
+    else:
+        selected_cases = EVAL_CASES
+
     print(
         f"embed client : {args.embed_client} "
         f"(model={embed_client.model}, dim={embed_client.dim})"
@@ -289,6 +314,7 @@ def main(argv: list[str] | None = None) -> None:
         f"eval params  : embed_model={eval_params.embed_model} "
         f"min_vector_score={eval_params.min_vector_score}"
     )
+    print(f"fixture      : {args.fixture} ({len(selected_cases)} cases)")
 
     session = SessionLocal()
     try:
@@ -298,6 +324,7 @@ def main(argv: list[str] | None = None) -> None:
             session, args.mailbox_id,
             embed_client=embed_client,
             params=eval_params,
+            cases=selected_cases,
             verbose=args.verbose,
         )
         print(
