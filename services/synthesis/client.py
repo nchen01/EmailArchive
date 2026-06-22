@@ -155,7 +155,7 @@ def make_anthropic_synth_fn(
                 continue
             parsed = _LLMSynthesis.model_validate(block.input)
             for c in parsed.claims:
-                if not c.source_message_ids:
+                if not c.source_message_ids or not c.text.strip():
                     continue
                 claims.append(
                     SynthesisClaim(

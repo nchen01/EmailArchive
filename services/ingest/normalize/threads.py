@@ -18,6 +18,7 @@ import hashlib
 import re
 import uuid
 from collections import defaultdict
+from email.header import decode_header as _decode_header
 from datetime import datetime, timezone
 
 from ekc_schemas import Message, Sensitivity, Thread
@@ -95,6 +96,34 @@ def _parse_ts(date_header: str) -> datetime:
 
 
 _SUBJECT_PREFIX = re.compile(r"^\s*(re|fwd?|fw)\s*:\s*", re.IGNORECASE)
+
+
+def decode_mime_words(value: str) -> str:
+    """Decode an RFC 2047 encoded-word header value to a Unicode string.
+
+    Handles B-encoding (base64) and Q-encoding (quoted-printable) with any
+    charset, and mixed messages like 'prefix =?utf-8?b?...?= suffix'.
+    Consecutive encoded words are joined without an inserted space (RFC 2047
+    §6.2 rule). Falls back to the raw value on any decode error.
+
+    Examples:
+        '=?utf-8?b?4oCU?='                                    -> '—'
+        'INCIDENT P1: p99 =?utf-8?b?4oCU?= triaging'          -> 'INCIDENT P1: p99 — triaging'
+        '=?US-ASCII?Q?View_Your_New_Benefit_Amount?='          -> 'View Your New Benefit Amount'
+    """
+    if not value or "=?" not in value:
+        return value
+    try:
+        parts = _decode_header(value)
+        out: list[str] = []
+        for raw, charset in parts:
+            if isinstance(raw, bytes):
+                out.append(raw.decode(charset or "utf-8", errors="replace"))
+            else:
+                out.append(raw)
+        return "".join(out)
+    except Exception:
+        return value
 
 
 def _norm_subject(subject: str) -> str:
@@ -188,7 +217,7 @@ def reconstruct(
             to_addrs = parse_addresses(r.headers.get("To", ""))
             cc_addrs = parse_addresses(r.headers.get("Cc", ""))
             ts = _parse_ts(r.headers.get("Date", ""))
-            subject = r.headers.get("Subject", "") or ""
+            subject = decode_mime_words(r.headers.get("Subject", "") or "")
 
             clean_text = clean_body_from_raw(r, sender.display_names[0] if sender.display_names else None,
                                              params.clean_text_max_chars)

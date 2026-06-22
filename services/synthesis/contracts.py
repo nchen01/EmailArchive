@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 class SynthesisClaim(BaseModel):
     """One grounded claim. Must cite >=1 message_id_header (NOT internal ids)."""
-    text: str = Field(..., description="One factual clause about the owner's work.")
+    text: str = Field(..., min_length=1, description="One factual clause about the owner's work.")
     source_message_ids: list[str] = Field(
         ...,
         min_length=1,

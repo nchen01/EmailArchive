@@ -167,14 +167,15 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
           ) : null}
 
           {isInsufficient ? (
-            // Polite "couldn't find that in the data" — NOT an error.
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              Couldn't find that in the structured data. Try rephrasing your
-              question to mention a specific project or contact name.
+            // Polite "no evidence found" — NOT an error. Covers both L1 and L2
+            // finding nothing for this query.
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              No email evidence found for this query. Try asking about a
+              specific project or contact name from the mailbox.
             </div>
           ) : claims.length === 0 ? (
             <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              {result.state ?? "No evidenced answer in email."}
+              {result.state || "No evidenced answer in email."}
             </div>
           ) : (
             <div className="summary-result">
