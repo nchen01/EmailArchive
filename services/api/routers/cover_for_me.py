@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 from ekc_schemas import Person, Project
 
 from services.db import mappers
+from services.ingest.normalize.mime import decode_mime_words
 from services.db import models as orm
 from services.retrieval.contracts import InsufficientEvidence, RetrievalHit
 from services.retrieval.hybrid import hybrid_search
@@ -214,7 +215,7 @@ def _build_supporting_evidence(
             hit = l2_by_header[header]
             evidence.append(EvidenceMessage(
                 message_id_header=header,
-                subject=hit.subject,
+                subject=decode_mime_words(hit.subject or ""),
                 date=hit.ts.isoformat(),
                 snippet=hit.snippet[:200],
             ))
@@ -222,7 +223,7 @@ def _build_supporting_evidence(
             row = rows_by_header[header]
             evidence.append(EvidenceMessage(
                 message_id_header=header,
-                subject=row.subject or "",
+                subject=decode_mime_words(row.subject or ""),
                 date=row.ts.isoformat() if row.ts else "",
                 snippet=(row.clean_text or "")[:200],
             ))

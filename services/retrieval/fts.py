@@ -26,6 +26,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from services.db import models as orm
+from services.ingest.normalize.mime import decode_mime_words
 from services.retrieval.contracts import RetrievalHit
 from services.retrieval.params import RetrievalParams
 
@@ -145,7 +146,7 @@ def fts_search(
                 project_ids=project_ids,
                 person_ids=person_ids,
                 ts=r["ts"],
-                subject=r["subject"],
+                subject=decode_mime_words(r["subject"] or ""),
                 snippet=(r["clean_text"] or "")[:_SNIPPET_LEN],
                 vector_score=None,
                 fts_score=score,

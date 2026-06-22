@@ -8,7 +8,7 @@ directly and via the ingest pipeline fixture.
 from __future__ import annotations
 
 import pytest
-from services.ingest.normalize.threads import decode_mime_words
+from services.ingest.normalize.mime import decode_mime_words
 
 
 # ── decode_mime_words unit tests ──────────────────────────────────────────────
@@ -189,3 +189,215 @@ def test_synthesis_claim_strips_whitespace_in_synth_fn(monkeypatch):
     texts = [c.text for c in result.claims]
     assert "   " not in texts, "Whitespace-only claim leaked into SynthesisResult"
     assert "Actual claim text." in texts
+
+
+# ── Canonical location ────────────────────────────────────────────────────────
+
+def test_decode_mime_words_canonical_location():
+    """decode_mime_words must be importable from the canonical mime.py module.
+
+    Ensures address.py and threads.py don't still have competing definitions.
+    """
+    from services.ingest.normalize.mime import decode_mime_words as from_mime
+    from services.ingest.normalize.address import decode_mime_words as from_addr
+    from services.ingest.normalize.threads import decode_mime_words as from_threads
+
+    # All three imports must resolve to the same callable object (same id).
+    assert from_mime is from_addr, "address.py must re-export from mime.py"
+    assert from_mime is from_threads, "threads.py must re-export from mime.py"
+
+
+# ── Outbound decode: RetrievalHit construction ────────────────────────────────
+
+def _make_fake_row(encoded_subject: str):
+    """Minimal mapping-like object for mocking DB query rows."""
+    from datetime import datetime, timezone
+
+    class _Row(dict):
+        pass
+
+    row = _Row({
+        "message_id": "00000000-0000-0000-0000-000000000001",
+        "message_id_header": "test-msg@example.com",
+        "thread_id": "00000000-0000-0000-0000-000000000002",
+        "subject": encoded_subject,
+        "clean_text": "Body text.",
+        "ts": datetime(2026, 1, 15, tzinfo=timezone.utc),
+        "sensitivity": ["none"],
+        "noise": False,
+        "sender_email": "sender@example.com",
+        "to_emails": [],
+        "cc_emails": [],
+        "vector_score": 0.9,
+        "fts_score": 0.5,
+    })
+    return row
+
+
+def test_vector_search_decodes_subject(monkeypatch):
+    """RetrievalHit.subject from vector_search must be decoded, not raw encoded-word."""
+    from unittest.mock import MagicMock, patch
+    from services.retrieval.params import RetrievalParams
+    from services.retrieval.vector import vector_search
+
+    encoded = "INCIDENT P1: p99 =?utf-8?b?4oCU?= triaging"
+    fake_row = _make_fake_row(encoded)
+
+    session = MagicMock()
+    # Mock: execute().mappings().all() returns our fake row
+    session.execute.return_value.mappings.return_value.all.return_value = [fake_row]
+    # Mock project and person resolution to return empty
+    session.execute.return_value.all.return_value = []
+
+    params = RetrievalParams(
+        embed_model="fake", embed_dim=4,
+        min_vector_score=0.0, min_fts_score=0.0,
+        vector_top_k=10, fts_top_k=10, rerank_top_k=10,
+    )
+
+    hits = vector_search(session, "mailbox-id", [0.1, 0.2, 0.3, 0.4], params)
+
+    assert hits, "Expected at least one hit"
+    assert "=?" not in hits[0].subject, (
+        f"Encoded-word leaked into RetrievalHit.subject: {hits[0].subject!r}"
+    )
+    assert "—" in hits[0].subject, f"Em dash missing: {hits[0].subject!r}"
+
+
+def test_fts_search_decodes_subject(monkeypatch):
+    """RetrievalHit.subject from fts_search must be decoded, not raw encoded-word."""
+    from unittest.mock import MagicMock
+    from services.retrieval.params import RetrievalParams
+    from services.retrieval.fts import fts_search
+
+    encoded = "=?US-ASCII?Q?View_Your_New_Benefit_Amount?="
+    fake_row = _make_fake_row(encoded)
+
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value.all.return_value = [fake_row]
+    session.execute.return_value.all.return_value = []
+
+    params = RetrievalParams(
+        embed_model="fake", embed_dim=4,
+        min_vector_score=0.0, min_fts_score=0.0,
+        vector_top_k=10, fts_top_k=10, rerank_top_k=10,
+    )
+
+    hits = fts_search(session, "mailbox-id", "benefit amount", params)
+
+    assert hits, "Expected at least one hit"
+    assert "=?" not in hits[0].subject, (
+        f"Encoded-word leaked into RetrievalHit.subject: {hits[0].subject!r}"
+    )
+    assert "View Your New Benefit Amount" in hits[0].subject
+
+
+# ── Outbound decode: _build_supporting_evidence ───────────────────────────────
+
+def test_build_supporting_evidence_decodes_l2_hit_subject():
+    """EvidenceMessage.subject from an L2 hit must have decoded subject."""
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone
+    from services.retrieval.contracts import RetrievalHit
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    # Simulate an L2 hit whose subject is still encoded (pre-fix DB row)
+    encoded_subject = "=?US-ASCII?Q?View_Your_New_Benefit_Amount?="
+    msg_header = "ssa-benefit@subscriptions.ssa.gov"
+    hit = RetrievalHit(
+        message_id="00000000-0000-0000-0000-000000000001",
+        message_id_header=msg_header,
+        thread_id="00000000-0000-0000-0000-000000000002",
+        project_ids=(),
+        person_ids=(),
+        ts=datetime(2026, 1, 15, tzinfo=timezone.utc),
+        subject=encoded_subject,
+        snippet="SSA benefit amount notification.",
+        vector_score=0.9,
+        fts_score=None,
+        rerank_score=0.9,
+        source="vector",
+        sensitivity=("none",),
+        noise=False,
+    )
+
+    result = SynthesisResult(
+        claims=[SynthesisClaim(text="Benefit updated.", source_message_ids=[msg_header])],
+        model="test",
+        usage={},
+    )
+
+    db = MagicMock()
+    evidence = _build_supporting_evidence(result, [hit], db, "mailbox-id")
+
+    assert evidence, "Expected one EvidenceMessage"
+    assert "=?" not in evidence[0].subject, (
+        f"Encoded-word leaked into EvidenceMessage.subject: {evidence[0].subject!r}"
+    )
+    assert "View Your New Benefit Amount" in evidence[0].subject
+
+
+def test_build_supporting_evidence_decodes_l1_db_subject():
+    """EvidenceMessage.subject from an L1 DB row must have decoded subject."""
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    msg_header = "l1-msg@acme.com"
+    encoded_subject = "INCIDENT P1: p99 =?utf-8?b?4oCU?= triaging"
+
+    # Result cites a header that is NOT in l2_hits, so it falls back to DB
+    result = SynthesisResult(
+        claims=[SynthesisClaim(text="Incident resolved.", source_message_ids=[msg_header])],
+        model="test",
+        usage={},
+    )
+
+    # Fake DB row returned by the L1 DB query
+    class _FakeRow:
+        message_id_header = msg_header
+        subject = encoded_subject
+        ts = datetime(2026, 1, 15, tzinfo=timezone.utc)
+        clean_text = "P1 incident body."
+
+    db = MagicMock()
+    db.execute.return_value.all.return_value = [_FakeRow()]
+
+    evidence = _build_supporting_evidence(result, [], db, "mailbox-id")
+
+    assert evidence, "Expected one EvidenceMessage"
+    assert "=?" not in evidence[0].subject, (
+        f"Encoded-word leaked into EvidenceMessage.subject: {evidence[0].subject!r}"
+    )
+    assert "—" in evidence[0].subject
+
+
+# ── Repair script (dry-run) ───────────────────────────────────────────────────
+
+def test_repair_script_dry_run_makes_no_db_writes():
+    """repair() with dry_run=True must scan rows but not issue any UPDATE."""
+    from unittest.mock import MagicMock, call
+    from scripts.repair_encoded_subjects import repair
+
+    encoded = "=?US-ASCII?Q?View_Your_New?="
+    decoded = "View Your New"
+
+    session_mock = MagicMock()
+    # First execute: returns rows with encoded subjects
+    first_result = MagicMock()
+    first_result.all.return_value = [("row-id-1", encoded)]
+    # Second execute (pagination loop): no more rows
+    second_result = MagicMock()
+    second_result.all.return_value = []
+    session_mock.execute.side_effect = [first_result, second_result]
+
+    from unittest.mock import patch
+    with patch("scripts.repair_encoded_subjects.SessionLocal", return_value=session_mock):
+        stats = repair(dry_run=True, batch_size=500)
+
+    assert stats["scanned"] == 1
+    assert stats["updated"] == 1  # would be updated, but dry_run
+    # commit must NOT be called in dry-run
+    session_mock.commit.assert_not_called()

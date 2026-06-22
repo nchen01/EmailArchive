@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import re
-from email.header import decode_header, make_header
 from email.utils import getaddresses
 
 from ekc_schemas import Address
+
+from .mime import decode_mime_words  # noqa: F401 — re-exported for callers
 
 PLUS = re.compile(r"\+[^@]*@")
 
@@ -14,14 +15,6 @@ def norm_email(addr: str) -> str:
     """Lowercase + strip plus-addressing: ``a+x@co -> a@co``."""
     addr = addr.strip().lower()
     return PLUS.sub("@", addr)
-
-
-def decode_mime_words(s: str) -> str:
-    """Decode RFC 2047 encoded-words found in headers."""
-    try:
-        return str(make_header(decode_header(s)))
-    except Exception:
-        return s
 
 
 def parse_addresses(header_value: str) -> list[Address]:

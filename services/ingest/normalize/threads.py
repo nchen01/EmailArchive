@@ -18,7 +18,6 @@ import hashlib
 import re
 import uuid
 from collections import defaultdict
-from email.header import decode_header as _decode_header
 from datetime import datetime, timezone
 
 from ekc_schemas import Message, Sensitivity, Thread
@@ -26,6 +25,7 @@ from ekc_schemas import Message, Sensitivity, Thread
 from ..params import IngestParams
 from ..providers.base import RawMessage
 from .address import norm_email, parse_addresses
+from .mime import decode_mime_words
 from .artifacts import extract_link_domains, process_attachments
 from .body import clean_body_from_raw
 from .noise import is_noise
@@ -96,34 +96,6 @@ def _parse_ts(date_header: str) -> datetime:
 
 
 _SUBJECT_PREFIX = re.compile(r"^\s*(re|fwd?|fw)\s*:\s*", re.IGNORECASE)
-
-
-def decode_mime_words(value: str) -> str:
-    """Decode an RFC 2047 encoded-word header value to a Unicode string.
-
-    Handles B-encoding (base64) and Q-encoding (quoted-printable) with any
-    charset, and mixed messages like 'prefix =?utf-8?b?...?= suffix'.
-    Consecutive encoded words are joined without an inserted space (RFC 2047
-    §6.2 rule). Falls back to the raw value on any decode error.
-
-    Examples:
-        '=?utf-8?b?4oCU?='                                    -> '—'
-        'INCIDENT P1: p99 =?utf-8?b?4oCU?= triaging'          -> 'INCIDENT P1: p99 — triaging'
-        '=?US-ASCII?Q?View_Your_New_Benefit_Amount?='          -> 'View Your New Benefit Amount'
-    """
-    if not value or "=?" not in value:
-        return value
-    try:
-        parts = _decode_header(value)
-        out: list[str] = []
-        for raw, charset in parts:
-            if isinstance(raw, bytes):
-                out.append(raw.decode(charset or "utf-8", errors="replace"))
-            else:
-                out.append(raw)
-        return "".join(out)
-    except Exception:
-        return value
 
 
 def _norm_subject(subject: str) -> str:
