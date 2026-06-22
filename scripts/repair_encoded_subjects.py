@@ -22,14 +22,9 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts._env import load_local_env
+from sqlalchemy import text
 
-load_local_env()
-
-from sqlalchemy import text  # noqa: E402 — after env load
-
-from services.db.engine import SessionLocal  # noqa: E402
-from services.ingest.normalize.mime import decode_mime_words  # noqa: E402
+from services.ingest.normalize.mime import decode_mime_words
 
 
 def repair(
@@ -37,16 +32,23 @@ def repair(
     mailbox_id: str | None = None,
     dry_run: bool = True,
     batch_size: int = 500,
+    session_factory=None,
 ) -> dict[str, int]:
     """Decode RFC 2047 subjects in the DB. Returns stats dict.
 
     Parameters
     ----------
-    mailbox_id : optional UUID — restrict to one mailbox
-    dry_run    : when True, no writes are made
-    batch_size : rows fetched per SELECT batch to keep memory bounded
+    mailbox_id      : optional UUID — restrict to one mailbox
+    dry_run         : when True, no writes are made
+    batch_size      : rows fetched per SELECT batch to keep memory bounded
+    session_factory : callable returning a SQLAlchemy Session; defaults to
+                      SessionLocal (imported lazily so importing this module
+                      does not construct the DB engine at import time)
     """
-    session = SessionLocal()
+    if session_factory is None:
+        from services.db.engine import SessionLocal
+        session_factory = SessionLocal
+    session = session_factory()
     stats = {"scanned": 0, "updated": 0, "unchanged": 0}
 
     try:
@@ -104,6 +106,9 @@ def repair(
 
 
 def main() -> None:
+    from scripts._env import load_local_env
+    load_local_env()
+
     p = argparse.ArgumentParser(description="Repair RFC 2047 encoded subjects in the DB.")
     p.add_argument("--mailbox-id", default=None, metavar="UUID",
                    help="Restrict to one mailbox (default: all mailboxes).")

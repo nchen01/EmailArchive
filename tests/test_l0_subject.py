@@ -377,27 +377,50 @@ def test_build_supporting_evidence_decodes_l1_db_subject():
 # ── Repair script (dry-run) ───────────────────────────────────────────────────
 
 def test_repair_script_dry_run_makes_no_db_writes():
-    """repair() with dry_run=True must scan rows but not issue any UPDATE."""
-    from unittest.mock import MagicMock, call
+    """repair() with dry_run=True must scan rows but not issue any UPDATE.
+
+    Uses the injectable session_factory parameter — no module-level patching
+    needed and importing the script does not mutate env or construct the engine.
+    """
+    from unittest.mock import MagicMock
     from scripts.repair_encoded_subjects import repair
 
     encoded = "=?US-ASCII?Q?View_Your_New?="
-    decoded = "View Your New"
 
     session_mock = MagicMock()
-    # First execute: returns rows with encoded subjects
+    # First execute: SELECT returns one encoded-subject row
     first_result = MagicMock()
     first_result.all.return_value = [("row-id-1", encoded)]
-    # Second execute (pagination loop): no more rows
+    # Second execute (pagination): no more rows
     second_result = MagicMock()
     second_result.all.return_value = []
     session_mock.execute.side_effect = [first_result, second_result]
 
-    from unittest.mock import patch
-    with patch("scripts.repair_encoded_subjects.SessionLocal", return_value=session_mock):
-        stats = repair(dry_run=True, batch_size=500)
+    stats = repair(dry_run=True, batch_size=500, session_factory=lambda: session_mock)
 
     assert stats["scanned"] == 1
-    assert stats["updated"] == 1  # would be updated, but dry_run
-    # commit must NOT be called in dry-run
+    assert stats["updated"] == 1   # counted but not written
+    assert stats["unchanged"] == 0
     session_mock.commit.assert_not_called()
+
+
+def test_repair_script_import_has_no_side_effects():
+    """Importing repair_encoded_subjects must not call load_local_env or touch the DB."""
+    import importlib
+    import os
+    from unittest.mock import patch
+
+    sentinel = object()
+    called = []
+
+    def _spy_load():
+        called.append(True)
+
+    # Reload the module from scratch with a spy on load_local_env
+    with patch.dict(os.environ, {}, clear=False):
+        with patch("scripts._env.load_local_env", _spy_load):
+            if "scripts.repair_encoded_subjects" in __import__("sys").modules:
+                del __import__("sys").modules["scripts.repair_encoded_subjects"]
+            importlib.import_module("scripts.repair_encoded_subjects")
+
+    assert not called, "load_local_env must not be called at import time"
