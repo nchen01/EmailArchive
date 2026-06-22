@@ -14,10 +14,12 @@ Embedding strategy (design decision):
     Voyage-4 vectors already stored in message_embedding are reused for the
     clustering embed_fn.  This gives a single semantic embedding path for both
     retrieval and clustering — no second model, no extra API calls.  Each
-    message's clean_text is mapped to its stored 1024-dim vector via a lookup
-    dict.  Messages without a stored embedding (noise=True or sensitivity!=none)
-    receive a zero-vector fallback; since only eligible threads (>=1 embedded
-    message) are clustered, this fallback is seldom reached.
+    message's clean_text is mapped to its stored 1024-dim vector via a lookup.
+
+    --confirm requires ALL eligible messages to have voyage-4 embeddings.
+    If any are missing the script exits with an error; run embed_backfill.py
+    first.  --dry-run reports missing_embeddings but does not fail, so you
+    can preview clustering readiness before running the backfill.
 
 Idempotency:
     Project IDs are uuid5 over the sorted set of thread_ids in each cluster
@@ -64,18 +66,35 @@ _EMBED_DIM = 1024  # voyage-4 dimension
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _get_eligible_thread_ids(session, mailbox_id: str, limit: int | None = None) -> list[str]:
-    """Thread IDs that have ≥1 non-noise, non-sensitive message.
+    """Thread IDs that have ≥1 non-noise sensitivity='{none}' message and NO sensitive messages.
 
-    Uses raw SQL for the sensitivity array comparison to avoid SQLAlchemy
-    ARRAY equality quirks.
+    Whole-thread exclusion: a thread is ineligible if any of its messages carries a
+    non-'{none}' sensitivity tag, even if it also contains clean messages.  This
+    matches the docstring privacy guarantee and prevents mixed HR/legal threads from
+    leaking into project clustering.
+
+    Results are ordered by (t_start, id) so that --limit-threads N is deterministic
+    across repeated runs.
     """
     rows = session.execute(
         text(
-            "SELECT DISTINCT thread_id::text "
-            "FROM message "
-            "WHERE mailbox_id = :mid "
-            "  AND noise = false "
-            "  AND sensitivity = '{none}'"
+            "SELECT t.id::text "
+            "FROM thread t "
+            "WHERE t.mailbox_id = :mid "
+            "  AND EXISTS ( "
+            "      SELECT 1 FROM message m "
+            "      WHERE m.thread_id = t.id "
+            "        AND m.mailbox_id = :mid "
+            "        AND m.noise = false "
+            "        AND m.sensitivity = '{none}' "
+            "  ) "
+            "  AND NOT EXISTS ( "
+            "      SELECT 1 FROM message m2 "
+            "      WHERE m2.thread_id = t.id "
+            "        AND m2.mailbox_id = :mid "
+            "        AND m2.sensitivity != '{none}' "
+            "  ) "
+            "ORDER BY t.t_start, t.id::text"
         ),
         {"mid": mailbox_id},
     ).all()
@@ -163,12 +182,24 @@ def _make_db_embed_fn(messages, msg_id_to_vec: dict[str, np.ndarray]):
     """Return an embed_fn backed by pre-loaded voyage-4 DB vectors.
 
     Maps each message's clean_text to its stored vector.  Messages not in the
-    lookup receive a zero-vector fallback (callers normalize; zero becomes a
-    direction-less unit vector that contributes equally to all clusters —
-    acceptable when the message rarely appears in an eligible thread).
+    lookup receive a zero-vector fallback — used only in dry-run mode (where
+    missing embeddings are reported but not fatal).  For --confirm, materialize()
+    raises before this function is called if any embedding is absent.
 
-    If two messages share identical clean_text, the last one wins in the lookup.
-    In practice this is rare for real email content.
+    Accepted S9 limitation — clean_text keying vs. voyage-4 input mismatch:
+      The clustering pipeline calls embed_fn(clean_text), but voyage-4 embeddings
+      in message_embedding were generated from subject + "\\n\\n" + clean_text.
+      This bridge therefore uses clean_text as a proxy lookup key.  Two consequences:
+        1. If two messages share identical clean_text but different subjects, the
+           last message's vector wins (last-write-wins on dict insertion).  This is
+           rare for real email content, but it is a silent precision loss.
+        2. The clustering distance metric is computed against slightly different
+           text than what was embedded, which is acceptable for agglomerative /
+           Leiden clustering on real mailboxes but is not semantically identical.
+      The correct fix is to extend the clustering embed_fn interface to accept
+      message identity (message_id or a precomputed-vector dict) so the bridge can
+      do a direct ID lookup rather than a text-proxy lookup.  That change touches
+      the S3 clustering pipeline and is deferred to a future sprint.
     """
     lookup: dict[str, np.ndarray] = {}
     for m in messages:
@@ -223,6 +254,7 @@ def materialize(
                 "total_threads": total_threads,
                 "eligible_threads": 0,
                 "excluded_threads": total_threads,
+                "missing_embeddings": 0,
                 "projects_found": 0,
                 "top_labels": [],
                 "strategy": "none",
@@ -260,6 +292,7 @@ def materialize(
                 "total_threads": total_threads,
                 "eligible_threads": len(eligible_ids),
                 "excluded_threads": excluded_count,
+                "missing_embeddings": 0,
                 "projects_found": 0,
                 "top_labels": [],
                 "strategy": "none",
@@ -270,6 +303,14 @@ def materialize(
 
         # Build embed_fn from DB voyage-4 vectors
         msg_id_to_vec = _load_voyage_vectors(session, mailbox_id)
+        missing_count = sum(
+            1 for mid in embeddable_msg_ids if mid not in msg_id_to_vec
+        )
+        if not dry_run and missing_count > 0:
+            raise RuntimeError(
+                f"{missing_count} eligible message(s) are missing voyage-4 embeddings. "
+                "Run scripts/embed_backfill.py first, then retry --confirm."
+            )
         embed_fn = _make_db_embed_fn(schema_messages, msg_id_to_vec)
 
         # Identity map and owner resolution
@@ -303,6 +344,7 @@ def materialize(
             "total_threads": total_threads,
             "eligible_threads": len(schema_threads),
             "excluded_threads": excluded_count,
+            "missing_embeddings": missing_count,
             "projects_found": len(result.projects),
             "top_labels": top_labels,
             "strategy": strategy,
@@ -314,6 +356,7 @@ def materialize(
         if not dry_run:
             from services.db.store import _persist_clustering
             _persist_clustering(result, mailbox_id, session)
+            session.commit()
             stats["projects_written"] = len(result.projects)
             stats["assignments_written"] = len(result.assignments)
             stats["members_written"] = sum(len(p.members) for p in result.projects)
@@ -364,6 +407,10 @@ def main() -> None:
     print(f"  total    : {stats['total_threads']}")
     print(f"  eligible : {stats['eligible_threads']}")
     print(f"  excluded : {stats['excluded_threads']}")
+    if stats.get("missing_embeddings", 0) > 0:
+        print()
+        print(f"WARNING: {stats['missing_embeddings']} eligible message(s) are missing voyage-4 embeddings.")
+        print("         Run scripts/embed_backfill.py before using --confirm.")
     print()
     print(f"Clustering strategy : {stats['strategy']}")
     print(f"Projects found      : {stats['projects_found']}")
