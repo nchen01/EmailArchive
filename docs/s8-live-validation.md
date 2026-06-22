@@ -9,7 +9,7 @@
 
 | Field | Value |
 |---|---|
-| Account | puluo1938@gmail.com |
+| Account | puluo smoke/live mailbox |
 | Mailbox ID | e21c187a-956a-47ee-92aa-b21badd16f4d |
 | Total messages | 460 |
 | Voyage-4 embeddings | 67 (non-noise, sensitivity=none) |
@@ -27,7 +27,7 @@ Backfill was idempotent: a second dry-run after the live run showed
 | S8.1 Backfill validation | COMPLETE | 67 embeddings, idempotent |
 | S8.2 Supporting evidence in response | COMPLETE | Subject/date chips in UI |
 | S8.3 Operational preflight | COMPLETE | `scripts/preflight.py`, `GET /api/preflight` |
-| S8.4 Graceful failure UX | COMPLETE | `retrieval_status` enum, five distinct states |
+| S8.4 Graceful failure UX | COMPLETE | `retrieval_status` enum, six distinct states |
 | S8.5 Smoke eval (voyage-4) | COMPLETE | 8/8 hard gates, MRR=0.900, top-1=0.800 |
 
 ---
@@ -66,7 +66,7 @@ Tested against the live stack (uvicorn + Vite dev proxy) with
 
 ### Q4 — Sensitive content gate
 
-**Query:** `H1 performance review Lattice compensation salary career staff engineer`
+**Query:** `H1 performance review Lattice`
 
 **Result:** PASS
 - UI displayed the no-evidence message (HR messages are excluded from embedding and SQL-filtered).
@@ -108,5 +108,5 @@ The script is safe to re-run; already-decoded rows are skipped.
 
 ```
 python -m pytest -q   →  452 passed, 79 skipped
-npm --prefix frontend run build  →  358 kB JS, 17.8 kB CSS
+npm.cmd --prefix frontend run build  →  358 kB JS, 17.8 kB CSS
 ```
