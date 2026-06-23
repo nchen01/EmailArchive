@@ -191,18 +191,30 @@ Where summaries get generated — and where the grounding discipline lives.
   enforced (invalid headers filtered post-model). "Insufficient structured evidence" fallback
   when no entity matches — never bluffs. Third "Cover for Me" tab in the frontend. 148 tests.
 
-**Implemented / in progress (S7):**
-- **L2 retrieval** is underway per D12 (see `docs/decisions.md`, `docs/s7-implementation-plan.md`).
+**Implemented (S7, complete and live-validated):**
+- **L2 retrieval** per D12 (see `docs/decisions.md`, `docs/s7-implementation-plan.md`).
 - Implemented through S7.11: migration 0006, `message_embedding` table and HNSW index,
   `subject_clean_tsv` FTS column, embed client seam (`FakeEmbedClient` + `VoyageEmbedClient`),
   idempotent backfill script, vector search, FTS search, hybrid merge, retrieval contracts,
   reranker boundary hardening, retrieval eval (7 hard gates pass on fixture), and
   cover-for-me L2 upgrade (L1+L2 hybrid routing, L2-only path, citation allow-list enforced).
-- Remaining S7 work: optional S7.12 hosted Voyage reranker (feature-flagged off).
+- Optional S7.12 hosted Voyage reranker remains feature-flagged off (not required for MVP).
 
-**Deferred beyond S7:**
-- **Thread-context neighbor expansion** (S8 per spec).
-- **Chunk-level splitting, attachment embeddings** — message-level only for S7.
+**Implemented (S8–S10, complete):**
+- **S8** Real-mailbox demo readiness: real-mailbox backfill validation, API/UI evidence
+  transparency (`supporting_evidence`), operational preflight (`scripts/preflight.py`,
+  `GET /api/preflight`), graceful failure UX (`retrieval_status` enum), smoke eval.
+- **S9** Project-clustering materialization on live mailboxes (`scripts/materialize_projects.py`):
+  persists Project / ThreadProjectAssignment / ProjectMember from stored `voyage-4` embeddings;
+  `--confirm` is embedding-gated; whole-thread sensitivity exclusion; idempotent persist.
+- **S10** Local runtime reliability: `VoyageEmbedClient` switched to the Voyage REST API over
+  `httpx` (no `voyageai` SDK / `langchain` / `uuid_utils` native chain — D12b S10 note);
+  preflight embed-client construction probe; blessed Windows launch scripts; frontend request
+  timeout + typed errors (no infinite "Loading…"); Vite `strictPort`; `GET /api/health`.
+
+**Deferred beyond S10:**
+- **Thread-context neighbor expansion** (per spec).
+- **Chunk-level splitting, attachment embeddings** — message-level only currently.
 - **Permissioned sensitive-message embedding override** — requires a permission model first (Q3).
 - **Full production secrets manager, DPA/customer deployment gates** — before any non-demo mailbox.
 - **Multi-mailbox, offboarding motion, cross-channel ingestion** — v2 product scope.

@@ -94,7 +94,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   query vectors against voyage-4 document vectors, MRR=1.000, top-1 precision=1.000).
   S7 core retrieval is complete and live-validated. Optional S7.12 hosted Voyage reranker
   remains off by default and is not required for MVP.
-- **S8 🔄 next** — Real-Mailbox Demo Readiness. Five tasks:
+- **S8 ✓** — Real-Mailbox Demo Readiness. Five tasks all complete and live-validated:
   S8.1 real-mailbox backfill validation (smoke Gmail mailbox);
   S8.2 API/UI evidence transparency (`supporting_evidence` field + citation chips with subject/date);
   S8.3 operational preflight (`scripts/preflight.py` + `GET /api/preflight`);
@@ -102,6 +102,23 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   no embeddings / no hits);
   S8.5 real-mailbox smoke eval (5–10 curated cases, `--embed-client voyage`).
   See `docs/s8-implementation-plan.md`.
+- **S9 ✓** — Project clustering materialization on live mailboxes
+  (`scripts/materialize_projects.py`). Runs the S3 clustering pipeline against an
+  ingested mailbox and persists Project / ThreadProjectAssignment / ProjectMember
+  rows so Project View and cover-for-me project routing work on real data. Reuses
+  stored `voyage-4` embeddings as the clustering `embed_fn`; `--confirm` requires
+  every eligible message to have an embedding (no silent zero-vector clustering);
+  whole-thread sensitivity exclusion (a thread with any non-`{none}` message is
+  excluded); deterministic `--limit-threads`; idempotent persist with commit.
+- **S10 ✓ (current)** — Local runtime reliability. `VoyageEmbedClient` switched
+  from the `voyageai` SDK to the Voyage REST API over `httpx` (removes the
+  `langchain`/`uuid_utils` native chain blocked by Windows Application Control —
+  see decisions.md D12b S10 note); preflight now constructs the embed client to
+  prove L2 works in this runtime (optional `--live-embed` for a billed probe,
+  off by default); blessed Windows launchers `scripts/check_local_env.ps1`,
+  `run_backend.ps1`, `run_frontend.ps1` (no bare `python`); frontend request
+  timeout + typed errors so views never hang, Vite `strictPort` on 5173, and
+  `GET /api/health` for reachability. Next product work resumes from here.
 
 ## 6. Known gaps — flag, don't fake
 

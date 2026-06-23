@@ -21,6 +21,7 @@ env/
 .coverage
 htmlcov/
 coverage.xml
+.tmp/
 
 # Alembic generated artifacts (keep versions/ but not pycache inside)
 alembic/__pycache__/

@@ -3,7 +3,7 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S0–S6 complete. S7 core retrieval complete and live-validated (S7.1–S7.11). Optional S7.12 hosted Voyage reranker remains off by default and is not required for MVP. See D12 in `docs/decisions.md`.
+**Status:** S0–S10 complete. S7 L2 retrieval live-validated (S7.1–S7.11; optional S7.12 hosted Voyage reranker remains off by default). S8 real-mailbox demo readiness complete. S9 project-clustering materialization complete (`scripts/materialize_projects.py`). S10 local runtime reliability complete (Voyage embedding via direct HTTP, runtime preflight probe, blessed Windows launch scripts, no-hang frontend). See D12 in `docs/decisions.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
@@ -168,7 +168,7 @@ email-archive/
     download_models.py              # download spaCy en_core_web_sm for production runs
     embed_backfill.py               # idempotent embedding backfill for a mailbox (S7.5)
     _env.py                         # load_local_env() helper for CLI scripts (dotenv, dev-only)
-  tests/                            # 437 passed, 1 skipped as of S7.10 (DB-gated tests skip without DATABASE_URL)
+  tests/                            # 475 passed, 90 skipped as of S10 (DB-gated tests skip without DATABASE_URL)
     test_l0_*.py   test_l1_*.py   test_clustering_*.py
     test_db_roundtrip.py   test_api_network_map.py
 ```
@@ -200,7 +200,9 @@ email-archive/
 | S5 | Cover-for-me query (bounded L1-only, D11) | ✓ done | implementation-plan §6.3 |
 | S6 | Real-mailbox quality pass (live report, eval, smoke dataset, identity/graph inspection) | ✓ done | docs/s6-real-mailbox-quality-pass.md |
 | S7 | L2 hybrid retrieval (voyage-4 embeddings, pgvector HNSW, hybrid retrieval, D12) | ✓ done (S7.1–S7.11); optional S7.12 hosted Voyage reranker remains | docs/s7-implementation-plan.md |
-| S8 | Real-Mailbox Demo Readiness — real-mailbox backfill, evidence transparency, preflight, graceful failure UX, smoke eval | 🔄 next | docs/s8-implementation-plan.md |
+| S8 | Real-Mailbox Demo Readiness — real-mailbox backfill, evidence transparency, preflight, graceful failure UX, smoke eval | ✓ done | docs/s8-implementation-plan.md |
+| S9 | Project-clustering materialization on live mailboxes (Project/assignment/member persistence; embedding-gated; whole-thread sensitivity exclusion) | ✓ done | `scripts/materialize_projects.py` |
+| S10 | Local runtime reliability — Voyage embedding via direct HTTP (no voyageai SDK), runtime preflight probe, blessed Windows launch scripts, no-hang frontend, Vite strictPort | ✓ done | `docs/decisions.md` D12b S10 note |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash
@@ -221,7 +223,7 @@ python scripts/gmail_smoke_ingest.py --owner-email you@example.com --max-message
 python scripts/gmail_smoke_ingest.py --mailbox-id <uuid> --owner-email you@example.com --confirm
 ```
 
-**Quick start (S0–S7.10 local stack):**
+**Quick start (S0–S10 local stack):**
 ```bash
 # 1. Python deps (one time)
 pip install -e .[dev]      # app + all dev/test/api/db/gmail deps
@@ -240,7 +242,7 @@ cd frontend && npm install && VITE_MAILBOX_ID=<uuid> npm run dev  # UI on :5173
 
 # 4. Tests
 DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
-  pytest                                                      # 437 passed, 1 skipped (DB-gated tests skip without DATABASE_URL)
+  pytest                                                      # 475 passed, 90 skipped (DB-gated tests skip without DATABASE_URL)
 
 # For live embedding backfill or the live Voyage integration test, set VOYAGE_API_KEY.
 # Offline tests and --dry-run use FakeEmbedClient and do not require a key.

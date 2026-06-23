@@ -143,9 +143,15 @@ class EmbedClient(Protocol):
 ```
 
 Implementations:
-- `VoyageEmbedClient` — wraps `voyageai.Client`. Uses `input_type="document"`
+- `VoyageEmbedClient` — calls the Voyage REST API directly over `httpx`
+  (POST `https://api.voyageai.com/v1/embeddings`). Uses `input_type="document"`
   for `embed_documents` and `input_type="query"` for `embed_query`.
   Reads `VOYAGE_API_KEY` from env. Never logs text content.
+  **Updated S10 (2026-06-23):** originally wrapped `voyageai.Client`; switched to
+  direct REST/httpx so the runtime no longer imports the `voyageai` SDK and its
+  `langchain`/`uuid_utils` native dependency chain (blocked by Windows
+  Application Control). Model, provider, and protocol are unchanged — see
+  decisions.md D12b S10 status note.
 - `FakeEmbedClient` — deterministic test embedder. Returns seeded unit vectors
   based on a hash of the input text. Allows offline tests.
 

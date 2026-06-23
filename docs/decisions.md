@@ -118,7 +118,7 @@ reranking stage design — but is not ported. `AGENTS.md` §6 is updated to
 reflect this: the "existing query router owns L2" note is rescinded.
 
 ### D12b — Embedding model: Voyage AI `voyage-4`, 1024 dimensions
-- Provider: **Voyage AI** (`voyageai` Python SDK).
+- Provider: **Voyage AI** (direct REST API over `httpx` — see S10 status note below).
 - Model: **`voyage-4`** — default 1024 dimensions, cosine similarity.
 - `input_type="document"` when indexing messages; `input_type="query"` when
   encoding search queries.
@@ -130,6 +130,18 @@ reflect this: the "existing query router owns L2" note is rescinded.
 - `text-embedding-3-small` (1536-dim, OpenAI) was considered and rejected for
   S7; it remains an option in a future migration. `all-MiniLM-L6-v2` (384-dim,
   local) is not adopted as the default (see D12c).
+- **Status update (S10, 2026-06-23): runtime embedding calls switched from the
+  `voyageai` Python SDK to the Voyage REST API called directly over `httpx`.**
+  The model/provider decision is unchanged — still Voyage AI `voyage-4`, 1024-dim.
+  Only the transport changed. Reason: importing `voyageai` pulled in
+  `langchain_text_splitters -> langchain_core -> uuid_utils`, and `uuid_utils`
+  loads a native `_uuid_utils*.pyd` that Windows Application Control blocks,
+  crashing the app runtime. `VoyageEmbedClient` now POSTs to
+  `https://api.voyageai.com/v1/embeddings` (`input`, `model`, `input_type`,
+  `output_dimension`) and parses `data[].embedding` ordered by `index`. The
+  `EmbedClient` protocol, `input_type` document/query semantics, dimension
+  validation, and the D12d privacy/logging posture are all unchanged. The
+  `retrieval` install extra is now `httpx>=0.27` (was `voyageai>=0.2`).
 
 ### D12c — Reranking: Voyage `rerank-2.5`, optional, feature-flagged in S7
 - Reranker: **`voyage-rerank-2.5`** (Voyage AI).
