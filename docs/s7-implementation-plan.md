@@ -506,11 +506,17 @@ project mail; unexpected relevance is part of the value.
 
 ## Proposed Changes to Existing Specs Before Code Starts
 
+> **Historical S7 pre-work checklist.** The rows below record the spec/doc edits
+> made when S7 started; every item is done. They are *not* live status — for
+> current repo state see the status section at the top of this file, `AGENTS.md`,
+> and `README.md`. In particular the `README.md` row reflects S7-era wording, not
+> the current S0–S10 status line.
+
 | Doc | Change |
 |---|---|
 | `docs/decisions.md` | D12 added. ✓ done |
 | `AGENTS.md` §6 | "external query router" note rescinded; `services/retrieval` now local. ✓ done |
-| `README.md` | Status updated to S7.1–S7.10 complete, S7.11 next. ✓ done |
+| `README.md` | Status updated to S7.1–S7.10 complete, S7.11 next (S7-era; later superseded by the S0–S10 status line). ✓ done |
 | `packages/ekc_schemas/models.py` | `MessageEmbeddingRecord` added; `SCHEMA_VERSION=0.2.0`. ✓ done (S7.2) |
 | `services/db/models.py` | `MessageEmbedding` ORM class added. ✓ done (S7.2) |
 | `services/db/mappers.py` | `embedding_to_row` / `row_to_embedding` added. ✓ done (S7.2) |
@@ -526,7 +532,9 @@ S7 is complete when:
 - `RetrievalHit` citations are all verifiable in the DB.
 - Retrieval eval hard gates pass (expected headers in top-10, no sensitive
   leakage, no noise, `InsufficientEvidence` on unanswerable query).
-- Existing full suite remains green. Current reported baseline after S7.10: 437 passed, 1 skipped.
+- Existing full suite remains green. (S7.10-era baseline was 437 passed, 1 skipped;
+  current baseline as of S10 is 475 passed, 90 skipped — DB-gated tests skip without
+  `DATABASE_URL`.)
 - Cover-for-me endpoint returns L2-backed cited evidence on a query that
   has no L1 entity match.
 - Frontend build is unchanged (no new UI in S7).

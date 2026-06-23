@@ -224,6 +224,12 @@ python scripts/gmail_smoke_ingest.py --mailbox-id <uuid> --owner-email you@examp
 ```
 
 **Quick start (S0–S10 local stack):**
+
+On Windows, prefer `scripts/run_backend.ps1` and `scripts/run_frontend.ps1` from
+the "Windows local stack" section below — they pin the blessed `.venv` interpreter
+and a deterministic port, so you never need the bare `python`/`uvicorn` commands
+shown here.
+
 ```bash
 # 1. Python deps (one time)
 pip install -e .[dev]      # app + all dev/test/api/db/gmail deps
