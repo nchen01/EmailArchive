@@ -129,13 +129,184 @@ def test_fake_embed_model_and_dim_properties():
 # ── VoyageEmbedClient — offline error paths ───────────────────────────────────
 
 def test_voyage_client_raises_embed_error_without_key(monkeypatch):
-    # Whether voyageai is installed or not, constructing VoyageEmbedClient
-    # without a key must always raise EmbedError (never a raw ImportError or
-    # KeyError that a caller would not know to catch).
+    # Constructing VoyageEmbedClient without a key must always raise EmbedError
+    # (never a raw ImportError or KeyError that a caller would not know to catch).
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     from services.retrieval.embed_client import VoyageEmbedClient
     with pytest.raises(EmbedError):
         VoyageEmbedClient(api_key=None)
+
+
+def test_voyage_client_dim_zero_raises():
+    from services.retrieval.embed_client import VoyageEmbedClient
+    with pytest.raises(EmbedError, match="dim"):
+        VoyageEmbedClient(api_key="k", dim=0)
+
+
+# ── VoyageEmbedClient — HTTP path (offline, stubbed httpx) ────────────────────
+#
+# These exercise the REST client without a live API call by monkeypatching
+# httpx.post on the instance.  They prove the client no longer depends on the
+# voyageai SDK and that response parsing, ordering, validation, and error
+# sanitisation behave correctly.
+
+class _FakeResponse:
+    def __init__(self, payload, status_ok=True):
+        self._payload = payload
+        self._status_ok = status_ok
+
+    def raise_for_status(self):
+        if not self._status_ok:
+            raise RuntimeError("HTTP 500 with secret body that must not leak")
+
+    def json(self):
+        return self._payload
+
+
+def _client_with_stub(monkeypatch, response=None, raises=None, capture=None):
+    from services.retrieval import embed_client as ec
+    client = ec.VoyageEmbedClient(api_key="test-key", dim=4)
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        if capture is not None:
+            capture["url"] = url
+            capture["json"] = json
+            capture["headers"] = headers
+            capture["timeout"] = timeout
+        if raises is not None:
+            raise raises
+        return response
+
+    monkeypatch.setattr(client._httpx, "post", fake_post)
+    return client
+
+
+def test_voyage_does_not_import_voyageai_sdk():
+    """Importing the client must never pull in the voyageai/langchain chain.
+
+    Runs in a fresh subprocess so the assertion is not contaminated by other
+    test modules that may have already imported these packages into sys.modules
+    in this pytest session.  This is the regression guard for the S10 runtime
+    fix: the native uuid_utils .pyd (blocked by Windows Application Control) must
+    not be on the embed-client import path.
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; "
+        "from services.retrieval.embed_client import VoyageEmbedClient; "
+        "forbidden={'voyageai','langchain','langchain_core',"
+        "'langchain_text_splitters','uuid_utils'}; "
+        "pulled={m.split('.')[0] for m in sys.modules}; "
+        "bad=forbidden & pulled; "
+        "sys.exit('FORBIDDEN:'+','.join(sorted(bad)) if bad else 0)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"embed client pulled in forbidden modules: {result.stdout}{result.stderr}"
+    )
+
+
+def test_voyage_embed_documents_parses_response(monkeypatch):
+    payload = {
+        "data": [
+            {"index": 0, "embedding": [0.1, 0.2, 0.3, 0.4]},
+            {"index": 1, "embedding": [0.5, 0.6, 0.7, 0.8]},
+        ],
+        "usage": {"total_tokens": 7},
+    }
+    client = _client_with_stub(monkeypatch, response=_FakeResponse(payload))
+    vecs = client.embed_documents(["a", "b"])
+    assert vecs == [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]]
+
+
+def test_voyage_embed_query_returns_single_vector(monkeypatch):
+    payload = {"data": [{"index": 0, "embedding": [1.0, 0.0, 0.0, 0.0]}]}
+    client = _client_with_stub(monkeypatch, response=_FakeResponse(payload))
+    vec = client.embed_query("hello")
+    assert vec == [1.0, 0.0, 0.0, 0.0]
+
+
+def test_voyage_orders_by_index(monkeypatch):
+    # Response intentionally out of order — client must sort by 'index'.
+    payload = {
+        "data": [
+            {"index": 1, "embedding": [9, 9, 9, 9]},
+            {"index": 0, "embedding": [0, 0, 0, 0]},
+        ],
+    }
+    client = _client_with_stub(monkeypatch, response=_FakeResponse(payload))
+    vecs = client.embed_documents(["first", "second"])
+    assert vecs[0] == [0, 0, 0, 0]
+    assert vecs[1] == [9, 9, 9, 9]
+
+
+def test_voyage_empty_batch_short_circuits(monkeypatch):
+    called = {"n": 0}
+    client = _client_with_stub(monkeypatch, response=_FakeResponse({"data": []}))
+
+    def counting_post(*a, **k):
+        called["n"] += 1
+        return _FakeResponse({"data": []})
+
+    monkeypatch.setattr(client._httpx, "post", counting_post)
+    assert client.embed_documents([]) == []
+    assert called["n"] == 0, "empty batch must not make an HTTP call"
+
+
+def test_voyage_request_shape_and_headers(monkeypatch):
+    capture: dict = {}
+    payload = {"data": [{"index": 0, "embedding": [0, 0, 0, 0]}]}
+    client = _client_with_stub(
+        monkeypatch, response=_FakeResponse(payload), capture=capture
+    )
+    client.embed_query("q")
+    assert capture["json"]["model"] == "voyage-4"
+    assert capture["json"]["input_type"] == "query"
+    assert capture["json"]["output_dimension"] == 4
+    assert capture["json"]["input"] == ["q"]
+    assert capture["headers"]["Authorization"] == "Bearer test-key"
+    assert capture["timeout"] is not None
+
+
+def test_voyage_wrong_vector_length_raises(monkeypatch):
+    payload = {"data": [{"index": 0, "embedding": [0.1, 0.2]}]}  # dim 2, expected 4
+    client = _client_with_stub(monkeypatch, response=_FakeResponse(payload))
+    with pytest.raises(EmbedError, match="length 2"):
+        client.embed_documents(["x"])
+
+
+def test_voyage_count_mismatch_raises(monkeypatch):
+    payload = {"data": [{"index": 0, "embedding": [0, 0, 0, 0]}]}  # 1 vec for 2 inputs
+    client = _client_with_stub(monkeypatch, response=_FakeResponse(payload))
+    with pytest.raises(EmbedError):
+        client.embed_documents(["x", "y"])
+
+
+def test_voyage_http_error_is_sanitised(monkeypatch):
+    # A non-2xx response must raise EmbedError WITHOUT leaking the response body.
+    client = _client_with_stub(
+        monkeypatch, response=_FakeResponse({}, status_ok=False)
+    )
+    with pytest.raises(EmbedError) as exc_info:
+        client.embed_documents(["x"])
+    assert "secret body" not in str(exc_info.value)
+    assert "Voyage API call failed" in str(exc_info.value)
+
+
+def test_voyage_network_error_is_sanitised(monkeypatch):
+    client = _client_with_stub(
+        monkeypatch, raises=ConnectionError("connection refused to 1.2.3.4")
+    )
+    with pytest.raises(EmbedError) as exc_info:
+        client.embed_documents(["x"])
+    assert "1.2.3.4" not in str(exc_info.value)
+    assert "ConnectionError" in str(exc_info.value)
 
 
 # ── RetrievalParams ───────────────────────────────────────────────────────────
@@ -181,9 +352,9 @@ def test_retrieval_params_weights_sum_to_one():
     reason="VOYAGE_API_KEY not set — skipping live Voyage AI integration test.",
 )
 def test_voyage_embed_documents_live():
-    voyageai = pytest.importorskip(
-        "voyageai",
-        reason="voyageai not installed (pip install -e .[retrieval]) — skipping.",
+    pytest.importorskip(
+        "httpx",
+        reason="httpx not installed (pip install -e .[dev]) — skipping.",
     )
     from services.retrieval.embed_client import VoyageEmbedClient
 

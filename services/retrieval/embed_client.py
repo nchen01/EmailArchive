@@ -3,12 +3,21 @@
 Three exports:
 - EmbedClient   — Protocol that any embedder must satisfy.
 - FakeEmbedClient  — deterministic, offline, used by all unit tests and evals.
-- VoyageEmbedClient — production client; requires VOYAGE_API_KEY + voyageai package.
+- VoyageEmbedClient — production client; requires VOYAGE_API_KEY + httpx.
 
 All offline tests use FakeEmbedClient. VoyageEmbedClient is only constructed
-when VOYAGE_API_KEY is available. voyageai is imported lazily inside
-VoyageEmbedClient.__init__ so that importing this module never fails in
-environments where the package is not installed.
+when VOYAGE_API_KEY is available.
+
+Runtime dependency policy (S10 runtime-reliability fix):
+  VoyageEmbedClient talks to the Voyage AI REST API directly over HTTP via
+  httpx.  It deliberately does NOT import the ``voyageai`` SDK, which pulls in
+  langchain_text_splitters -> langchain_core -> uuid_utils, the last of which
+  loads a native ``_uuid_utils*.pyd`` that Windows Application Control can block.
+  That import chain was crashing the app runtime even though only a thin embed
+  call was needed.  Keeping the runtime path on a plain HTTP client removes the
+  native-dependency surface entirely.  httpx is imported lazily inside
+  VoyageEmbedClient.__init__ so importing this module never fails in environments
+  where httpx is not installed.
 
 Logging policy for VoyageEmbedClient: model name, batch size, latency, and
 token count are logged. Text content, subjects, and query strings are never
@@ -24,6 +33,13 @@ import time
 from typing import Any, Protocol, runtime_checkable
 
 log = logging.getLogger(__name__)
+
+# Voyage AI REST embeddings endpoint. Overridable via VOYAGE_API_BASE so tests
+# can point at a local stub without touching the real API.
+_VOYAGE_API_URL = "https://api.voyageai.com/v1/embeddings"
+# Per-request HTTP timeout (seconds). A hung Voyage endpoint must not hang the
+# backend forever — fail loudly instead.
+_VOYAGE_HTTP_TIMEOUT = 30.0
 
 
 class EmbedError(Exception):
@@ -135,11 +151,14 @@ class FakeEmbedClient:
 class VoyageEmbedClient:
     """Voyage AI embedding client for production use (voyage-4, 1024-dim).
 
-    Requires the VOYAGE_API_KEY environment variable and the voyageai package
-    (pip install voyageai, or pip install -e .[retrieval]).
+    Talks to the Voyage REST API directly over HTTP (httpx).  Requires the
+    VOYAGE_API_KEY environment variable and httpx (already in the test/dev
+    extras; install with ``pip install httpx`` otherwise).
 
-    voyageai is imported lazily inside __init__ so importing this module is
-    always safe in environments without the package installed.
+    This client intentionally does not import the ``voyageai`` SDK — see the
+    module docstring for why (native uuid_utils .pyd blocked by Windows
+    Application Control).  httpx is imported lazily inside __init__ so importing
+    this module is always safe even where httpx is absent.
     """
 
     def __init__(
@@ -152,11 +171,11 @@ class VoyageEmbedClient:
             raise EmbedError(f"embed dim must be > 0, got {dim}")
 
         try:
-            import voyageai as _voyageai
+            import httpx as _httpx
         except ImportError as exc:
             raise EmbedError(
-                "voyageai is not installed.\n"
-                "Run: pip install voyageai  (or: pip install -e .[retrieval])\n"
+                "httpx is not installed.\n"
+                "Run: pip install httpx  (or: pip install -e .[dev])\n"
                 "For tests and evals, use FakeEmbedClient instead."
             ) from exc
 
@@ -168,9 +187,11 @@ class VoyageEmbedClient:
                 "For tests and evals, use FakeEmbedClient instead."
             )
 
-        self._client = _voyageai.Client(api_key=key)
+        self._httpx  = _httpx
+        self._key    = key
         self._model  = model
         self._dim    = dim
+        self._url    = os.environ.get("VOYAGE_API_BASE", _VOYAGE_API_URL)
 
     @property
     def model(self) -> str:
@@ -191,20 +212,57 @@ class VoyageEmbedClient:
         return self._embed(texts, input_type="query")
 
     def _embed(self, texts: list[str], input_type: str) -> list[list[float]]:
+        # Short-circuit empty batches: never spend an API call (and cost) on
+        # nothing. Mirrors FakeEmbedClient.embed_documents([]) == [].
+        if not texts:
+            return []
+
+        payload = {
+            "input": texts,
+            "model": self._model,
+            "input_type": input_type,
+            "output_dimension": self._dim,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._key}",
+            "Content-Type": "application/json",
+        }
+
         t0 = time.monotonic()
         try:
-            result = self._client.embed(
-                texts,
-                model=self._model,
-                input_type=input_type,
-                output_dimension=self._dim,
+            resp = self._httpx.post(
+                self._url,
+                json=payload,
+                headers=headers,
+                timeout=_VOYAGE_HTTP_TIMEOUT,
             )
+            resp.raise_for_status()
+            body = resp.json()
         except Exception as exc:
+            # Never include the response body or headers — they could echo the
+            # request text or the bearer token. Surface only a safe class name.
             raise EmbedError(
                 f"Voyage API call failed ({type(exc).__name__})"
             ) from exc
         latency_ms = (time.monotonic() - t0) * 1000
-        tokens: Any = getattr(result, "total_tokens", None)
+
+        data = body.get("data")
+        if not isinstance(data, list) or len(data) != len(texts):
+            raise EmbedError(
+                f"Voyage returned {len(data) if isinstance(data, list) else 'no'} "
+                f"embedding(s) for {len(texts)} input(s) (model={self._model})"
+            )
+
+        # Order by the response 'index' field — the API is documented to return
+        # results in input order, but sorting makes us robust if it does not.
+        try:
+            ordered = sorted(data, key=lambda d: d["index"])
+        except (KeyError, TypeError):
+            ordered = data
+        embeddings = [d["embedding"] for d in ordered]
+
+        usage = body.get("usage") or {}
+        tokens: Any = usage.get("total_tokens")
         log.debug(
             "voyage_embed",
             extra={
@@ -215,7 +273,7 @@ class VoyageEmbedClient:
                 "tokens":     tokens,
             },
         )
-        embeddings = result.embeddings
+
         for i, vec in enumerate(embeddings):
             if len(vec) != self._dim:
                 raise EmbedError(

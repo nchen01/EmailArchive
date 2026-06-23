@@ -136,6 +136,65 @@ def check_embeddings(mailbox_id: str, session=None) -> PreflightCheck:
             session.close()
 
 
+def check_embed_client(live: bool = False) -> PreflightCheck:
+    """Verify a VoyageEmbedClient can actually be constructed in this runtime.
+
+    This is the check that catches runtime reality the key-presence check misses:
+    a missing httpx, a broken import chain, or (historically) the voyageai SDK's
+    native uuid_utils .pyd being blocked by Windows Application Control.  Mere
+    presence of VOYAGE_API_KEY does not prove L2 retrieval will work.
+
+    Construction makes NO network call, so this is free and safe to run by
+    default.  When ``live=True`` (explicit opt-in only), a single tiny embed call
+    is made to prove the API credential and endpoint actually work — this costs
+    tokens and is never run by default (CLAUDE.md Voyage authorization rule).
+
+    Never logs or returns the key, the endpoint response, or any embedded text —
+    only a safe exception class name on failure.
+    """
+    if not os.environ.get("VOYAGE_API_KEY"):
+        # No key — construction would fail for an uninteresting reason. The
+        # dedicated key check already reports this; here it is informational so
+        # the construction signal is not conflated with a missing key.
+        return PreflightCheck(
+            "embed_client", "warn",
+            "Skipped — VOYAGE_API_KEY not set (see voyage_api_key check)",
+        )
+    try:
+        from services.retrieval.embed_client import VoyageEmbedClient
+        client = VoyageEmbedClient()
+    except Exception as exc:
+        return PreflightCheck(
+            "embed_client", "fail",
+            f"Voyage embed client could not be constructed ({_exc_label(exc)}) "
+            "— L2 retrieval will be silently disabled; check httpx install / runtime",
+        )
+
+    if not live:
+        return PreflightCheck(
+            "embed_client", "pass",
+            f"Voyage embed client constructed OK (model={client.model}, dim={client.dim}); "
+            "live API not exercised (use --live-embed to verify the credential)",
+        )
+
+    try:
+        vec = client.embed_query("preflight connectivity probe")
+    except Exception as exc:
+        return PreflightCheck(
+            "embed_client", "fail",
+            f"Live Voyage embed call failed ({_exc_label(exc)})",
+        )
+    if len(vec) != client.dim:
+        return PreflightCheck(
+            "embed_client", "fail",
+            f"Live Voyage embed returned dim {len(vec)}, expected {client.dim}",
+        )
+    return PreflightCheck(
+        "embed_client", "pass",
+        f"Live Voyage embed call succeeded (model={client.model}, dim={client.dim})",
+    )
+
+
 def check_enable_reranking() -> PreflightCheck:
     if os.environ.get("ENABLE_RERANKING") == "1":
         return PreflightCheck(
@@ -163,6 +222,7 @@ def run_checks(
     mailbox_id: str | None = None,
     engine=None,
     session=None,
+    live_embed: bool = False,
 ) -> list[PreflightCheck]:
     """Run all preflight checks and return the result list.
 
@@ -171,6 +231,9 @@ def run_checks(
 
     Alembic head and embeddings checks are skipped when database is unreachable
     to avoid cascading errors.
+
+    ``live_embed`` (default False) gates a single tiny live Voyage embed call in
+    check_embed_client; it costs tokens and must be opted into explicitly.
     """
     checks: list[PreflightCheck] = []
 
@@ -184,6 +247,10 @@ def run_checks(
         checks.append(check_alembic_head(engine=engine))
         if mailbox_id:
             checks.append(check_embeddings(mailbox_id, session=session))
+
+    # Construction probe catches the runtime-reality failures (missing httpx,
+    # broken native import chain) that key presence alone cannot.
+    checks.append(check_embed_client(live=live_embed))
 
     checks.append(check_enable_reranking())
     checks.append(voyage_rate_limit_note())

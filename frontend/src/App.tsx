@@ -42,8 +42,12 @@ export default function App() {
     error: detailError,
   } = useContactDetail(mailboxId || null, selectedPersonId);
 
-  const { projects, loading: projectsLoading, error: projectsError } =
-    useProjects(mailboxId || null);
+  const {
+    projects,
+    loading: projectsLoading,
+    error: projectsError,
+    reload: reloadProjects,
+  } = useProjects(mailboxId || null);
   const {
     detail: projectDetail,
     loading: projectDetailLoading,
@@ -191,7 +195,7 @@ export default function App() {
             )}
             {projectsError && !projectsLoading && (
               <div className="mx-auto mt-8 max-w-lg px-4 w-full">
-                <ErrorBanner message={projectsError} />
+                <ErrorBanner message={projectsError} onRetry={reloadProjects} />
               </div>
             )}
             {!projectsLoading && !projectsError && (

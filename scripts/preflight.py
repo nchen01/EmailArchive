@@ -35,9 +35,14 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="EKC operational preflight check")
     parser.add_argument("--mailbox-id", metavar="UUID", help="verify embeddings for this mailbox")
+    parser.add_argument(
+        "--live-embed", action="store_true",
+        help="make ONE tiny live Voyage embed call to verify the credential "
+             "(costs tokens; off by default).",
+    )
     args = parser.parse_args()
 
-    checks = run_checks(mailbox_id=args.mailbox_id)
+    checks = run_checks(mailbox_id=args.mailbox_id, live_embed=args.live_embed)
 
     any_fail = False
     for c in checks:

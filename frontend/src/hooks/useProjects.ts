@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchProjects } from "../api/client";
 import type { ProjectSummary } from "../api/types";
 
@@ -6,12 +6,16 @@ interface UseProjectsResult {
   projects: ProjectSummary[];
   loading: boolean;
   error: string | null;
+  reload: () => void;
 }
 
 export function useProjects(mailboxId: string | null): UseProjectsResult {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
     if (!mailboxId) {
@@ -39,7 +43,7 @@ export function useProjects(mailboxId: string | null): UseProjectsResult {
     return () => {
       cancelled = true;
     };
-  }, [mailboxId]);
+  }, [mailboxId, nonce]);
 
-  return { projects, loading, error };
+  return { projects, loading, error, reload };
 }

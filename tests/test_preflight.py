@@ -196,6 +196,90 @@ def test_embeddings_present_passes():
     assert "42" in c.message
 
 
+# ── Embed-client construction probe ───────────────────────────────────────────
+
+def test_embed_client_no_key_warns(monkeypatch):
+    """Without a key the probe is a non-fatal warn, not a fail (key check owns that)."""
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+    from services.preflight import check_embed_client
+    c = check_embed_client()
+    assert c.status == "warn"
+    assert c.failed is False
+
+
+def test_embed_client_construct_success_passes(monkeypatch):
+    monkeypatch.setenv("VOYAGE_API_KEY", "voyage-secret-xyz")
+    fake = MagicMock()
+    fake.model = "voyage-4"
+    fake.dim = 1024
+    with patch("services.retrieval.embed_client.VoyageEmbedClient", return_value=fake):
+        from services.preflight import check_embed_client
+        c = check_embed_client()
+    assert c.status == "pass"
+    assert "voyage-4" in c.message
+    assert "voyage-secret-xyz" not in c.message  # never leak the key
+
+
+def test_embed_client_construct_failure_fails_with_safe_label(monkeypatch):
+    """A broken runtime (e.g. blocked native dep) must FAIL with a safe class name."""
+    monkeypatch.setenv("VOYAGE_API_KEY", "voyage-secret-xyz")
+
+    class _BlockedImport(Exception):
+        pass
+
+    def _boom(*a, **k):
+        raise _BlockedImport("uuid_utils\\_uuid_utils.cp312-win_amd64.pyd blocked by policy")
+
+    with patch("services.retrieval.embed_client.VoyageEmbedClient", side_effect=_boom):
+        from services.preflight import check_embed_client
+        c = check_embed_client()
+    assert c.status == "fail"
+    assert "_BlockedImport" in c.message
+    # The probe must not echo the underlying path/message detail verbatim beyond
+    # the class name, and never the key.
+    assert "cp312-win_amd64.pyd blocked by policy" not in c.message
+    assert "voyage-secret-xyz" not in c.message
+
+
+def test_embed_client_live_success(monkeypatch):
+    monkeypatch.setenv("VOYAGE_API_KEY", "k")
+    fake = MagicMock()
+    fake.model = "voyage-4"
+    fake.dim = 4
+    fake.embed_query.return_value = [0.1, 0.2, 0.3, 0.4]
+    with patch("services.retrieval.embed_client.VoyageEmbedClient", return_value=fake):
+        from services.preflight import check_embed_client
+        c = check_embed_client(live=True)
+    assert c.status == "pass"
+    assert "Live" in c.message
+    fake.embed_query.assert_called_once()
+
+
+def test_embed_client_live_call_failure_fails(monkeypatch):
+    monkeypatch.setenv("VOYAGE_API_KEY", "k")
+    fake = MagicMock()
+    fake.model = "voyage-4"
+    fake.dim = 4
+    fake.embed_query.side_effect = RuntimeError("rate limited 429")
+    with patch("services.retrieval.embed_client.VoyageEmbedClient", return_value=fake):
+        from services.preflight import check_embed_client
+        c = check_embed_client(live=True)
+    assert c.status == "fail"
+    assert "RuntimeError" in c.message
+
+
+def test_embed_client_not_called_live_by_default(monkeypatch):
+    """Default (live=False) must never make an API call."""
+    monkeypatch.setenv("VOYAGE_API_KEY", "k")
+    fake = MagicMock()
+    fake.model = "voyage-4"
+    fake.dim = 4
+    with patch("services.retrieval.embed_client.VoyageEmbedClient", return_value=fake):
+        from services.preflight import check_embed_client
+        check_embed_client(live=False)
+    fake.embed_query.assert_not_called()
+
+
 # ── Reranking flag ────────────────────────────────────────────────────────────
 
 def test_enable_reranking_off(monkeypatch):
@@ -323,6 +407,19 @@ def test_api_preflight_warn_does_not_make_ok_false():
         r = client.get("/api/preflight")
     body = r.json()
     assert body["ok"] is True  # warns are non-fatal
+
+
+def test_api_health_endpoint():
+    """GET /api/health is a cheap reachability probe under the /api prefix.
+
+    The frontend uses it (forwarded by the Vite dev proxy, which only forwards
+    /api) to distinguish 'backend unreachable' from data-specific errors.
+    """
+    from services.api.main import app
+    client = TestClient(app)
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
 
 
 def test_api_preflight_no_key_values_in_response(monkeypatch):

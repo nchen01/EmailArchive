@@ -249,6 +249,36 @@ DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
 # See CLAUDE.md for full authorization rules before using the key.
 ```
 
+**Windows local stack (blessed runtime, no bare `python`):**
+
+On Windows there is exactly one supported Python runtime for local dev:
+`.\.venv\Scripts\python.exe`. Three PowerShell scripts make startup
+deterministic so an operator never has to use a bare `python` on PATH:
+
+```powershell
+# Validate the runtime (venv present, backend imports clean, embed client
+# does not pull in the blocked voyageai/uuid_utils native chain):
+.\scripts\check_local_env.ps1
+
+# Start the backend: validates env, runs preflight (gated), then uvicorn on :8000.
+# Pass -MailboxId to also verify embeddings; -Force starts despite preflight fail.
+$env:EKC_MAILBOX_ID = "<mailbox-uuid>"
+.\scripts\run_backend.ps1
+
+# Start the frontend on a deterministic port (5173, strictPort). In a SECOND
+# window. If 5173 is busy it fails loudly — Ctrl+C the old frontend window first.
+.\scripts\run_frontend.ps1 -MailboxId <mailbox-uuid>
+```
+
+The backend runs preflight before binding the port; `python -m scripts.preflight
+--mailbox-id <uuid>` can also be run standalone. Preflight now constructs the
+Voyage embed client to prove L2 will actually work in this runtime (mere
+`VOYAGE_API_KEY` presence is not enough); add `--live-embed` to make one tiny
+billed API call that verifies the credential end-to-end (off by default). The
+Voyage embed client uses a plain HTTP path (httpx) and deliberately does **not**
+import the `voyageai` SDK, which dragged in a native `uuid_utils` `.pyd` that
+Windows Application Control blocks.
+
 ## Privacy guardrails (non-negotiable)
 
 - The mailbox holds **third-party personal data**; those people retain GDPR/CCPA rights.

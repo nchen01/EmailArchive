@@ -18,61 +18,123 @@ export class SummariesNotConfiguredError extends Error {
   }
 }
 
+/**
+ * Distinguishable API error kinds so views can render an accurate state instead
+ * of one generic "failed" message (or, worse, spinning forever):
+ *  - "unreachable": the request never reached the backend (proxy down, DNS,
+ *    connection refused) — fetch itself rejected with a TypeError.
+ *  - "timeout": the request was aborted after REQUEST_TIMEOUT_MS — a hung
+ *    backend (e.g. blocked Voyage import, stuck preflight) must not hang the UI.
+ *  - "not_found": HTTP 404 — typically a wrong/unknown mailbox id.
+ *  - "http": any other non-2xx response.
+ */
+export type ApiErrorKind = "unreachable" | "timeout" | "not_found" | "http";
+
+export class ApiError extends Error {
+  readonly kind: ApiErrorKind;
+  readonly status?: number;
+
+  constructor(kind: ApiErrorKind, message: string, status?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
 // Empty string in dev: requests hit Vite, which proxies /api -> FastAPI.
 // Override with VITE_API_URL for non-proxied deployments.
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const body = await res.json();
-      detail = body?.detail ? `: ${body.detail}` : "";
-    } catch {
-      // non-JSON error body; ignore
+// Hard cap on every request. Without this a hung backend leaves the UI stuck
+// on "Loading…" indefinitely (the exact operator-facing failure we are fixing).
+const REQUEST_TIMEOUT_MS = 15000;
+
+/** fetch() with an AbortController timeout. Maps low-level failures to ApiError. */
+async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError(
+        "timeout",
+        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s — the backend may be ` +
+          `unresponsive. Check the backend window (scripts\\run_backend.ps1).`,
+      );
     }
-    throw new Error(`Request failed (${res.status})${detail}`);
+    // fetch() rejects with a TypeError when it cannot reach the server at all
+    // (connection refused, proxy down, DNS). Surface that distinctly.
+    throw new ApiError(
+      "unreachable",
+      "Cannot reach the backend API. Is it running? Start it with " +
+        "scripts\\run_backend.ps1 (expected at http://localhost:8000).",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Turn a non-2xx Response into the right ApiError, reading detail when present. */
+async function toHttpError(res: Response): Promise<ApiError> {
+  let detail = "";
+  try {
+    const body = await res.json();
+    detail = body?.detail ? `: ${body.detail}` : "";
+  } catch {
+    // non-JSON error body; ignore
+  }
+  if (res.status === 404) {
+    return new ApiError(
+      "not_found",
+      `Not found (404)${detail} — check the mailbox ID.`,
+      404,
+    );
+  }
+  return new ApiError("http", `Request failed (${res.status})${detail}`, res.status);
+}
+
+/** Lightweight backend reachability probe. Resolves true iff /api/health is OK. */
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/api/health`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) {
+    throw await toHttpError(res);
   }
   return (await res.json()) as T;
 }
 
 async function postJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { method: "POST" });
+  const res = await fetchWithTimeout(url, { method: "POST" });
   if (!res.ok) {
-    let detail = "";
-    try {
-      const body = await res.json();
-      detail = body?.detail ? `: ${body.detail}` : "";
-    } catch {
-      // non-JSON error body; ignore
-    }
     if (res.status === 503) {
       throw new SummariesNotConfiguredError();
     }
-    throw new Error(`Request failed (${res.status})${detail}`);
+    throw await toHttpError(res);
   }
   return (await res.json()) as T;
 }
 
 async function postJsonBody<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    let detail = "";
-    try {
-      const errBody = await res.json();
-      detail = errBody?.detail ? `: ${errBody.detail}` : "";
-    } catch {
-      // non-JSON error body; ignore
-    }
     if (res.status === 503) {
       throw new SummariesNotConfiguredError();
     }
-    throw new Error(`Request failed (${res.status})${detail}`);
+    throw await toHttpError(res);
   }
   return (await res.json()) as T;
 }

@@ -24,3 +24,12 @@ app.include_router(preflight.router, prefix="/api")
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Mirror of /healthz under the /api prefix so the Vite dev proxy (which forwards
+# only /api) and the frontend can cheaply probe backend reachability. The
+# frontend pings this before the data tabs so "backend unavailable" is shown
+# explicitly instead of each tab spinning independently.
+@app.get("/api/health")
+async def api_health() -> dict[str, str]:
+    return {"status": "ok"}
