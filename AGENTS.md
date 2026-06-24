@@ -110,7 +110,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   every eligible message to have an embedding (no silent zero-vector clustering);
   whole-thread sensitivity exclusion (a thread with any non-`{none}` message is
   excluded); deterministic `--limit-threads`; idempotent persist with commit.
-- **S10 ✓ (current)** — Local runtime reliability. `VoyageEmbedClient` switched
+- **S10 ✓** — Local runtime reliability. `VoyageEmbedClient` switched
   from the `voyageai` SDK to the Voyage REST API over `httpx` (removes the
   `langchain`/`uuid_utils` native chain blocked by Windows Application Control —
   see decisions.md D12b S10 note); preflight now constructs the embed client to
@@ -118,7 +118,22 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   off by default); blessed Windows launchers `scripts/check_local_env.ps1`,
   `run_backend.ps1`, `run_frontend.ps1` (no bare `python`); frontend request
   timeout + typed errors so views never hang, Vite `strictPort` on 5173, and
-  `GET /api/health` for reachability. Next product work resumes from here.
+  `GET /api/health` for reachability.
+- **S11 ✓** — Frontend demo polish: clickable citation chips open an evidence
+  drawer (subject/date/message_id_header/snippet/retrieval source from
+  `supporting_evidence` only — no sensitive content, no claim without citation);
+  repeated citations deduped; distinct titled error states; display-only project
+  label cleanup (`utils/projectLabels.ts`); demo-readiness strip.
+- **S12 ✓ (current)** — Product shell + landing. Dependency-free client router
+  (`src/router.tsx`) over the History API; routes `/` (landing), `/app`
+  (overview), `/app/network`, `/app/projects`, `/app/cover`, `/app/status`.
+  Workspace shell (`src/workspace/Workspace.tsx`) holds mailbox state + data
+  hooks across navigation; professional nav + compact mailbox + single health
+  dot. Workspace Overview is the default `/app` entry (counts, readiness,
+  suggested questions, top projects). Marketing landing page (`Landing.tsx`).
+  Cover-for-me suggested-question chips; project search filter. Frontend-only —
+  no backend/schema/AI/retrieval/clustering changes. See
+  `docs/s12-product-shell-landing-plan.md` for the manual demo script.
 
 ## 6. Known gaps — flag, don't fake
 

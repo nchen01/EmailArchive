@@ -1,22 +1,25 @@
 import { useEffect } from "react";
+import { Landing } from "./components/Landing";
 import { redirect, usePathname } from "./router";
 import { Workspace } from "./workspace/Workspace";
 
 /**
  * Top-level route switch (S12).
  *
- * - /app and /app/*  → the workspace shell.
- * - everything else  → redirected to /app for now. The marketing landing page
- *   at "/" is built in S12.4; until then "/" lands directly in the workspace.
+ * - /              → marketing landing page (S12.4).
+ * - /app, /app/*   → the workspace shell.
+ * - anything else  → redirected to the landing page.
  */
 export default function App() {
   const pathname = usePathname();
   const inApp = pathname === "/app" || pathname.startsWith("/app/");
+  const isLanding = pathname === "/" || pathname === "";
 
   useEffect(() => {
-    if (!inApp) redirect("/app");
-  }, [inApp]);
+    if (!inApp && !isLanding) redirect("/");
+  }, [inApp, isLanding]);
 
-  if (!inApp) return null; // redirecting
-  return <Workspace />;
+  if (inApp) return <Workspace />;
+  if (isLanding) return <Landing />;
+  return null; // redirecting to "/"
 }

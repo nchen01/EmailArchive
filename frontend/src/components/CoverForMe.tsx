@@ -12,6 +12,8 @@ interface CoverForMeProps {
    * change and auto-asks. Null/undefined means no seed.
    */
   seed?: { query: string; token: number } | null;
+  /** Suggested starter questions shown in the empty state (S12.5). */
+  suggestions?: string[];
 }
 
 function CitationChips({
@@ -112,7 +114,7 @@ function RetrievalStatusNote({
  * every keystroke. An "insufficient structured evidence" result is rendered as
  * a polite "couldn't find that", distinct from a transport/config error.
  */
-export function CoverForMe({ mailboxId, seed }: CoverForMeProps) {
+export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProps) {
   const [query, setQuery] = useState("");
   const [selectedCitation, setSelectedCitation] =
     useState<SelectedCitation | null>(null);
@@ -156,6 +158,12 @@ export function CoverForMe({ mailboxId, seed }: CoverForMeProps) {
     void ask(query);
   };
 
+  const askSuggestion = (q: string) => {
+    setSelectedCitation(null);
+    setQuery(q);
+    void ask(q);
+  };
+
   const result = response?.result ?? null;
   const claims = result?.claims ?? [];
   const evidence = response?.supporting_evidence ?? [];
@@ -192,6 +200,26 @@ export function CoverForMe({ mailboxId, seed }: CoverForMeProps) {
           {loading ? "Asking…" : "Ask"}
         </button>
       </form>
+
+      {/* Suggested starter questions — shown before the first query so users who
+          don't yet know what to ask have grounded entry points (S12.5). */}
+      {!response && !loading && !error && !notConfigured && suggestions.length > 0 ? (
+        <div className="mt-4">
+          <p className="mb-2 text-xs text-slate-400">Try one of these:</p>
+          <div className="overview-suggestions">
+            {suggestions.map((q) => (
+              <button
+                key={q}
+                type="button"
+                className="suggestion-chip"
+                onClick={() => askSuggestion(q)}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Config error (503) — distinct from a generic failure. */}
       {notConfigured ? (

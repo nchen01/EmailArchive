@@ -3,7 +3,7 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S0–S10 complete. S7 L2 retrieval live-validated (S7.1–S7.11; optional S7.12 hosted Voyage reranker remains off by default). S8 real-mailbox demo readiness complete. S9 project-clustering materialization complete (`scripts/materialize_projects.py`). S10 local runtime reliability complete (Voyage embedding via direct HTTP, runtime preflight probe, blessed Windows launch scripts, no-hang frontend). See D12 in `docs/decisions.md`.
+**Status:** S0–S12 complete. S7 L2 retrieval live-validated (S7.1–S7.11; optional S7.12 hosted Voyage reranker remains off by default). S8 real-mailbox demo readiness complete. S9 project-clustering materialization complete (`scripts/materialize_projects.py`). S10 local runtime reliability complete (Voyage embedding via direct HTTP, runtime preflight probe, blessed Windows launch scripts, no-hang frontend). S11 demo polish complete (inspectable citation evidence drawer, deduped citations, display-only project label cleanup, readiness strip). S12 product shell + landing complete (client routing, workspace overview, marketing landing page, Cover-for-me onboarding). See D12 in `docs/decisions.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
@@ -203,6 +203,8 @@ email-archive/
 | S8 | Real-Mailbox Demo Readiness — real-mailbox backfill, evidence transparency, preflight, graceful failure UX, smoke eval | ✓ done | docs/s8-implementation-plan.md |
 | S9 | Project-clustering materialization on live mailboxes (Project/assignment/member persistence; embedding-gated; whole-thread sensitivity exclusion) | ✓ done | `scripts/materialize_projects.py` |
 | S10 | Local runtime reliability — Voyage embedding via direct HTTP (no voyageai SDK), runtime preflight probe, blessed Windows launch scripts, no-hang frontend, Vite strictPort | ✓ done | `docs/decisions.md` D12b S10 note |
+| S11 | Demo polish — inspectable citation evidence drawer, deduped citations, distinct error states, display-only project label cleanup, readiness strip | ✓ done | frontend |
+| S12 | Product shell + landing — client routing, workspace overview, status screen, marketing landing page, Cover-for-me onboarding, project search | ✓ done | `docs/s12-product-shell-landing-plan.md` |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash
@@ -223,7 +225,7 @@ python scripts/gmail_smoke_ingest.py --owner-email you@example.com --max-message
 python scripts/gmail_smoke_ingest.py --mailbox-id <uuid> --owner-email you@example.com --confirm
 ```
 
-**Quick start (S0–S10 local stack):**
+**Quick start (S0–S12 local stack):**
 
 On Windows, prefer `scripts/run_backend.ps1` and `scripts/run_frontend.ps1` from
 the "Windows local stack" section below — they pin the blessed `.venv` interpreter

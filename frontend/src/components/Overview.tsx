@@ -1,5 +1,6 @@
 import type { ProjectSummary } from "../api/types";
 import { cleanProjectLabel } from "../utils/projectLabels";
+import { buildSuggestions } from "../utils/suggestions";
 import {
   INDICATOR_DOT_CLASS,
   type Indicator,
@@ -17,12 +18,6 @@ interface OverviewProps {
   /** Open a project (routes to Projects and selects it). */
   onOpenProject: (projectId: string) => void;
 }
-
-/** Static, mailbox-agnostic prompts that work even before the user knows the data. */
-const GENERIC_SUGGESTIONS = [
-  "What work appears unresolved?",
-  "Who should I ask about the latest incident?",
-];
 
 function StatCard({
   label,
@@ -67,13 +62,7 @@ export function Overview({
   const byKey = Object.fromEntries(readinessItems.map((i) => [i.key, i]));
   const fmtCount = (n: number | null) => (n === null ? "—" : String(n));
 
-  // Build suggestions: prefer questions about the mailbox's own top projects so
-  // they actually resolve, then fall back to generic prompts. Cap at four.
-  const projectSuggestions = projects
-    .slice(0, 2)
-    .map((p) => `What's the state of ${cleanProjectLabel(p.label, p.confidence).display}?`);
-  const suggestions = [...projectSuggestions, ...GENERIC_SUGGESTIONS].slice(0, 4);
-
+  const suggestions = buildSuggestions(projects);
   const topProjects = projects.slice(0, 6);
 
   return (

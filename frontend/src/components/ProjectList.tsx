@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import type { ProjectSummary } from "../api/types";
 import { cleanProjectLabel } from "../utils/projectLabels";
 
@@ -32,14 +33,51 @@ export function ProjectList({
   selectedProjectId,
   onSelect,
 }: ProjectListProps) {
+  const [filter, setFilter] = useState("");
+
+  // Filter on both the cleaned display label and the raw label so a search still
+  // matches projects whose machine-ish original name was tidied for display.
+  const visible = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((p) => {
+      const display = cleanProjectLabel(p.label, p.confidence).display.toLowerCase();
+      return display.includes(q) || p.label.toLowerCase().includes(q);
+    });
+  }, [projects, filter]);
+
   if (projects.length === 0) {
-    return <div className="project-list-empty">No projects yet.</div>;
+    return (
+      <div className="project-list-empty">
+        No projects materialized yet.
+        <br />
+        Run the clustering pipeline for this mailbox.
+      </div>
+    );
   }
 
   return (
-    <ul className="project-list" role="list">
-      {projects.map((p) => {
-        const selected = p.id === selectedProjectId;
+    <>
+      {/* Search shows once there are enough projects to be worth filtering. */}
+      {projects.length > 5 ? (
+        <div className="project-search">
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder={`Filter ${projects.length} projects…`}
+            className="project-search-input"
+            aria-label="Filter projects"
+          />
+        </div>
+      ) : null}
+
+      {visible.length === 0 ? (
+        <div className="project-list-empty">No projects match “{filter}”.</div>
+      ) : (
+        <ul className="project-list" role="list">
+          {visible.map((p) => {
+            const selected = p.id === selectedProjectId;
         const { display, uncategorized, lowConfidence } = cleanProjectLabel(
           p.label,
           p.confidence,
@@ -95,8 +133,10 @@ export function ProjectList({
               </div>
             </button>
           </li>
-        );
-      })}
-    </ul>
+            );
+          })}
+        </ul>
+      )}
+    </>
   );
 }

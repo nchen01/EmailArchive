@@ -18,6 +18,7 @@ import { useProjectDetail } from "../hooks/useProjectDetail";
 import { useProjects } from "../hooks/useProjects";
 import { Link, navigate, usePathname } from "../router";
 import { ROLE_COLORS } from "../utils/roleColors";
+import { buildSuggestions } from "../utils/suggestions";
 import {
   computeReadinessItems,
   INDICATOR_DOT_CLASS,
@@ -328,7 +329,11 @@ export function Workspace() {
           </>
         ) : screen === "cover" ? (
           <div className="w-full overflow-y-auto bg-slate-50">
-            <CoverForMe mailboxId={mailboxId} seed={coverSeed} />
+            <CoverForMe
+              mailboxId={mailboxId}
+              seed={coverSeed}
+              suggestions={buildSuggestions(projects)}
+            />
           </div>
         ) : null}
       </main>
