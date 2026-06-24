@@ -13,8 +13,14 @@ Scenario (owner = alex@acme.com):
   Threads:  T1 [alex,bob,carol] P1 eligible; T2 [bob,carol,dave] P1 eligible;
             T3 [grace,heidi] P1 with an HR message (excluded);
             T4 [ivan,judy] P1 all-noise (excluded).
-  Edges:    owner→Bob (0.8), owner→Carol (0.5), owner→Dave (0.1 → weak/muted).
+  Edges:    owner→Bob/Carol/Dave have safe direct evidence; owner→Grace is
+            an unsafe aggregate and must not surface.
 """
+
+# Note: direct Exchange rows are aggregate L1 data, but S13 may only surface a
+# direct relationship when there is safe message-header evidence in eligible
+# threads. Grace intentionally has an aggregate Edge row below and no safe direct
+# citation; she must not appear through that aggregate.
 from __future__ import annotations
 
 import os
@@ -129,6 +135,8 @@ def _build_scenario(session):
     _msg(t1, "alex", ["bob", "carol"], ["none"], False, "<t1m1@acme>")
     t2 = _thread(["bob", "carol", "dave"], "Nexus Auth")
     _msg(t2, "bob", ["carol", "dave"], ["none"], False, "<t2m1@acme>")
+    t2b = _thread(["alex", "dave"], "Connection Pool")
+    _msg(t2b, "alex", ["dave"], ["none"], False, "<t2bm1@acme>")
     t3 = _thread(["grace", "heidi"], "Nexus Auth")  # sensitive (excluded)
     _msg(t3, "grace", ["heidi"], ["none"], False, "<t3m1@acme>")
     _msg(t3, "heidi", ["grace"], ["hr"], False, "<t3m2@acme>")
@@ -137,13 +145,17 @@ def _build_scenario(session):
     session.commit()
 
     p1 = proj["Nexus Auth"]
+    p2 = proj["Connection Pool"]
     for t in (t1, t2, t3, t4):
         session.add(orm.ThreadProjectAssignment(
             thread_id=t.id, project_id=p1, weight=1.0, is_primary=True,
         ))
+    session.add(orm.ThreadProjectAssignment(
+        thread_id=t2b.id, project_id=p2, weight=1.0, is_primary=True,
+    ))
     session.commit()
 
-    for who, w in (("bob", 0.8), ("carol", 0.5), ("dave", 0.1)):
+    for who, w in (("bob", 0.8), ("carol", 0.5), ("dave", 0.1), ("grace", 0.9)):
         session.add(orm.Edge(
             mailbox_id=mid, person_id=pid[who], message_count=5, sent_to_count=3,
             received_count=2, first_contact=_T, last_contact=_T, weight=w,
@@ -189,11 +201,14 @@ def test_owner_mode_direct_exchange(scenario):
     direct = _edges_of(resp, "direct_exchange")
     targets = {e.target_id for e in direct}
     assert targets == {ids["pid"]["bob"], ids["pid"]["carol"], ids["pid"]["dave"]}
-    # Dave's edge (weight 0.1) is weak → muted; Bob's (0.8) is not.
+    # Direct edges are backed only by safe message-header evidence; the unsafe
+    # aggregate Grace edge must not surface.
+    assert ids["pid"]["grace"] not in targets
     dave = next(e for e in direct if e.target_id == ids["pid"]["dave"])
     bob = next(e for e in direct if e.target_id == ids["pid"]["bob"])
-    assert dave.muted is True
-    assert bob.muted is False
+    assert dave.source_message_ids == ["<t2bm1@acme>"]
+    assert dave.evidence_count == 1
+    assert bob.evidence_count == 1
     # Owner direct edge carries message-header evidence for Bob (T1 message).
     assert "<t1m1@acme>" in bob.source_message_ids
 
@@ -350,6 +365,25 @@ def test_api_relationship_map_bad_mailbox_404():
     client = TestClient(app)
     r = client.get(f"/api/relationship-map/{uuid.uuid4()}")
     assert r.status_code == 404
+
+
+@requires_db
+def test_api_relationship_map_malformed_mailbox_404():
+    from fastapi.testclient import TestClient
+    from services.api.main import app
+    client = TestClient(app)
+    r = client.get("/api/relationship-map/not-a-uuid")
+    assert r.status_code == 404
+
+
+@requires_db
+def test_api_relationship_map_invalid_relationship_type_422(scenario):
+    from fastapi.testclient import TestClient
+    from services.api.main import app
+    _session, mid, _ids = scenario
+    client = TestClient(app)
+    r = client.get(f"/api/relationship-map/{mid}?relationship_types=typo")
+    assert r.status_code == 422
 
 
 @requires_db

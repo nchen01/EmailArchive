@@ -95,6 +95,7 @@ class _Base:
     edges: list             # list[orm.Edge]
     thread_info: dict       # thread_id -> (t_start, t_end, set[project_id], list[node_id participants])
     owner_dm_headers: dict  # email -> sorted list[message_id_header]
+    owner_dm_seen: dict     # email -> (first_seen, last_seen) from safe messages
     relevant_pids: set      # persons that appear in an eligible relationship (never sensitive-only)
     now: datetime | None
     counts: GeneratedFrom
@@ -225,23 +226,35 @@ def _load_base(session: Session, mailbox_id: str, mbx: orm.Mailbox,
 
     # Safe messages (eligible threads only) → owner direct-message headers + count.
     owner_dm_headers: dict[str, list[str]] = defaultdict(list)
+    owner_dm_seen: dict[str, tuple[datetime | None, datetime | None]] = {}
     msg_count = 0
     if eligible:
-        for hdr, sender, tos, ccs in session.execute(
+        for hdr, sender, tos, ccs, ts in session.execute(
             text(
-                "SELECT message_id_header, sender_email, to_emails, cc_emails "
+                "SELECT message_id_header, sender_email, to_emails, cc_emails, ts "
                 "FROM message WHERE mailbox_id = :mid AND noise = false "
                 "  AND sensitivity = '{none}' AND thread_id::text = ANY(:tids)"
             ),
             {"mid": mailbox_id, "tids": sorted(eligible)},
         ):
             msg_count += 1
+            seen_ts = _aware(ts)
+
+            def _remember(email: str) -> None:
+                first, last = owner_dm_seen.get(email, (None, None))
+                if seen_ts is not None:
+                    first = seen_ts if first is None else min(first, seen_ts)
+                    last = seen_ts if last is None else max(last, seen_ts)
+                owner_dm_seen[email] = (first, last)
+
             recips = set(tos or []) | set(ccs or [])
             if sender == owner_email:
                 for r in recips:
                     owner_dm_headers[r].append(hdr)
+                    _remember(r)
             elif owner_email in recips:
                 owner_dm_headers[sender].append(hdr)
+                _remember(sender)
     for k in owner_dm_headers:
         owner_dm_headers[k] = sorted(set(owner_dm_headers[k]))
 
@@ -258,7 +271,10 @@ def _load_base(session: Session, mailbox_id: str, mbx: orm.Mailbox,
     relevant_pids: set[str] = set()
     for e in edges:
         sp = str(e.person_id)
-        if sp in persons and sp != owner_person_id:
+        has_safe_owner_headers = any(
+            owner_dm_headers.get(email) for email in person_emails.get(sp, set())
+        )
+        if sp in persons and sp != owner_person_id and has_safe_owner_headers:
             relevant_pids.add(sp)
     for _tid, (_s, _e, _proj, parts) in thread_info.items():
         relevant_pids.update(parts)
@@ -281,7 +297,8 @@ def _load_base(session: Session, mailbox_id: str, mbx: orm.Mailbox,
         orgs=orgs, projects=projects, members_by_project=members_by_project,
         projects_by_person=projects_by_person, member_involvement=member_involvement,
         edges=edges, thread_info=thread_info, owner_dm_headers=owner_dm_headers,
-        relevant_pids=relevant_pids, now=now, counts=counts,
+        owner_dm_seen=owner_dm_seen, relevant_pids=relevant_pids, now=now,
+        counts=counts,
     )
 
 
@@ -366,14 +383,25 @@ def _direct_exchange(base: _Base) -> list[_Rel]:
         pid = str(e.person_id)
         if pid == base.owner_person_id or pid not in base.persons:
             continue
-        rel = _Rel("direct_exchange", base.owner_node_id, pid)
-        rel.touch(e.first_contact, e.last_contact)
+        headers: set[str] = set()
         for email in sorted(base.person_emails.get(pid, set())):
-            rel.message_ids.update(base.owner_dm_headers.get(email, []))
-        # carry the edge weight via a side channel using message count as evidence
+            headers.update(base.owner_dm_headers.get(email, []))
+        # Privacy/evidence gate: the Edge table is an aggregate built earlier in
+        # L1 and may include messages that are outside S13's whole-thread safety
+        # scope. Only surface a direct relationship when we can cite at least one
+        # safe, non-sensitive message header gathered from eligible threads.
+        if not headers:
+            continue
+        rel = _Rel("direct_exchange", base.owner_node_id, pid)
+        for email in sorted(base.person_emails.get(pid, set())):
+            first, last = base.owner_dm_seen.get(email, (None, None))
+            rel.touch(first, last)
+        rel.message_ids.update(headers)
+        # Carry only safe evidence volume forward. The original Edge weight/count
+        # may include content excluded by S13 privacy rules, so it is not used.
         rel.project_ids = set()  # n/a
-        rel._weight = float(e.weight)  # type: ignore[attr-defined]
-        rel._evidence_count = int(e.message_count)  # type: ignore[attr-defined]
+        rel._weight = float(len(headers))  # type: ignore[attr-defined]
+        rel._evidence_count = len(headers)  # type: ignore[attr-defined]
         rels.append(rel)
     return rels
 

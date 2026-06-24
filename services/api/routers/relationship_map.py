@@ -6,6 +6,8 @@ Edge graph. The existing /api/network-map endpoints are untouched.
 """
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -38,7 +40,12 @@ async def get_relationship_map(
     relationship_types: list[str] | None = Query(None),
     db: Session = Depends(get_db),
 ) -> RelationshipMapResponse:
-    mbx = db.get(orm.Mailbox, mailbox_id)
+    try:
+        mailbox_uuid = UUID(mailbox_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="mailbox not found") from None
+
+    mbx = db.get(orm.Mailbox, mailbox_uuid)
     if mbx is None:
         raise HTTPException(status_code=404, detail="mailbox not found")
 
@@ -47,11 +54,13 @@ async def get_relationship_map(
 
     rel_types: list[str] | None = None
     if relationship_types:
-        rel_types = [t for t in relationship_types if t in _VALID_TYPES]
-        # If the caller passed only invalid types, treat as no filter rather than
-        # silently returning an empty map.
-        if not rel_types:
-            rel_types = None
+        invalid = sorted({t for t in relationship_types if t not in _VALID_TYPES})
+        if invalid:
+            raise HTTPException(
+                status_code=422,
+                detail=f"invalid relationship_types: {', '.join(invalid)}",
+            )
+        rel_types = list(relationship_types)
 
     return derive_relationship_map(
         db,

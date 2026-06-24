@@ -78,6 +78,14 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
     }
   }, [mode, projectId, projects]);
 
+  // Fast-handoff default + trust boundary: a mailbox switch should restart the
+  // relationship map at the owner tree, not keep a project root from the prior
+  // mailbox that may be invalid or expose the wrong mental context.
+  useEffect(() => {
+    setMode("owner");
+    setProjectId(null);
+  }, [mailboxId]);
+
   // Clear any open detail when the mailbox or mode changes (trust boundary).
   useEffect(() => {
     setSelection(null);
