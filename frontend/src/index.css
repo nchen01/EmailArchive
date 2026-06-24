@@ -192,6 +192,28 @@ body {
 .health-dot-link:hover { background: #f1f5f9; color: #1e293b; }
 .health-dot-label { display: inline; }
 
+/* ── Relationship map (S13) ─────────────────────────────────────────── */
+.rel-layout { display: flex; width: 100%; height: 100%; overflow: hidden; }
+.rel-controls { width: 15rem; flex-shrink: 0; overflow-y: auto; border-right: 1px solid #e2e8f0; background: #fff; padding: 0.75rem; }
+.rel-control-group { margin-bottom: 1rem; }
+.rel-control-group h3 { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; margin: 0 0 0.4rem; }
+.rel-mode-list { display: flex; flex-direction: column; gap: 0.25rem; }
+.rel-mode-btn { text-align: left; font-size: 0.8125rem; font-weight: 500; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.375rem; padding: 0.4rem 0.6rem; cursor: pointer; }
+.rel-mode-btn:hover { border-color: #94a3b8; }
+.rel-mode-btn.is-active { background: #0f172a; color: #fff; border-color: #0f172a; }
+.rel-select { width: 100%; border: 1px solid #cbd5e1; border-radius: 0.375rem; padding: 0.3rem 0.5rem; font-size: 0.8125rem; color: #334155; background: #fff; }
+.rel-type-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.rel-type-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; color: #475569; }
+.rel-control-note { font-size: 0.7rem; color: #94a3b8; margin: 0.4rem 0 0; line-height: 1.4; }
+
+.rel-canvas { position: relative; flex: 1; overflow: hidden; background: #f8fafc; }
+.rel-legend { position: absolute; top: 0.6rem; left: 0.6rem; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.92); border: 1px solid #e2e8f0; border-radius: 0.4rem; padding: 0.35rem 0.6rem; font-size: 0.7rem; color: #475569; max-width: calc(100% - 1.2rem); }
+.rel-legend-line { display: inline-block; width: 20px; height: 0; vertical-align: middle; margin-right: 0.25rem; border-top-width: 2px; border-top-color: #64748b; }
+.rel-legend-line.solid { border-top-style: solid; }
+.rel-legend-line.dashed { border-top-style: dashed; }
+.rel-legend-line.dotted { border-top-style: dotted; }
+.rel-legend-note { color: #94a3b8; }
+
 /* Network legend bar (moved out of the global header in S12). */
 .network-legend-bar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.5rem 1rem; border-bottom: 1px solid #e2e8f0; background: #fff; }
 .network-owner { font-size: 0.8125rem; color: #94a3b8; }

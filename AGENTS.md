@@ -124,7 +124,22 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   `supporting_evidence` only — no sensitive content, no claim without citation);
   repeated citations deduped; distinct titled error states; display-only project
   label cleanup (`utils/projectLabels.ts`); demo-readiness strip.
-- **S12 ✓ (current)** — Product shell + landing. Dependency-free client router
+- **S13 ✓ (current)** — Relationship Map / tree. New `services/relationships/`
+  package derives a graph-backed, tree-renderable relationship map *live* from
+  existing L1 tables (no persisted table — see the persistence note in
+  `derive.py`). Relationship types: direct_exchange (owner↔person from Edge),
+  thread_copresence and project_copresence (person↔person), org_affiliation
+  (person→org/domain), bridge (person across ≥2 projects). Whole-thread
+  sensitivity + noise exclusion; people known only from excluded threads never
+  surface. New `GET /api/relationship-map/{mailbox_id}` (mode=owner|project|org|
+  graph, plus root_id/project_id/min_weight/recency_days/relationship_types),
+  registered in main.py; the existing network-map endpoints are untouched. New
+  frontend "Relationship Map" tab at `/app/relationships` (owner tree default)
+  with mode selector, type/recency/min-evidence filters, force-graph render, and
+  an evidence drawer; Network Map is preserved. Edge weight/width is labeled as
+  evidence volume, never importance. 13 derivation tests; live-validated on the
+  smoke mailbox (36 eligible vs 383 excluded threads).
+- **S12 ✓** — Product shell + landing. Dependency-free client router
   (`src/router.tsx`) over the History API; routes `/` (landing), `/app`
   (overview), `/app/network`, `/app/projects`, `/app/cover`, `/app/status`.
   Workspace shell (`src/workspace/Workspace.tsx`) holds mailbox state + data

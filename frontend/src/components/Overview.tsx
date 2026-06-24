@@ -111,7 +111,7 @@ export function Overview({
         <div className="overview-suggestions">
           {suggestions.map((s) => (
             <button
-              key={s.label}
+              key={`${s.label}:${s.query}`}
               type="button"
               className="suggestion-chip"
               onClick={() => onAskSuggested(s.query)}

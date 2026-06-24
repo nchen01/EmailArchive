@@ -8,6 +8,7 @@ import { LoadingSpinner } from "../components/LoadingSpinner";
 import { NetworkMap } from "../components/NetworkMap";
 import { Overview } from "../components/Overview";
 import { ProjectDetail } from "../components/ProjectDetail";
+import { RelationshipMap } from "../components/RelationshipMap";
 import { ProjectList } from "../components/ProjectList";
 import { RoleLegend } from "../components/RoleLegend";
 import { StatusScreen } from "../components/StatusScreen";
@@ -25,11 +26,18 @@ import {
   overallIndicator,
 } from "../utils/readiness";
 
-type Screen = "overview" | "network" | "projects" | "cover" | "status";
+type Screen =
+  | "overview"
+  | "network"
+  | "relationships"
+  | "projects"
+  | "cover"
+  | "status";
 
 const NAV: { screen: Screen; label: string; path: string }[] = [
   { screen: "overview", label: "Overview", path: "/app" },
   { screen: "network", label: "Network", path: "/app/network" },
+  { screen: "relationships", label: "Relationship Map", path: "/app/relationships" },
   { screen: "projects", label: "Projects", path: "/app/projects" },
   { screen: "cover", label: "Cover for Me", path: "/app/cover" },
   { screen: "status", label: "Status", path: "/app/status" },
@@ -39,6 +47,7 @@ const ENV_MAILBOX_ID = import.meta.env.VITE_MAILBOX_ID ?? "";
 
 function screenForPath(pathname: string): Screen {
   if (pathname === "/app/network") return "network";
+  if (pathname === "/app/relationships") return "relationships";
   if (pathname.startsWith("/app/projects")) return "projects";
   if (pathname === "/app/cover") return "cover";
   if (pathname === "/app/status") return "status";
@@ -127,7 +136,10 @@ export function Workspace() {
 
   const hasGraph = data && data.nodes.length > 0;
   const showStripUnderHeader =
-    screen === "network" || screen === "projects" || screen === "cover";
+    screen === "network" ||
+    screen === "relationships" ||
+    screen === "projects" ||
+    screen === "cover";
 
   return (
     <div className="flex h-full flex-col bg-slate-50">
@@ -327,6 +339,10 @@ export function Workspace() {
               </div>
             )}
           </>
+        ) : screen === "relationships" ? (
+          <div className="w-full overflow-hidden">
+            <RelationshipMap mailboxId={mailboxId} projects={projects} />
+          </div>
         ) : screen === "cover" ? (
           <div className="w-full overflow-y-auto bg-slate-50">
             <CoverForMe

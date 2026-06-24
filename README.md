@@ -3,7 +3,7 @@
 > Turns a departing or covered employee's mailbox into a structured, queryable map
 > of people, projects, roles, and evidenced work — so a successor can take over fast.
 
-**Status:** S0–S12 complete. S7 L2 retrieval live-validated (S7.1–S7.11; optional S7.12 hosted Voyage reranker remains off by default). S8 real-mailbox demo readiness complete. S9 project-clustering materialization complete (`scripts/materialize_projects.py`). S10 local runtime reliability complete (Voyage embedding via direct HTTP, runtime preflight probe, blessed Windows launch scripts, no-hang frontend). S11 demo polish complete (inspectable citation evidence drawer, deduped citations, display-only project label cleanup, readiness strip). S12 product shell + landing complete (client routing, workspace overview, marketing landing page, Cover-for-me onboarding). See D12 in `docs/decisions.md`.
+**Status:** S0–S12 complete. S7 L2 retrieval live-validated (S7.1–S7.11; optional S7.12 hosted Voyage reranker remains off by default). S8 real-mailbox demo readiness complete. S9 project-clustering materialization complete (`scripts/materialize_projects.py`). S10 local runtime reliability complete (Voyage embedding via direct HTTP, runtime preflight probe, blessed Windows launch scripts, no-hang frontend). S11 demo polish complete (inspectable citation evidence drawer, deduped citations, display-only project label cleanup, readiness strip). S12 product shell + landing complete (client routing, workspace overview, marketing landing page, Cover-for-me onboarding). S13 Relationship Map complete (new graph-backed, tree-renderable relationship view derived live from L1 tables; owner/project/org/graph modes; sensitive-thread exclusion; Network Map preserved). See D12 in `docs/decisions.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **coverage** (employee present, opt-in).
 
@@ -168,7 +168,7 @@ email-archive/
     download_models.py              # download spaCy en_core_web_sm for production runs
     embed_backfill.py               # idempotent embedding backfill for a mailbox (S7.5)
     _env.py                         # load_local_env() helper for CLI scripts (dotenv, dev-only)
-  tests/                            # 475 passed, 90 skipped as of S10 (DB-gated tests skip without DATABASE_URL)
+  tests/                            # 475 passed, 103 skipped as of S13 (DB-gated tests skip without DATABASE_URL)
     test_l0_*.py   test_l1_*.py   test_clustering_*.py
     test_db_roundtrip.py   test_api_network_map.py
 ```
@@ -205,6 +205,7 @@ email-archive/
 | S10 | Local runtime reliability — Voyage embedding via direct HTTP (no voyageai SDK), runtime preflight probe, blessed Windows launch scripts, no-hang frontend, Vite strictPort | ✓ done | `docs/decisions.md` D12b S10 note |
 | S11 | Demo polish — inspectable citation evidence drawer, deduped citations, distinct error states, display-only project label cleanup, readiness strip | ✓ done | frontend |
 | S12 | Product shell + landing — client routing, workspace overview, status screen, marketing landing page, Cover-for-me onboarding, project search | ✓ done | `docs/s12-product-shell-landing-plan.md` |
+| S13 | Relationship Map — graph-backed tree views (owner/project/org/graph) derived live from L1; new `services/relationships/` + `/api/relationship-map`; new tab beside Network Map | ✓ done | `docs/s13-relationship-map-tree-plan.md` |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash
@@ -250,7 +251,7 @@ cd frontend && npm install && VITE_MAILBOX_ID=<uuid> npm run dev  # UI on :5173
 
 # 4. Tests
 DATABASE_URL=postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev \
-  pytest                                                      # 475 passed, 90 skipped (DB-gated tests skip without DATABASE_URL)
+  pytest                                                      # 475 passed, 103 skipped (DB-gated tests skip without DATABASE_URL)
 
 # For live embedding backfill or the live Voyage integration test, set VOYAGE_API_KEY.
 # Offline tests and --dry-run use FakeEmbedClient and do not require a key.

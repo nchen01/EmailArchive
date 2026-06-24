@@ -173,6 +173,74 @@ export interface CoverForMeResponse {
   retrieval_status: RetrievalStatus;
 }
 
+// ── Relationship map (S13) ───────────────────────────────────────────────────
+
+export type RelationshipNodeType =
+  | "owner"
+  | "person"
+  | "project"
+  | "organization"
+  | "thread_group";
+
+export type RelationshipType =
+  | "direct_exchange"
+  | "thread_copresence"
+  | "project_copresence"
+  | "org_affiliation"
+  | "bridge";
+
+export type RelationshipMapMode = "owner" | "project" | "org" | "graph";
+
+export interface RelationshipNode {
+  id: string;
+  node_type: RelationshipNodeType;
+  label: string;
+  subtitle: string | null;
+  role: string | null;
+  confidence: number | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface RelationshipEdge {
+  id: string;
+  source_id: string;
+  target_id: string;
+  relationship_type: RelationshipType;
+  evidence_kind: "message_headers" | "thread_ids" | "project_ids" | "domain";
+  weight: number;
+  confidence: number | null;
+  evidence_count: number;
+  source_message_ids: string[];
+  thread_ids: string[];
+  project_ids: string[];
+  first_seen: string | null;
+  last_seen: string | null;
+  muted: boolean;
+  explanation: string;
+}
+
+export interface RelationshipGroup {
+  id: string;
+  label: string;
+  node_ids: string[];
+}
+
+export interface RelationshipMapResponse {
+  root: RelationshipNode | null;
+  nodes: RelationshipNode[];
+  edges: RelationshipEdge[];
+  groups: RelationshipGroup[];
+  layout_hint: "tree" | "graph";
+  mode: RelationshipMapMode;
+  generated_from: {
+    threads: number;
+    projects: number;
+    messages: number;
+    eligible_threads: number;
+    excluded_threads: number;
+  };
+}
+
 // ── Preflight (S8.3, consumed by the S11 demo-readiness strip) ───────────────
 
 /** One operational check. Matches services/api/routers/preflight.py CheckOut. */

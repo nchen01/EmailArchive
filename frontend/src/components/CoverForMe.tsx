@@ -210,7 +210,7 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
           <div className="overview-suggestions">
             {suggestions.map((s) => (
               <button
-                key={s.label}
+                key={`${s.label}:${s.query}`}
                 type="button"
                 className="suggestion-chip"
                 onClick={() => askSuggestion(s.query)}

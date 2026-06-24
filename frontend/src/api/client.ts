@@ -5,6 +5,9 @@ import type {
   PreflightResponse,
   ProjectDetailData,
   ProjectListData,
+  RelationshipMapMode,
+  RelationshipMapResponse,
+  RelationshipType,
   SynthesisResult,
 } from "./types";
 
@@ -257,6 +260,33 @@ export async function fetchCoverForMe(
 ): Promise<CoverForMeResponse> {
   const url = `${API_BASE}/api/cover-for-me/${encodeURIComponent(mailboxId)}`;
   return postJsonBody<CoverForMeResponse>(url, { query });
+}
+
+export interface RelationshipMapQuery {
+  mode: RelationshipMapMode;
+  rootId?: string | null;
+  projectId?: string | null;
+  minWeight?: number;
+  recencyDays?: number | null;
+  relationshipTypes?: RelationshipType[];
+}
+
+/** Relationship map (S13). Derived live by the backend from existing tables. */
+export async function fetchRelationshipMap(
+  mailboxId: string,
+  q: RelationshipMapQuery,
+): Promise<RelationshipMapResponse> {
+  const params = new URLSearchParams();
+  params.set("mode", q.mode);
+  if (q.rootId) params.set("root_id", q.rootId);
+  if (q.projectId) params.set("project_id", q.projectId);
+  if (q.minWeight && q.minWeight > 0) params.set("min_weight", String(q.minWeight));
+  if (q.recencyDays != null) params.set("recency_days", String(q.recencyDays));
+  for (const t of q.relationshipTypes ?? []) params.append("relationship_types", t);
+  const url = `${API_BASE}/api/relationship-map/${encodeURIComponent(
+    mailboxId,
+  )}?${params.toString()}`;
+  return getJson<RelationshipMapResponse>(url);
 }
 
 /**

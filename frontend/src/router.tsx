@@ -60,9 +60,10 @@ export function Link({ to, onClick, children, ...rest }: LinkProps) {
         ) {
           return;
         }
+        onClick?.(e);
+        if (e.defaultPrevented) return;
         e.preventDefault();
         navigate(to);
-        onClick?.(e);
       }}
       {...rest}
     >
