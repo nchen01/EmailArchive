@@ -1,10 +1,11 @@
+import { useMemo, useState } from "react";
 import type {
   ProjectSummary,
   RelationshipMapMode,
   RelationshipType,
 } from "../api/types";
 import { cleanProjectLabel } from "../utils/projectLabels";
-import { REL_TYPE_LABEL } from "../utils/relationshipMap";
+import { REL_TYPE_LABEL, sortedProjectRoots } from "../utils/relationshipMap";
 
 const MODES: { mode: RelationshipMapMode; label: string }[] = [
   { mode: "owner", label: "Owner tree" },
@@ -76,23 +77,11 @@ export function RelationshipMapControls({
       </div>
 
       {mode === "project" ? (
-        <div className="rel-control-group">
-          <h3>Project root</h3>
-          <select
-            className="rel-select"
-            value={projectId ?? ""}
-            onChange={(e) => onProjectChange(e.target.value)}
-          >
-            <option value="" disabled>
-              Select a project…
-            </option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {cleanProjectLabel(p.label, p.confidence).display}
-              </option>
-            ))}
-          </select>
-        </div>
+        <ProjectRootPicker
+          projects={projects}
+          projectId={projectId}
+          onProjectChange={onProjectChange}
+        />
       ) : null}
 
       <div className="rel-control-group">
@@ -142,6 +131,63 @@ export function RelationshipMapControls({
           Evidence count is communication volume, not importance.
         </p>
       </div>
+    </div>
+  );
+}
+
+/** Project-root selector: best-first ordered, with a filter once the list grows. */
+function ProjectRootPicker({
+  projects,
+  projectId,
+  onProjectChange,
+}: {
+  projects: ProjectSummary[];
+  projectId: string | null;
+  onProjectChange: (id: string) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const SHOW_SEARCH_AT = 8;
+
+  const ordered = useMemo(() => sortedProjectRoots(projects), [projects]);
+  const visible = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return ordered;
+    return ordered.filter((p) => {
+      const display = cleanProjectLabel(p.label, p.confidence).display.toLowerCase();
+      return display.includes(q) || p.label.toLowerCase().includes(q);
+    });
+  }, [ordered, filter]);
+
+  return (
+    <div className="rel-control-group">
+      <h3>Project root</h3>
+      <p className="rel-control-note rel-control-note-top">
+        Select a project root to redraw the map.
+      </p>
+      {projects.length > SHOW_SEARCH_AT ? (
+        <input
+          type="text"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={`Filter ${projects.length} projects…`}
+          className="rel-select rel-project-filter"
+          aria-label="Filter projects"
+        />
+      ) : null}
+      <select
+        className="rel-select"
+        value={projectId ?? ""}
+        onChange={(e) => onProjectChange(e.target.value)}
+      >
+        <option value="" disabled>
+          Select a project…
+        </option>
+        {visible.map((p) => (
+          <option key={p.id} value={p.id}>
+            {cleanProjectLabel(p.label, p.confidence).display}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   edgeDash,
   edgeWidth,
   NODE_COLOR,
+  pickDefaultProjectRoot,
 } from "../utils/relationshipMap";
 import { ErrorBanner } from "./ErrorBanner";
 import { LoadingSpinner } from "./LoadingSpinner";
@@ -71,10 +72,13 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
     undefined,
   );
 
-  // Default the project root to the top project when entering project mode.
+  // Default the project root to the most relationship-rich project when entering
+  // project mode — not merely the highest-confidence one (which is often a
+  // low-value automated-sender cluster on real mailboxes).
   useEffect(() => {
     if (mode === "project" && !projectId && projects.length > 0) {
-      setProjectId(projects[0].id);
+      const best = pickDefaultProjectRoot(projects);
+      if (best) setProjectId(best);
     }
   }, [mode, projectId, projects]);
 
