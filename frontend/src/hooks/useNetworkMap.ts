@@ -31,6 +31,9 @@ export function useNetworkMap(mailboxId: string | null): UseNetworkMapResult {
     setLoading(true);
     setError(null);
     setErrorKind(null);
+    // Clear the previous mailbox's graph immediately so a switch never shows
+    // mailbox A's data (owner/contacts) while mailbox B is still loading.
+    setData(null);
     // Fetch the full graph; role filtering is applied client-side so toggling
     // legend chips does not require a round-trip.
     fetchNetworkMap(mailboxId)

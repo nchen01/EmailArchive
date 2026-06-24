@@ -39,6 +39,9 @@ export function useDemoReadiness(
     let cancelled = false;
     setLoading(true);
     setFailed(false);
+    // Clear the previous mailbox's readiness immediately so a switch never shows
+    // mailbox A's embeddings/retrieval/synthesis status while mailbox B loads.
+    setChecks(null);
     fetchPreflight(mailboxId)
       .then((res) => {
         if (cancelled) return;

@@ -109,14 +109,14 @@ export function Overview({
           cited messages.
         </p>
         <div className="overview-suggestions">
-          {suggestions.map((q) => (
+          {suggestions.map((s) => (
             <button
-              key={q}
+              key={s.label}
               type="button"
               className="suggestion-chip"
-              onClick={() => onAskSuggested(q)}
+              onClick={() => onAskSuggested(s.query)}
             >
-              {q}
+              {s.label}
             </button>
           ))}
         </div>

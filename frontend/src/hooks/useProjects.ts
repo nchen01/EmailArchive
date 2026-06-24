@@ -31,6 +31,9 @@ export function useProjects(mailboxId: string | null): UseProjectsResult {
     setLoading(true);
     setError(null);
     setErrorKind(null);
+    // Clear the previous mailbox's projects immediately so a switch never shows
+    // mailbox A's project list/counts/suggestions while mailbox B is loading.
+    setProjects([]);
     fetchProjects(mailboxId)
       .then((result) => {
         if (!cancelled) setProjects(result.projects);

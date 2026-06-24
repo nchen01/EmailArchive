@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useCoverForMe } from "../hooks/useCoverForMe";
 import { errorKindTitle } from "../api/client";
 import type { EvidenceMessage, RetrievalStatus } from "../api/types";
+import type { Suggestion } from "../utils/suggestions";
 import { EvidenceDrawer, type SelectedCitation } from "./EvidenceDrawer";
 
 interface CoverForMeProps {
@@ -13,7 +14,7 @@ interface CoverForMeProps {
    */
   seed?: { query: string; token: number } | null;
   /** Suggested starter questions shown in the empty state (S12.5). */
-  suggestions?: string[];
+  suggestions?: Suggestion[];
 }
 
 function CitationChips({
@@ -207,14 +208,14 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
         <div className="mt-4">
           <p className="mb-2 text-xs text-slate-400">Try one of these:</p>
           <div className="overview-suggestions">
-            {suggestions.map((q) => (
+            {suggestions.map((s) => (
               <button
-                key={q}
+                key={s.label}
                 type="button"
                 className="suggestion-chip"
-                onClick={() => askSuggestion(q)}
+                onClick={() => askSuggestion(s.query)}
               >
-                {q}
+                {s.label}
               </button>
             ))}
           </div>
