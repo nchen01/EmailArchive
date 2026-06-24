@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchPreflight } from "../api/client";
 import type { PreflightCheck } from "../api/types";
 
@@ -8,6 +8,8 @@ interface UseDemoReadinessResult {
   loading: boolean;
   /** True if the preflight call itself failed (backend down). Non-fatal. */
   failed: boolean;
+  /** Re-run the preflight check (e.g. a Status-screen refresh button). */
+  reload: () => void;
 }
 
 /**
@@ -23,6 +25,9 @@ export function useDemoReadiness(
   );
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [nonce, setNonce] = useState(0);
+
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
     if (!mailboxId) {
@@ -53,7 +58,7 @@ export function useDemoReadiness(
     return () => {
       cancelled = true;
     };
-  }, [mailboxId]);
+  }, [mailboxId, nonce]);
 
-  return { checks, loading, failed };
+  return { checks, loading, failed, reload };
 }

@@ -6,6 +6,12 @@ import { EvidenceDrawer, type SelectedCitation } from "./EvidenceDrawer";
 
 interface CoverForMeProps {
   mailboxId: string;
+  /**
+   * Optional seeded question (e.g. an Overview suggested-question chip). The
+   * `token` lets the same question be re-seeded; the effect re-fires on token
+   * change and auto-asks. Null/undefined means no seed.
+   */
+  seed?: { query: string; token: number } | null;
 }
 
 function CitationChips({
@@ -106,7 +112,7 @@ function RetrievalStatusNote({
  * every keystroke. An "insufficient structured evidence" result is rendered as
  * a polite "couldn't find that", distinct from a transport/config error.
  */
-export function CoverForMe({ mailboxId }: CoverForMeProps) {
+export function CoverForMe({ mailboxId, seed }: CoverForMeProps) {
   const [query, setQuery] = useState("");
   const [selectedCitation, setSelectedCitation] =
     useState<SelectedCitation | null>(null);
@@ -132,6 +138,17 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
     setSelectedCitation(null);
     setQuery("");
   }, [mailboxId, reset]);
+
+  // Seeded question (Overview suggested-question chip). Declared after the
+  // mailbox-reset effect so on a fresh mount the seed wins over the clear.
+  // Keyed on the token so re-seeding the same text still re-asks.
+  useEffect(() => {
+    if (!seed || !seed.query.trim()) return;
+    setSelectedCitation(null);
+    setQuery(seed.query);
+    void ask(seed.query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.token]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();

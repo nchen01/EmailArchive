@@ -99,6 +99,69 @@ body {
 .project-card-label.is-uncategorized { color: #94a3b8; font-style: italic; font-weight: 500; }
 .project-card-lowconf { font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #92400e; background: #fef3c7; padding: 0.1rem 0.35rem; border-radius: 9999px; flex-shrink: 0; }
 
+/* ── App shell (S12) ────────────────────────────────────────────────── */
+.app-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 0.5rem 1rem; background: #fff; border-bottom: 1px solid #e2e8f0; z-index: 10; }
+.app-header-left { display: flex; align-items: center; gap: 1.25rem; min-width: 0; }
+.app-brand { font-size: 0.95rem; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; text-decoration: none; }
+.app-brand:hover { color: #334155; }
+.app-nav { display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; }
+.app-nav-link { font-size: 0.8125rem; font-weight: 500; color: #64748b; text-decoration: none; padding: 0.3rem 0.6rem; border-radius: 0.375rem; transition: background-color 0.12s, color 0.12s; }
+.app-nav-link:hover { background: #f1f5f9; color: #1e293b; }
+.app-nav-link.is-active { background: #0f172a; color: #fff; }
+
+.app-header-right { display: flex; align-items: center; gap: 0.75rem; }
+.mailbox-form { display: flex; align-items: center; gap: 0.4rem; }
+.mailbox-input { width: 13rem; max-width: 40vw; border: 1px solid #cbd5e1; border-radius: 0.375rem; padding: 0.3rem 0.55rem; font-size: 0.75rem; color: #334155; }
+.mailbox-input:focus { outline: none; border-color: #94a3b8; }
+.mailbox-load { font-size: 0.75rem; font-weight: 500; color: #fff; background: #0f172a; border: none; border-radius: 0.375rem; padding: 0.3rem 0.7rem; cursor: pointer; }
+.mailbox-load:hover { background: #1e293b; }
+.health-dot-link { display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: none; color: #64748b; font-size: 0.75rem; font-weight: 500; padding: 0.25rem 0.5rem; border-radius: 0.375rem; }
+.health-dot-link:hover { background: #f1f5f9; color: #1e293b; }
+.health-dot-label { display: inline; }
+
+/* Network legend bar (moved out of the global header in S12). */
+.network-legend-bar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.5rem 1rem; border-bottom: 1px solid #e2e8f0; background: #fff; }
+.network-owner { font-size: 0.8125rem; color: #94a3b8; }
+
+/* ── Overview screen (S12) ──────────────────────────────────────────── */
+.overview { max-width: 64rem; margin: 0 auto; padding: 1.5rem 1.5rem 3rem; }
+.overview-header h1 { font-size: 1.25rem; font-weight: 700; color: #0f172a; margin: 0; }
+.overview-sub { font-size: 0.875rem; color: #64748b; margin: 0.35rem 0 0; max-width: 42rem; }
+.overview-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.75rem; margin: 1.25rem 0 1.75rem; }
+.overview-stat { background: #fff; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 0.75rem 0.9rem; }
+.overview-stat-label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; }
+.overview-stat-value { margin-top: 0.25rem; font-size: 1.1rem; font-weight: 700; color: #1e293b; }
+
+.overview-section { margin-bottom: 1.75rem; }
+.overview-section h2 { font-size: 0.95rem; font-weight: 700; color: #1e293b; margin: 0 0 0.25rem; }
+.overview-section-sub { font-size: 0.8125rem; color: #94a3b8; margin: 0 0 0.6rem; }
+.overview-suggestions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.suggestion-chip { font-size: 0.8125rem; color: #1e293b; background: #fff; border: 1px solid #cbd5e1; border-radius: 9999px; padding: 0.35rem 0.8rem; cursor: pointer; transition: border-color 0.12s, background-color 0.12s; }
+.suggestion-chip:hover { border-color: #94a3b8; background: #f8fafc; }
+
+.overview-projects { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.overview-project-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 0.6rem 0.85rem; cursor: pointer; text-align: left; transition: border-color 0.12s; }
+.overview-project-row:hover { border-color: #94a3b8; }
+.overview-project-label { font-size: 0.875rem; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-project-label.is-uncategorized { color: #94a3b8; font-style: italic; }
+.overview-project-meta { display: flex; align-items: center; gap: 0.6rem; font-size: 0.7rem; color: #94a3b8; flex-shrink: 0; }
+.overview-project-state { text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+
+/* ── Status screen (S12) ────────────────────────────────────────────── */
+.status-screen { max-width: 56rem; margin: 0 auto; padding: 1.5rem 1.5rem 3rem; }
+.status-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.status-header h1 { font-size: 1.25rem; font-weight: 700; color: #0f172a; margin: 0; }
+.status-sub { font-size: 0.8125rem; color: #64748b; margin: 0.35rem 0 0; }
+.status-mailbox { font-family: ui-monospace, monospace; font-size: 0.75rem; color: #475569; background: #f1f5f9; padding: 0.05rem 0.3rem; border-radius: 0.25rem; }
+.status-refresh { font-size: 0.8125rem; font-weight: 500; color: #1e293b; background: #fff; border: 1px solid #cbd5e1; border-radius: 0.375rem; padding: 0.35rem 0.8rem; cursor: pointer; flex-shrink: 0; }
+.status-refresh:hover { background: #f8fafc; }
+.status-refresh:disabled { color: #94a3b8; cursor: not-allowed; }
+.status-failed { font-size: 0.8125rem; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; padding: 0.5rem 0.7rem; border-radius: 0.375rem; }
+.status-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.status-row { display: flex; align-items: center; gap: 0.6rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 0.375rem; padding: 0.5rem 0.7rem; }
+.status-name { font-size: 0.8125rem; font-weight: 600; color: #1e293b; min-width: 10rem; }
+.status-message { font-size: 0.8125rem; color: #64748b; }
+
 /* ── Demo readiness strip (S11) ─────────────────────────────────────── */
 .readiness-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; padding: 0.35rem 1rem; border-bottom: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.7rem; color: #64748b; }
 .readiness-title { font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; }
