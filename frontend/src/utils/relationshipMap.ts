@@ -77,23 +77,51 @@ export function isLowValueProjectLabel(label: string): boolean {
   return false;
 }
 
+// Caps so one large/noisy cluster (e.g. a 17-thread automated digest) cannot
+// dominate the ranking on raw volume.
+const MEMBER_CAP = 8;
+const THREAD_CAP = 10;
+
+/** Recency bucket from project.end: UTC year*12 + month. Coarse (monthly) so
+ *  projects in the same window are then ordered by relationship richness, which
+ *  is the "recent AND rich" product goal. Deterministic — derived from the data's
+ *  own end timestamp, never wall-clock. Missing/invalid end sorts oldest. */
+function _recencyBucket(end: string | null | undefined): number {
+  if (!end) return Number.NEGATIVE_INFINITY;
+  const d = new Date(end);
+  const t = d.getTime();
+  if (Number.isNaN(t)) return Number.NEGATIVE_INFINITY;
+  return d.getUTCFullYear() * 12 + d.getUTCMonth();
+}
+
 /**
- * Pick the most relationship-rich project to seed Project-tree mode, instead of
- * blindly taking the highest-confidence project (which on real mailboxes is
- * often a low-value automated-sender cluster like "Account Https").
+ * "Coverage usefulness" ranking for the Project-tree default root. For fast
+ * handoff we want a project that is recent AND relationship-rich AND has a real
+ * label — not merely the highest-confidence one (often a low-value
+ * automated-sender cluster like "Account Https").
  *
- * Ranking, best first: real (non-uncategorized, non-low-value) labels win over
- * low-value ones; then more members, then more threads; confidence is only a
- * tie-breaker; label is the final deterministic tie-break.
+ * Ranking tuple, best first:
+ *   1. low-value labels last (unknown/uncategorized, no-reply/mailer/automated,
+ *      bare-domain, "Account Https" style) — still selectable, just not default;
+ *   2. more recent (monthly bucket of project.end) first;
+ *   3. more members (capped);
+ *   4. more threads (capped);
+ *   5. higher confidence (tie-breaker only);
+ *   6. label (final deterministic tie-break).
+ *
+ * Because low-value is the first key, a recent automated/no-reply cluster never
+ * beats a slightly older real, relationship-rich project.
  */
-function _rootRank(p: ProjectSummary): [number, number, number, number, string] {
+function _rootRank(
+  p: ProjectSummary,
+): [number, number, number, number, number, string] {
   const { uncategorized } = cleanProjectLabel(p.label, p.confidence);
   const lowValue = uncategorized || isLowValueProjectLabel(p.label);
-  // Tier 0 = good label, 1 = low-value label (sorted ascending → good first).
   return [
     lowValue ? 1 : 0,
-    -(p.member_count ?? 0),
-    -(p.thread_count ?? 0),
+    -_recencyBucket(p.end),
+    -Math.min(p.member_count ?? 0, MEMBER_CAP),
+    -Math.min(p.thread_count ?? 0, THREAD_CAP),
     -(p.confidence ?? 0),
     p.label,
   ];

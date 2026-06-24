@@ -158,6 +158,17 @@ function ProjectRootPicker({
     });
   }, [ordered, filter]);
 
+  // Always keep the currently-selected project in the option list, even when the
+  // filter would exclude it, so the native <select> never shows a blank/confusing
+  // value and projectId never points at a hidden option.
+  const options = useMemo(() => {
+    const selected = projectId ? ordered.find((p) => p.id === projectId) : undefined;
+    if (selected && !visible.some((p) => p.id === selected.id)) {
+      return [selected, ...visible];
+    }
+    return visible;
+  }, [ordered, visible, projectId]);
+
   return (
     <div className="rel-control-group">
       <h3>Project root</h3>
@@ -182,7 +193,7 @@ function ProjectRootPicker({
         <option value="" disabled>
           Select a project…
         </option>
-        {visible.map((p) => (
+        {options.map((p) => (
           <option key={p.id} value={p.id}>
             {cleanProjectLabel(p.label, p.confidence).display}
           </option>
