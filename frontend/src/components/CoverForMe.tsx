@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCoverForMe } from "../hooks/useCoverForMe";
 import { errorKindTitle } from "../api/client";
 import type { EvidenceMessage, RetrievalStatus } from "../api/types";
@@ -110,8 +110,28 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
   const [query, setQuery] = useState("");
   const [selectedCitation, setSelectedCitation] =
     useState<SelectedCitation | null>(null);
-  const { response, loading, error, errorKind, notConfigured, ask } =
+  const { response, loading, error, errorKind, notConfigured, ask, reset } =
     useCoverForMe(mailboxId);
+
+  // Trust boundary: when the mailbox changes, discard the previous mailbox's
+  // answer, evidence, and any open citation drawer so mailbox A's evidence can
+  // never linger over mailbox B. The query box is cleared too, so a stale
+  // question is not silently re-asked against a different mailbox.
+  //
+  // Manual verification (no frontend test runner is configured in this repo):
+  //   1. Open the Cover tab for mailbox A; ask a question; click a citation chip
+  //      so the evidence drawer is open.
+  //   2. Change the mailbox ID in the header to mailbox B and Load.
+  //   3. Expect: the previous answer, citation chips, retrieval note, and the
+  //      open evidence drawer all disappear, and the query box is empty.
+  //
+  // `reset` is stable (useCallback([]) in useCoverForMe), so this effect runs
+  // only on mailbox change, not on every render.
+  useEffect(() => {
+    reset();
+    setSelectedCitation(null);
+    setQuery("");
+  }, [mailboxId, reset]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
