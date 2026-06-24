@@ -90,6 +90,25 @@ body {
 .activity-summary { flex: 1; }
 .activity-citations { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
 .citation-chip { font-size: 0.65rem; color: #475569; background: #e2e8f0; padding: 0.1rem 0.35rem; border-radius: 0.25rem; }
+/* Clickable citation chip (opens the evidence drawer). */
+.citation-chip-button { border: none; cursor: pointer; font: inherit; line-height: 1.2; transition: background-color 0.12s; }
+.citation-chip-button:hover { background: #cbd5e1; color: #1e293b; }
+.citation-chip-button:focus-visible { outline: 2px solid #475569; outline-offset: 1px; }
+
+/* ── Project label adornments (S11 display-only cleanup) ─────────────── */
+.project-card-label.is-uncategorized { color: #94a3b8; font-style: italic; font-weight: 500; }
+.project-card-lowconf { font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #92400e; background: #fef3c7; padding: 0.1rem 0.35rem; border-radius: 9999px; flex-shrink: 0; }
+
+/* ── Demo readiness strip (S11) ─────────────────────────────────────── */
+.readiness-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; padding: 0.35rem 1rem; border-bottom: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.7rem; color: #64748b; }
+.readiness-title { font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; }
+.readiness-item { display: inline-flex; align-items: center; gap: 0.3rem; }
+.readiness-muted { color: #b45309; }
+.readiness-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.readiness-ok { background: #22c55e; }
+.readiness-warn { background: #f59e0b; }
+.readiness-bad { background: #ef4444; }
+.readiness-unknown { background: #cbd5e1; }
 
 /* Generate summary (L3 synthesis) */
 .project-summary { margin-top: 0.75rem; }

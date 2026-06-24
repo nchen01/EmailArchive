@@ -2,6 +2,7 @@ import type {
   ContactDetail,
   CoverForMeResponse,
   NetworkMapData,
+  PreflightResponse,
   ProjectDetailData,
   ProjectListData,
   SynthesisResult,
@@ -103,6 +104,45 @@ export async function checkBackendHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Map any thrown error into a short title + human message so views can render a
+ * distinct, non-technical state. Backend-unreachable, timeout, not-found, and
+ * generic HTTP failures each get their own title. Anything that is not an
+ * ApiError (should be rare) falls back to a generic "Something went wrong".
+ */
+/** Short, human-readable heading for a classified error kind (for ErrorBanner). */
+export function errorKindTitle(kind: ApiErrorKind | null): string {
+  switch (kind) {
+    case "unreachable":
+      return "Backend unavailable";
+    case "timeout":
+      return "Request timed out";
+    case "not_found":
+      return "Not found";
+    default:
+      return "Couldn't load this view";
+  }
+}
+
+export function describeError(err: unknown): { title: string; message: string } {
+  if (err instanceof ApiError) {
+    switch (err.kind) {
+      case "unreachable":
+        return { title: "Backend unavailable", message: err.message };
+      case "timeout":
+        return { title: "Request timed out", message: err.message };
+      case "not_found":
+        return { title: "Not found", message: err.message };
+      default:
+        return { title: "Request failed", message: err.message };
+    }
+  }
+  return {
+    title: "Something went wrong",
+    message: err instanceof Error ? err.message : String(err),
+  };
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -217,4 +257,17 @@ export async function fetchCoverForMe(
 ): Promise<CoverForMeResponse> {
   const url = `${API_BASE}/api/cover-for-me/${encodeURIComponent(mailboxId)}`;
   return postJsonBody<CoverForMeResponse>(url, { query });
+}
+
+/**
+ * Operational preflight for the demo-readiness strip (S8.3 endpoint). Passing a
+ * mailbox id includes the per-mailbox embeddings check. Never throws on a failed
+ * check — the endpoint returns ok:false with details; only transport failures
+ * reject (the strip treats those as "unknown").
+ */
+export async function fetchPreflight(
+  mailboxId?: string,
+): Promise<PreflightResponse> {
+  const qs = mailboxId ? `?mailbox_id=${encodeURIComponent(mailboxId)}` : "";
+  return getJson<PreflightResponse>(`${API_BASE}/api/preflight${qs}`);
 }

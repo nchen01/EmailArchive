@@ -172,3 +172,17 @@ export interface CoverForMeResponse {
   /** S8.4: structured operational state; defaults to "active". */
   retrieval_status: RetrievalStatus;
 }
+
+// ── Preflight (S8.3, consumed by the S11 demo-readiness strip) ───────────────
+
+/** One operational check. Matches services/api/routers/preflight.py CheckOut. */
+export interface PreflightCheck {
+  name: string;
+  status: "pass" | "fail" | "warn" | "info";
+  message: string;
+}
+
+export interface PreflightResponse {
+  ok: boolean;
+  checks: PreflightCheck[];
+}

@@ -1,4 +1,5 @@
 import type { ProjectSummary } from "../api/types";
+import { cleanProjectLabel } from "../utils/projectLabels";
 
 interface ProjectListProps {
   projects: ProjectSummary[];
@@ -39,6 +40,10 @@ export function ProjectList({
     <ul className="project-list" role="list">
       {projects.map((p) => {
         const selected = p.id === selectedProjectId;
+        const { display, uncategorized, lowConfidence } = cleanProjectLabel(
+          p.label,
+          p.confidence,
+        );
         return (
           <li key={p.id}>
             <button
@@ -48,7 +53,22 @@ export function ProjectList({
               aria-pressed={selected}
             >
               <div className="project-card-header">
-                <span className="project-card-label">{p.label}</span>
+                <span
+                  className={`project-card-label${
+                    uncategorized ? " is-uncategorized" : ""
+                  }`}
+                  title={p.label}
+                >
+                  {display}
+                </span>
+                {lowConfidence ? (
+                  <span
+                    className="project-card-lowconf"
+                    title={`Low clustering confidence (${(p.confidence * 100).toFixed(0)}%)`}
+                  >
+                    low confidence
+                  </span>
+                ) : null}
                 <span
                   className="project-card-state"
                   style={{ backgroundColor: stateColor(p.state) }}

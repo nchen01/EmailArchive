@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchProjects } from "../api/client";
+import { ApiError, type ApiErrorKind, fetchProjects } from "../api/client";
 import type { ProjectSummary } from "../api/types";
 
 interface UseProjectsResult {
   projects: ProjectSummary[];
   loading: boolean;
   error: string | null;
+  errorKind: ApiErrorKind | null;
   reload: () => void;
 }
 
@@ -13,6 +14,7 @@ export function useProjects(mailboxId: string | null): UseProjectsResult {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<ApiErrorKind | null>(null);
   const [nonce, setNonce] = useState(0);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
@@ -21,12 +23,14 @@ export function useProjects(mailboxId: string | null): UseProjectsResult {
     if (!mailboxId) {
       setProjects([]);
       setError(null);
+      setErrorKind(null);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setErrorKind(null);
     fetchProjects(mailboxId)
       .then((result) => {
         if (!cancelled) setProjects(result.projects);
@@ -35,6 +39,7 @@ export function useProjects(mailboxId: string | null): UseProjectsResult {
         if (!cancelled) {
           setProjects([]);
           setError(err instanceof Error ? err.message : String(err));
+          setErrorKind(err instanceof ApiError ? err.kind : null);
         }
       })
       .finally(() => {
@@ -45,5 +50,5 @@ export function useProjects(mailboxId: string | null): UseProjectsResult {
     };
   }, [mailboxId, nonce]);
 
-  return { projects, loading, error, reload };
+  return { projects, loading, error, errorKind, reload };
 }

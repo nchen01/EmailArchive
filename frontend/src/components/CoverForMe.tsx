@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useCoverForMe } from "../hooks/useCoverForMe";
+import { errorKindTitle } from "../api/client";
 import type { EvidenceMessage, RetrievalStatus } from "../api/types";
+import { EvidenceDrawer, type SelectedCitation } from "./EvidenceDrawer";
 
 interface CoverForMeProps {
   mailboxId: string;
@@ -9,22 +11,33 @@ interface CoverForMeProps {
 function CitationChips({
   ids,
   evidence,
+  onSelect,
 }: {
   ids: string[];
   evidence: EvidenceMessage[];
+  onSelect: (c: SelectedCitation) => void;
 }) {
   const byHeader = Object.fromEntries(evidence.map((e) => [e.message_id_header, e]));
+  // Collapse repeated citations: a claim that cites the same message several
+  // times renders one chip. Set preserves first-seen order.
+  const uniqueIds = [...new Set(ids)];
   return (
     <span className="activity-citations">
-      {ids.map((id) => {
+      {uniqueIds.map((id) => {
         const ev = byHeader[id];
         const label = ev
           ? `${ev.subject} · ${new Date(ev.date).toLocaleDateString()}`
           : id;
         return (
-          <span key={id} className="citation-chip" title={ev?.snippet ?? id}>
+          <button
+            type="button"
+            key={id}
+            className="citation-chip citation-chip-button"
+            title={ev ? "Click to inspect this citation" : "Citation detail limited"}
+            onClick={() => onSelect({ id, evidence: ev })}
+          >
             {label}
-          </span>
+          </button>
         );
       })}
     </span>
@@ -95,11 +108,14 @@ function RetrievalStatusNote({
  */
 export function CoverForMe({ mailboxId }: CoverForMeProps) {
   const [query, setQuery] = useState("");
-  const { response, loading, error, notConfigured, ask } =
+  const [selectedCitation, setSelectedCitation] =
+    useState<SelectedCitation | null>(null);
+  const { response, loading, error, errorKind, notConfigured, ask } =
     useCoverForMe(mailboxId);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSelectedCitation(null);
     void ask(query);
   };
 
@@ -107,6 +123,8 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
   const claims = result?.claims ?? [];
   const evidence = response?.supporting_evidence ?? [];
   const retrieval_status = response?.retrieval_status ?? "active";
+  // Distinct, human-readable title for a transport/server failure.
+  const errorTitle = errorKindTitle(errorKind);
   const isInsufficient =
     !!result &&
     claims.length === 0 &&
@@ -145,11 +163,13 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
         </div>
       ) : null}
 
-      {/* Generic transport/server error — show the API detail so the operator
-          can diagnose auth/rate-limit/provider failures without a stack trace. */}
+      {/* Generic transport/server error — distinct, human-readable title plus
+          the API detail so the operator can diagnose auth/rate-limit/provider
+          failures without a stack trace. */}
       {error ? (
         <div className="summary-error mt-4" role="alert">
-          {error}
+          <strong className="block">{errorTitle}</strong>
+          <span>{error}</span>
         </div>
       ) : null}
 
@@ -183,7 +203,11 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
                 {claims.map((c, i) => (
                   <li key={i} className="summary-claim">
                     <span className="claim-text">{c.text}</span>
-                    <CitationChips ids={c.source_message_ids} evidence={evidence} />
+                    <CitationChips
+                      ids={c.source_message_ids}
+                      evidence={evidence}
+                      onSelect={setSelectedCitation}
+                    />
                   </li>
                 ))}
               </ul>
@@ -193,6 +217,12 @@ export function CoverForMe({ mailboxId }: CoverForMeProps) {
           <RetrievalStatusNote status={retrieval_status} evidenceCount={evidence.length} />
         </div>
       ) : null}
+
+      <EvidenceDrawer
+        selected={selectedCitation}
+        retrievalStatus={retrieval_status}
+        onClose={() => setSelectedCitation(null)}
+      />
     </div>
   );
 }

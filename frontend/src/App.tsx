@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { errorKindTitle } from "./api/client";
 import { ContactPanel } from "./components/ContactPanel";
 import { CoverForMe } from "./components/CoverForMe";
+import { DemoReadinessStrip } from "./components/DemoReadinessStrip";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { NetworkMap } from "./components/NetworkMap";
@@ -35,7 +37,9 @@ export default function App() {
     new Set(Object.keys(ROLE_COLORS)),
   );
 
-  const { data, loading, error, reload } = useNetworkMap(mailboxId || null);
+  const { data, loading, error, errorKind, reload } = useNetworkMap(
+    mailboxId || null,
+  );
   const {
     detail,
     loading: detailLoading,
@@ -46,6 +50,7 @@ export default function App() {
     projects,
     loading: projectsLoading,
     error: projectsError,
+    errorKind: projectsErrorKind,
     reload: reloadProjects,
   } = useProjects(mailboxId || null);
   const {
@@ -135,6 +140,15 @@ export default function App() {
         ) : null}
       </header>
 
+      {/* Unobtrusive demo-readiness strip (S11). Advisory only; never blocks. */}
+      {mailboxId ? (
+        <DemoReadinessStrip
+          mailboxId={mailboxId}
+          contactCount={loading ? null : (data?.nodes.length ?? null)}
+          projectCount={projectsLoading ? null : projects.length}
+        />
+      ) : null}
+
       {/* Main content area */}
       <main className="relative flex-1 overflow-hidden flex">
         {!mailboxId ? (
@@ -159,7 +173,11 @@ export default function App() {
 
         {activeTab === "network" && mailboxId && error && !loading ? (
           <div className="mx-auto mt-8 max-w-lg px-4">
-            <ErrorBanner message={error} onRetry={reload} />
+            <ErrorBanner
+              title={errorKindTitle(errorKind)}
+              message={error}
+              onRetry={reload}
+            />
           </div>
         ) : null}
 
@@ -195,7 +213,11 @@ export default function App() {
             )}
             {projectsError && !projectsLoading && (
               <div className="mx-auto mt-8 max-w-lg px-4 w-full">
-                <ErrorBanner message={projectsError} onRetry={reloadProjects} />
+                <ErrorBanner
+                  title={errorKindTitle(projectsErrorKind)}
+                  message={projectsError}
+                  onRetry={reloadProjects}
+                />
               </div>
             )}
             {!projectsLoading && !projectsError && (

@@ -9,6 +9,7 @@ import type {
   SynthesisResult,
 } from "../api/types";
 import { roleColor, roleLabel } from "../utils/roleColors";
+import { cleanProjectLabel } from "../utils/projectLabels";
 
 interface ProjectDetailProps {
   detail: ProjectDetailData;
@@ -102,7 +103,9 @@ export function ProjectDetail({
     <section className="project-detail">
       {/* Header */}
       <header className="project-detail-header">
-        <h2>{detail.label}</h2>
+        <h2 title={detail.label}>
+          {cleanProjectLabel(detail.label, detail.confidence).display}
+        </h2>
         <span className={`project-state-pill state-${detail.state}`}>
           {detail.state}
         </span>
