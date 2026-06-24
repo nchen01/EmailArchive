@@ -94,53 +94,75 @@ function _recencyBucket(end: string | null | undefined): number {
   return d.getUTCFullYear() * 12 + d.getUTCMonth();
 }
 
-/**
- * "Coverage usefulness" ranking for the Project-tree default root. For fast
- * handoff we want a project that is recent AND relationship-rich AND has a real
- * label — not merely the highest-confidence one (often a low-value
- * automated-sender cluster like "Account Https").
- *
- * Ranking tuple, best first:
- *   1. low-value labels last (unknown/uncategorized, no-reply/mailer/automated,
- *      bare-domain, "Account Https" style) — still selectable, just not default;
- *   2. more recent (monthly bucket of project.end) first;
- *   3. more members (capped);
- *   4. more threads (capped);
- *   5. higher confidence (tie-breaker only);
- *   6. label (final deterministic tie-break).
- *
- * Because low-value is the first key, a recent automated/no-reply cluster never
- * beats a slightly older real, relationship-rich project.
- */
-function _rootRank(
-  p: ProjectSummary,
-): [number, number, number, number, number, string] {
+/** User-facing sort modes for the Project-root picker. */
+export type ProjectRootSortMode =
+  | "recommended"
+  | "recent"
+  | "relationship_rich"
+  | "az";
+
+function _lowValue(p: ProjectSummary): boolean {
   const { uncategorized } = cleanProjectLabel(p.label, p.confidence);
-  const lowValue = uncategorized || isLowValueProjectLabel(p.label);
-  return [
-    lowValue ? 1 : 0,
-    -_recencyBucket(p.end),
-    -Math.min(p.member_count ?? 0, MEMBER_CAP),
-    -Math.min(p.thread_count ?? 0, THREAD_CAP),
-    -(p.confidence ?? 0),
-    p.label,
-  ];
+  return uncategorized || isLowValueProjectLabel(p.label);
+}
+
+function _endTimestamp(end: string | null | undefined): number {
+  if (!end) return Number.NEGATIVE_INFINITY;
+  const t = new Date(end).getTime();
+  return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+}
+
+/**
+ * Sort key per mode. Each returns a tuple compared element-wise (ascending), so
+ * negate "higher is better" numbers and put low-value first to demote it.
+ *
+ * - recommended: label quality → recency (monthly bucket) → capped members →
+ *   capped threads → confidence → label. The coverage-usefulness default: a
+ *   recent automated/no-reply cluster never beats a slightly older real,
+ *   relationship-rich project (low-value is the first key).
+ * - recent: label quality → project.end desc → label.
+ * - relationship_rich: label quality → capped members → capped threads →
+ *   confidence → label.
+ * - az: PURELY alphabetical by cleaned display label, then raw label — no
+ *   low-value demotion, because a user choosing A–Z wants a strict alphabetical
+ *   list, not a quality-grouped one.
+ */
+function _rootKey(p: ProjectSummary, mode: ProjectRootSortMode): (number | string)[] {
+  const low = _lowValue(p) ? 1 : 0;
+  const members = -Math.min(p.member_count ?? 0, MEMBER_CAP);
+  const threads = -Math.min(p.thread_count ?? 0, THREAD_CAP);
+  const conf = -(p.confidence ?? 0);
+  switch (mode) {
+    case "recent":
+      return [low, -_endTimestamp(p.end), p.label];
+    case "relationship_rich":
+      return [low, members, threads, conf, p.label];
+    case "az":
+      return [cleanProjectLabel(p.label, p.confidence).display.toLowerCase(), p.label.toLowerCase()];
+    case "recommended":
+    default:
+      return [low, -_recencyBucket(p.end), members, threads, conf, p.label];
+  }
 }
 
 /** Projects ordered best-first for use as a relationship-tree root. */
-export function sortedProjectRoots(projects: ProjectSummary[]): ProjectSummary[] {
+export function sortedProjectRoots(
+  projects: ProjectSummary[],
+  mode: ProjectRootSortMode = "recommended",
+): ProjectSummary[] {
   return [...projects].sort((a, b) => {
-    const ra = _rootRank(a);
-    const rb = _rootRank(b);
-    for (let i = 0; i < ra.length; i++) {
-      if (ra[i] < rb[i]) return -1;
-      if (ra[i] > rb[i]) return 1;
+    const ka = _rootKey(a, mode);
+    const kb = _rootKey(b, mode);
+    for (let i = 0; i < ka.length; i++) {
+      if (ka[i] < kb[i]) return -1;
+      if (ka[i] > kb[i]) return 1;
     }
     return 0;
   });
 }
 
+/** The default seeded root always uses the "recommended" coverage ordering. */
 export function pickDefaultProjectRoot(projects: ProjectSummary[]): string | null {
-  const sorted = sortedProjectRoots(projects);
+  const sorted = sortedProjectRoots(projects, "recommended");
   return sorted.length > 0 ? sorted[0].id : null;
 }

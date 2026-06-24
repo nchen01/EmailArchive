@@ -5,7 +5,11 @@ import type {
   RelationshipType,
 } from "../api/types";
 import { cleanProjectLabel } from "../utils/projectLabels";
-import { REL_TYPE_LABEL, sortedProjectRoots } from "../utils/relationshipMap";
+import {
+  type ProjectRootSortMode,
+  REL_TYPE_LABEL,
+  sortedProjectRoots,
+} from "../utils/relationshipMap";
 
 const MODES: { mode: RelationshipMapMode; label: string }[] = [
   { mode: "owner", label: "Owner tree" },
@@ -146,9 +150,13 @@ function ProjectRootPicker({
   onProjectChange: (id: string) => void;
 }) {
   const [filter, setFilter] = useState("");
+  const [sortMode, setSortMode] = useState<ProjectRootSortMode>("recommended");
   const SHOW_SEARCH_AT = 8;
 
-  const ordered = useMemo(() => sortedProjectRoots(projects), [projects]);
+  const ordered = useMemo(
+    () => sortedProjectRoots(projects, sortMode),
+    [projects, sortMode],
+  );
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return ordered;
@@ -175,6 +183,20 @@ function ProjectRootPicker({
       <p className="rel-control-note rel-control-note-top">
         Select a project root to redraw the map.
       </p>
+      <label className="rel-sort-label">
+        Sort
+        <select
+          className="rel-select rel-sort-select"
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value as ProjectRootSortMode)}
+          aria-label="Sort project roots"
+        >
+          <option value="recommended">Recommended</option>
+          <option value="recent">Recent</option>
+          <option value="relationship_rich">Relationship-rich</option>
+          <option value="az">A–Z</option>
+        </select>
+      </label>
       {projects.length > SHOW_SEARCH_AT ? (
         <input
           type="text"
