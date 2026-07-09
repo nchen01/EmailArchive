@@ -255,6 +255,7 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
       <RelationshipDetailDrawer
         selection={selection}
         nodeLabels={nodeLabels}
+        mailboxId={mailboxId}
         onClose={() => setSelection(null)}
       />
     </div>

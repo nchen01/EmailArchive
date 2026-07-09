@@ -20,10 +20,13 @@ interface CoverForMeProps {
 function CitationChips({
   ids,
   evidence,
+  counts,
   onSelect,
 }: {
   ids: string[];
   evidence: EvidenceMessage[];
+  /** header → how many claims across the whole answer cite it (S14.4). */
+  counts: Record<string, number>;
   onSelect: (c: SelectedCitation) => void;
 }) {
   const byHeader = Object.fromEntries(evidence.map((e) => [e.message_id_header, e]));
@@ -43,7 +46,7 @@ function CitationChips({
             key={id}
             className="citation-chip citation-chip-button"
             title={ev ? "Click to inspect this citation" : "Citation detail limited"}
-            onClick={() => onSelect({ id, evidence: ev })}
+            onClick={() => onSelect({ id, evidence: ev, citationCount: counts[id] })}
           >
             {label}
           </button>
@@ -169,6 +172,14 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
   const claims = result?.claims ?? [];
   const evidence = response?.supporting_evidence ?? [];
   const retrieval_status = response?.retrieval_status ?? "active";
+  // How many claims cite each header (dedup within a claim first) — powers the
+  // drawer's "cited in N places" grouping (S14.4).
+  const citationCounts: Record<string, number> = {};
+  for (const c of claims) {
+    for (const id of new Set(c.source_message_ids)) {
+      citationCounts[id] = (citationCounts[id] ?? 0) + 1;
+    }
+  }
   // Distinct, human-readable title for a transport/server failure.
   const errorTitle = errorKindTitle(errorKind);
   const isInsufficient =
@@ -272,6 +283,7 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
                     <CitationChips
                       ids={c.source_message_ids}
                       evidence={evidence}
+                      counts={citationCounts}
                       onSelect={setSelectedCitation}
                     />
                   </li>

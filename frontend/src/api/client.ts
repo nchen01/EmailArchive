@@ -8,6 +8,7 @@ import type {
   RelationshipMapMode,
   RelationshipMapResponse,
   RelationshipType,
+  SourceMessageDetail,
   SynthesisResult,
 } from "./types";
 
@@ -260,6 +261,23 @@ export async function fetchCoverForMe(
 ): Promise<CoverForMeResponse> {
   const url = `${API_BASE}/api/cover-for-me/${encodeURIComponent(mailboxId)}`;
   return postJsonBody<CoverForMeResponse>(url, { query });
+}
+
+/**
+ * Fetch citation-safe detail for one source message (S14). Keyed on the RFC
+ * message_id_header (the citation key). Returns ApiError kind "not_found" (404)
+ * when the header is missing, in a different mailbox, or sensitivity-excluded —
+ * callers should treat all three the same ("detail not available"), never
+ * inferring existence of a sensitive message.
+ */
+export async function fetchSourceMessage(
+  mailboxId: string,
+  messageIdHeader: string,
+): Promise<SourceMessageDetail> {
+  const url = `${API_BASE}/api/source-message/${encodeURIComponent(
+    mailboxId,
+  )}?message_id_header=${encodeURIComponent(messageIdHeader)}`;
+  return getJson<SourceMessageDetail>(url);
 }
 
 export interface RelationshipMapQuery {

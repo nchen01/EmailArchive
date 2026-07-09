@@ -264,7 +264,11 @@ def test_build_supporting_evidence_only_cited_headers():
     cited_hit = _make_hit(cited_header, subject="Cited Subject", snippet="Cited snippet.")
     uncited_hit = _make_hit(uncited_header, subject="Uncited Subject", snippet="Uncited snippet.")
 
-    evidence = _build_supporting_evidence(result, [cited_hit, uncited_hit], MagicMock(), "mailbox")
+    db_mock = MagicMock()
+    db_mock.execute.return_value.all.return_value = []  # no L1 rows needed
+    evidence = _build_supporting_evidence(
+        result, [cited_hit, uncited_hit], db_mock, "mailbox", "gmail"
+    )
 
     headers = [e.message_id_header for e in evidence]
     assert cited_header in headers
@@ -272,7 +276,12 @@ def test_build_supporting_evidence_only_cited_headers():
 
 
 def test_build_supporting_evidence_uses_hit_metadata():
-    """_build_supporting_evidence uses l2 hit subject/snippet directly (no DB call)."""
+    """L2 hit subject/snippet win over the DB row; sender is filled from the DB.
+
+    S14: the builder now does one batched DB query for every cited header to
+    populate the sender fields (RetrievalHit carries no sender). The L2 hit's
+    subject/snippet still take precedence over the DB row for that header.
+    """
     from unittest.mock import MagicMock
     from services.api.routers.cover_for_me import _build_supporting_evidence
     from services.synthesis.contracts import SynthesisClaim, SynthesisResult
@@ -284,14 +293,23 @@ def test_build_supporting_evidence_uses_hit_metadata():
         model="fake", usage={},
     )
 
+    row = MagicMock()
+    row.message_id_header = header
+    row.subject = "DB Subject (ignored for L2)"
+    row.ts = _TS
+    row.clean_text = "DB body (ignored for L2)."
+    row.sender_email = "sender@corp.example"
+    row.addresses = None
     db_mock = MagicMock()
-    db_mock.execute.side_effect = AssertionError("DB should not be queried for L2-sourced headers")
+    db_mock.execute.return_value.all.return_value = [row]
 
-    evidence = _build_supporting_evidence(result, [hit], db_mock, "mailbox")
+    evidence = _build_supporting_evidence(result, [hit], db_mock, "mailbox", "gmail")
 
     assert len(evidence) == 1
-    assert evidence[0].subject == "Hit Subject"
-    assert evidence[0].snippet == "Hit snippet text."
+    assert evidence[0].subject == "Hit Subject"        # hit wins over DB row
+    assert evidence[0].snippet == "Hit snippet text."  # hit wins over DB row
+    assert evidence[0].sender_domain == "corp.example"  # from the DB row
+    assert evidence[0].source_type == "l2_retrieval"
 
 
 def test_build_supporting_evidence_empty_claims():
@@ -301,7 +319,7 @@ def test_build_supporting_evidence_empty_claims():
     from services.synthesis.contracts import SynthesisResult
 
     result = SynthesisResult(claims=[], model="fake", usage={})
-    evidence = _build_supporting_evidence(result, [], MagicMock(), "mailbox")
+    evidence = _build_supporting_evidence(result, [], MagicMock(), "mailbox", "gmail")
     assert evidence == []
 
 
@@ -334,11 +352,13 @@ def test_build_supporting_evidence_mixed_l1_l2_preserves_claim_order():
     l1_row.subject = "L1 Subject"
     l1_row.ts = _TS
     l1_row.clean_text = "L1 snippet."
+    l1_row.sender_email = "l1sender@example.com"
+    l1_row.addresses = None
 
     db_mock = MagicMock()
     db_mock.execute.return_value.all.return_value = [l1_row]
 
-    evidence = _build_supporting_evidence(result, [l2_hit], db_mock, "mailbox")
+    evidence = _build_supporting_evidence(result, [l2_hit], db_mock, "mailbox", "gmail")
 
     assert len(evidence) == 2
     assert evidence[0].message_id_header == l1_header, "L1 must come first (matches claim order)"

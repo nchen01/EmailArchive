@@ -146,12 +146,38 @@ export interface CoverForMeRequest {
   query: string;
 }
 
+/** Which layer surfaced a citation. */
+export type EvidenceSourceType = "l1_structured" | "l2_retrieval";
+
 /** Metadata for one message cited in result.claims. Never contains uncited hits. */
 export interface EvidenceMessage {
   message_id_header: string;
   subject: string;
   date: string; // ISO 8601
   snippet: string; // first 200 chars of clean_text
+  // S14 — optional (older responses omit them; treat as defaults).
+  sender_display?: string;
+  sender_domain?: string;
+  source_type?: EvidenceSourceType | null;
+  /** Best-effort Gmail rfc822msgid search link; Gmail mailboxes only, else null. */
+  open_url?: string | null;
+}
+
+/**
+ * Full detail for one cited source message (S14), from
+ * GET /api/source-message/{mailbox_id}?message_id_header=...
+ * Only citation-safe metadata; never body/MIME/tokens; sensitive messages 404.
+ */
+export interface SourceMessageDetail {
+  message_id_header: string;
+  subject: string;
+  date: string; // ISO 8601 ("" if unknown)
+  sender_display: string;
+  sender_domain: string;
+  provider_type: "gmail" | "msgraph";
+  snippet: string;
+  source_type?: EvidenceSourceType | null;
+  open_url?: string | null;
 }
 
 /** Structured operational state for L2 retrieval (S8.4). */

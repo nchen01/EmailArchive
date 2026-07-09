@@ -124,7 +124,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   `supporting_evidence` only — no sensitive content, no claim without citation);
   repeated citations deduped; distinct titled error states; display-only project
   label cleanup (`utils/projectLabels.ts`); demo-readiness strip.
-- **S13 ✓ (current)** — Relationship Map / tree. New `services/relationships/`
+- **S13 ✓** — Relationship Map / tree. New `services/relationships/`
   package derives a graph-backed, tree-renderable relationship map *live* from
   existing L1 tables (no persisted table — see the persistence note in
   `derive.py`). Relationship types: direct_exchange (owner↔person from Edge),

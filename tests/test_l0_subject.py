@@ -329,7 +329,8 @@ def test_build_supporting_evidence_decodes_l2_hit_subject():
     )
 
     db = MagicMock()
-    evidence = _build_supporting_evidence(result, [hit], db, "mailbox-id")
+    db.execute.return_value.all.return_value = []  # no DB row needed for the L2 hit
+    evidence = _build_supporting_evidence(result, [hit], db, "mailbox-id", "gmail")
 
     assert evidence, "Expected one EvidenceMessage"
     assert "=?" not in evidence[0].subject, (
@@ -361,11 +362,13 @@ def test_build_supporting_evidence_decodes_l1_db_subject():
         subject = encoded_subject
         ts = datetime(2026, 1, 15, tzinfo=timezone.utc)
         clean_text = "P1 incident body."
+        sender_email = "oncall@acme.com"
+        addresses = None
 
     db = MagicMock()
     db.execute.return_value.all.return_value = [_FakeRow()]
 
-    evidence = _build_supporting_evidence(result, [], db, "mailbox-id")
+    evidence = _build_supporting_evidence(result, [], db, "mailbox-id", "gmail")
 
     assert evidence, "Expected one EvidenceMessage"
     assert "=?" not in evidence[0].subject, (

@@ -76,9 +76,14 @@ Key docs:
 - `docs/s7-implementation-plan.md` — S7 task breakdown and locked decisions
 - `docs/implementation-plan.md` — overall pipeline architecture
 
-Current status: **S0–S10 complete.** S7 L2 hybrid retrieval (Voyage AI voyage-4,
+Current status: **S0–S13 complete.** S7 L2 hybrid retrieval (Voyage AI voyage-4,
 pgvector HNSW, cover-for-me upgrade) shipped and live-validated. S8 real-mailbox
 demo readiness, S9 project-clustering materialization, and S10 local runtime
 reliability are all complete. S10 switched the Voyage embedding runtime from the
 `voyageai` SDK to direct REST over `httpx` — see `docs/decisions.md` D12b S10
-status note. Optional S7.12 hosted Voyage reranker remains off by default.
+status note. Optional S7.12 hosted Voyage reranker remains off by default. S11
+shipped the inspectable citation evidence drawer + deduped citations; S12 the
+product shell, client router, and marketing landing; S13 the graph-backed
+Relationship Map tree (`services/relationships/`, `/api/relationship-map`) with
+the Network Map preserved. S14 (in progress) is evidence/source-navigation
+trust polish on top of this engine — see `docs/s14-implementation-plan.md`.

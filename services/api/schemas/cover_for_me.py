@@ -28,11 +28,22 @@ RetrievalStatus = Literal[
 
 class EvidenceMessage(BaseModel):
     """Metadata for one cited source message, included in the response so
-    the UI can show subject and date instead of a raw message_id_header."""
+    the UI can show subject and date instead of a raw message_id_header.
+
+    S14 added the sender/provenance/link fields. They are all optional with
+    defaults so older clients and existing tests are unaffected:
+      - sender_display / sender_domain: workspace-safe sender labels.
+      - source_type: which layer surfaced this citation.
+      - open_url: best-effort Gmail rfc822msgid search link (Gmail only; else None).
+    """
     message_id_header: str
     subject: str
     date: str    # ISO 8601 timestamp string
     snippet: str  # first 200 chars of clean_text
+    sender_display: str = ""
+    sender_domain: str = ""
+    source_type: Literal["l1_structured", "l2_retrieval"] | None = None
+    open_url: str | None = None
 
 
 class CoverForMeRequest(BaseModel):
