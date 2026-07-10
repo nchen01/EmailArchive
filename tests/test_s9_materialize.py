@@ -211,6 +211,12 @@ def fresh_mailbox():
     try:
         yield session, mailbox_id
     finally:
+        # Guard against cross-test contamination: if a test left the session in
+        # an aborted-transaction state (e.g. a failed flush), roll back first so
+        # cleanup can still run. Without this, the mailbox delete below would
+        # itself raise, the mailbox would leak, and the failure would cascade
+        # into later tests in the same pytest process.
+        session.rollback()
         session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mailbox_id))
         session.commit()
         session.close()
@@ -232,7 +238,13 @@ def fresh_mailbox_with_embeddings(fresh_mailbox):
 
 @requires_db
 def test_materialize_dry_run_writes_nothing(fresh_mailbox):
-    """dry_run=True must not create any Project rows; reports missing_embeddings."""
+    """dry_run=True must not change the Project row count; reports missing_embeddings.
+
+    Note: the fresh_mailbox fixture runs full L1 enrichment, and persist_l1
+    persists the clustering result, so the mailbox already has Project rows
+    before materialize runs. The invariant under test is that a dry run adds
+    nothing on top of that baseline (delta == 0), not that the baseline is empty.
+    """
     from services.db import models as orm
     from scripts.materialize_projects import materialize
 
@@ -241,16 +253,20 @@ def test_materialize_dry_run_writes_nothing(fresh_mailbox):
     def factory():
         return session
 
+    def _project_count() -> int:
+        return session.execute(
+            select(func.count()).select_from(orm.Project)
+            .where(orm.Project.mailbox_id == mailbox_id)
+        ).scalar()
+
+    before = _project_count()
     stats = materialize(
         mailbox_id=mailbox_id, dry_run=True, session_factory=factory
     )
 
     assert stats["projects_written"] == 0
-    count = session.execute(
-        select(func.count()).select_from(orm.Project)
-        .where(orm.Project.mailbox_id == mailbox_id)
-    ).scalar()
-    assert count == 0, f"dry_run created {count} project rows"
+    after = _project_count()
+    assert after == before, f"dry_run changed project count: {before} -> {after}"
     assert stats["eligible_threads"] > 0
     assert stats["projects_found"] > 0   # clustering ran and found projects
     assert stats["missing_embeddings"] > 0  # no embeddings loaded in fresh_mailbox
@@ -492,6 +508,13 @@ def test_materialize_excludes_mixed_sensitive_thread(fresh_mailbox_with_embeddin
         t_end=now,
     )
     session.add(thread)
+    # Flush the parent Thread before adding its Messages. Message.thread_id is a
+    # raw ForeignKey with no ORM relationship() to Thread, so the unit of work
+    # will NOT order the parent insert first on its own — without this flush the
+    # message INSERT races ahead of the thread INSERT and raises a
+    # ForeignKeyViolation, which aborts the session's transaction and cascades
+    # into later tests in the same process.
+    session.flush()
 
     clean_msg = orm.Message(
         mailbox_id=mailbox_id,
