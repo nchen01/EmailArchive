@@ -227,6 +227,12 @@ python scripts/gmail_smoke_ingest.py --owner-email you@example.com --max-message
 python scripts/gmail_smoke_ingest.py --mailbox-id <uuid> --owner-email you@example.com --confirm
 ```
 
+**Verifying the app:** `docs/s15-verification-matrix.md` is the canonical guide to
+what "green" means in each environment — minimum local (no DB/keys), DB-gated,
+demo-mailbox, and live-integration — with exact PowerShell commands, the required
+env vars, and the two intentional test skips. Start there before the raw commands
+below.
+
 **Quick start (S0–S14 local stack):**
 
 On Windows, prefer `scripts/run_backend.ps1` and `scripts/run_frontend.ps1` from
