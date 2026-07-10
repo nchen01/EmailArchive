@@ -9,6 +9,21 @@ import { REL_TYPE_LABEL } from "../utils/relationshipMap";
 import { formatShortDate } from "../utils/formatDate";
 import { SourceDetailView } from "./SourceDetail";
 
+/**
+ * Plain-language provenance note for a structural edge that has no cited
+ * message headers. Only `direct_exchange` edges carry `source_message_ids`
+ * (see services/relationships/derive.py); `project_copresence`,
+ * `thread_copresence`, and `org_affiliation` edges are backed by project /
+ * thread / domain evidence instead. We explain that rather than leave the
+ * drawer looking empty — and we never fabricate a message id for these.
+ */
+const EVIDENCE_KIND_NOTE: Record<RelationshipEdge["evidence_kind"], string> = {
+  message_headers: "No source-message citation is available for this relationship.",
+  thread_ids: "This relationship is backed by shared thread participation.",
+  project_ids: "This relationship is backed by shared project membership.",
+  domain: "This relationship is backed by organization/domain affiliation.",
+};
+
 export type RelSelection =
   | { kind: "node"; node: RelationshipNode }
   | { kind: "edge"; edge: RelationshipEdge };
@@ -250,7 +265,20 @@ function EdgeDetail({
             ))}
           </ul>
         </div>
-      ) : null}
+      ) : (
+        // Structural edge (project / thread / domain evidence): no message
+        // citation exists. Explain the provenance instead of showing nothing —
+        // never fabricate a message id here.
+        <div className="mb-3">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">
+            Evidence
+          </div>
+          <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            {EVIDENCE_KIND_NOTE[edge.evidence_kind] ??
+              EVIDENCE_KIND_NOTE.message_headers}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
