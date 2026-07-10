@@ -9,9 +9,10 @@ builder and the standalone source-message detail endpoint:
   whatever account the operator is signed into, so the UI labels it "Search in
   Gmail", never "open exact email" (D-S14-1). We never build ``provider_id``
   links. Returns ``None`` for any non-Gmail provider.
-- ``sender_fields`` — the sender display name + registered domain, using only
-  information the workspace already surfaces elsewhere (Network Map). Never a
-  richer identity than that.
+- ``sender_fields`` — the sender display name + email domain (the raw part after
+  ``@``, not a tldextract registered domain), using only information the
+  workspace already surfaces elsewhere (Network Map). Never a richer identity
+  than that.
 """
 from __future__ import annotations
 

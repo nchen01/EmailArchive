@@ -24,6 +24,8 @@ sensitivity excludes.
 """
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -45,7 +47,15 @@ async def source_message_endpoint(
     message_id_header: str = Query(..., min_length=1, max_length=998),
     db: Session = Depends(get_db),
 ) -> SourceMessageDetail:
-    mbx = db.get(orm.Mailbox, mailbox_id)
+    # mailbox.id is a Postgres UUID column: reject a non-UUID path value with a
+    # clean 404 instead of letting it raise a DB/driver error (matches S13's
+    # relationship_map.py hardening).
+    try:
+        mailbox_uuid = UUID(mailbox_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="mailbox not found") from None
+
+    mbx = db.get(orm.Mailbox, mailbox_uuid)
     if mbx is None:
         raise HTTPException(status_code=404, detail="mailbox not found")
 

@@ -303,6 +303,18 @@ def test_source_message_missing_header_404(seeded_l0):
 
 
 @requires_db
+def test_source_message_malformed_mailbox_id_404(seeded_l0):
+    """A non-UUID mailbox path value returns a clean 404, not a 500 from the
+    UUID column cast (S13 hardening pattern)."""
+    client, _mailbox_id, _session = seeded_l0
+    resp = client.get(
+        "/api/source-message/not-a-uuid",
+        params={"message_id_header": "x"},
+    )
+    assert resp.status_code == 404
+
+
+@requires_db
 def test_source_message_wrong_mailbox_404(seeded_l0):
     client, _mailbox_id, session = seeded_l0
     clean, _s, _t = _classify_headers(session, _mailbox_id)
