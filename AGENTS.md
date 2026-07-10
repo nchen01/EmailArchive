@@ -149,6 +149,15 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   Cover-for-me suggested-question chips; project search filter. Frontend-only —
   no backend/schema/AI/retrieval/clustering changes. See
   `docs/s12-product-shell-landing-plan.md` for the manual demo script.
+- **S14 ✓** — Evidence & source navigation polish. New safe
+  `GET /api/source-message/{mailbox_id}` endpoint keyed by
+  `message_id_header`, with mailbox-boundary checks, malformed-UUID 404s, and
+  the same whole-thread sensitivity gate used by Cover-for-me
+  `supporting_evidence`. Citation drawers now show subject/sender/date/snippet,
+  copy Message-ID, and best-effort Gmail `rfc822msgid` search; Relationship Map
+  direct-exchange message IDs open source detail, while structural project /
+  thread / domain edges show provenance notes and never fabricate message IDs.
+  See `docs/s14-implementation-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 
