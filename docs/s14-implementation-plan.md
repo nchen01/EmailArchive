@@ -178,13 +178,15 @@ are omitted, and existing cover-for-me tests still pass.
 - Keep it compact and professional; keep the graceful "no preview available"
   degraded state for headers with no evidence row.
 
-### S14.5 — Copy-id + open-in-Gmail affordances
+### S14.5 — Copy-id + search-in-Gmail affordances
 
 - **Copy Message-ID** button in the drawer (always present; uses
   `navigator.clipboard`, with a select-on-click fallback). This is the
-  guaranteed path when no deep link exists.
-- **Open in Gmail** link rendered **only when `open_url` is non-null**
-  (i.e. gmail + S14.2 verified). Labeled "opens in your signed-in Gmail."
+  guaranteed fallback when no deep link exists.
+- **Search in Gmail** link rendered **only when `open_url` is non-null**
+  (i.e. gmail + S14.2 verified). Labeled as best-effort — "Search in Gmail" /
+  "opens a Gmail `rfc822msgid` search in your signed-in account" — not an
+  exact-email guarantee.
 
 ### S14.6 — Consistent evidence affordance across surfaces
 
