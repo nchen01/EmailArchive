@@ -1,5 +1,28 @@
-import type { RelationshipEdge, RelationshipNode } from "../api/types";
+import { useEffect, useState } from "react";
+import { ApiError, fetchSourceMessage } from "../api/client";
+import type {
+  RelationshipEdge,
+  RelationshipNode,
+  SourceMessageDetail,
+} from "../api/types";
 import { REL_TYPE_LABEL } from "../utils/relationshipMap";
+import { formatShortDate } from "../utils/formatDate";
+import { SourceDetailView } from "./SourceDetail";
+
+/**
+ * Plain-language provenance note for a structural edge that has no cited
+ * message headers. Only `direct_exchange` edges carry `source_message_ids`
+ * (see services/relationships/derive.py); `project_copresence`,
+ * `thread_copresence`, and `org_affiliation` edges are backed by project /
+ * thread / domain evidence instead. We explain that rather than leave the
+ * drawer looking empty — and we never fabricate a message id for these.
+ */
+const EVIDENCE_KIND_NOTE: Record<RelationshipEdge["evidence_kind"], string> = {
+  message_headers: "No source-message citation is available for this relationship.",
+  thread_ids: "This relationship is backed by shared thread participation.",
+  project_ids: "This relationship is backed by shared project membership.",
+  domain: "This relationship is backed by organization/domain affiliation.",
+};
 
 export type RelSelection =
   | { kind: "node"; node: RelationshipNode }
@@ -9,27 +32,24 @@ interface DrawerProps {
   selection: RelSelection | null;
   /** id → display label for resolving endpoints / project ids. */
   nodeLabels: Record<string, string>;
+  /** Mailbox to resolve clicked source-message citations against (S14.6). */
+  mailboxId: string;
   onClose: () => void;
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 /**
  * Right drawer showing why two nodes are connected, or details of a node.
  * Evidence-forward and volume-honest: it states the relationship type, a plain
  * explanation, evidence count (explicitly "not importance"), shared projects /
- * threads, and message-id citations when available. It never shows raw bodies or
- * sensitive content (the backend excludes sensitive threads from derivation).
+ * threads, and message-id citations. Each cited message is now clickable and
+ * resolves to the same safe source-message detail used by Cover-for-me (S14.6);
+ * it never shows raw bodies or sensitive content (the backend excludes sensitive
+ * threads from derivation, and the detail endpoint 404s any excluded message).
  */
 export function RelationshipDetailDrawer({
   selection,
   nodeLabels,
+  mailboxId,
   onClose,
 }: DrawerProps) {
   const open = selection !== null;
@@ -60,7 +80,11 @@ export function RelationshipDetailDrawer({
         {selection?.kind === "node" ? (
           <NodeDetail node={selection.node} />
         ) : selection?.kind === "edge" ? (
-          <EdgeDetail edge={selection.edge} labelOf={labelOf} fmtDate={fmtDate} />
+          <EdgeDetail
+            edge={selection.edge}
+            labelOf={labelOf}
+            mailboxId={mailboxId}
+          />
         ) : null}
       </div>
     </aside>
@@ -100,15 +124,96 @@ function NodeDetail({ node }: { node: RelationshipNode }) {
   );
 }
 
+/**
+ * Fetches and renders one clicked source-message citation. Fetches on mount and
+ * whenever the header changes. A 404 (missing / wrong-mailbox / sensitivity-
+ * excluded — indistinguishable by design) renders a neutral "detail not
+ * available" note, never an inference that a sensitive message exists.
+ */
+function SourceMessageInspector({
+  mailboxId,
+  header,
+  onBack,
+}: {
+  mailboxId: string;
+  header: string;
+  onBack: () => void;
+}) {
+  const [detail, setDetail] = useState<SourceMessageDetail | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(
+    "loading",
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setState("loading");
+    setDetail(null);
+    fetchSourceMessage(mailboxId, header)
+      .then((d) => {
+        if (cancelled) return;
+        setDetail(d);
+        setState("ready");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setState(err instanceof ApiError && err.kind === "not_found" ? "unavailable" : "error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mailboxId, header]);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-3 text-[11px] font-medium text-slate-500 hover:text-slate-700"
+      >
+        ← Back to relationship
+      </button>
+      {state === "loading" ? (
+        <p className="text-sm text-slate-500">Loading message detail…</p>
+      ) : state === "ready" && detail ? (
+        <SourceDetailView source={detail} />
+      ) : state === "unavailable" ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          Detail not available for this message. It may be excluded or no longer
+          present. The relationship still references it by the ID below.
+          <div className="mt-2 break-all rounded bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500">
+            {header}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          Couldn't load message detail. Try again.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EdgeDetail({
   edge,
   labelOf,
-  fmtDate,
+  mailboxId,
 }: {
   edge: RelationshipEdge;
   labelOf: (id: string) => string;
-  fmtDate: (iso: string | null) => string;
+  mailboxId: string;
 }) {
+  const [inspecting, setInspecting] = useState<string | null>(null);
+
+  if (inspecting) {
+    return (
+      <SourceMessageInspector
+        mailboxId={mailboxId}
+        header={inspecting}
+        onBack={() => setInspecting(null)}
+      />
+    );
+  }
+
   return (
     <div>
       <Field
@@ -138,7 +243,7 @@ function EdgeDetail({
       ) : null}
       <Field
         label="Active"
-        value={`${fmtDate(edge.first_seen)} – ${fmtDate(edge.last_seen)}`}
+        value={`${formatShortDate(edge.first_seen)} – ${formatShortDate(edge.last_seen)}`}
       />
       {edge.source_message_ids.length > 0 ? (
         <div className="mb-3">
@@ -147,16 +252,33 @@ function EdgeDetail({
           </div>
           <ul className="mt-1 space-y-1">
             {edge.source_message_ids.slice(0, 10).map((id) => (
-              <li
-                key={id}
-                className="break-all rounded bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-500"
-              >
-                {id}
+              <li key={id}>
+                <button
+                  type="button"
+                  onClick={() => setInspecting(id)}
+                  title="Inspect this source message"
+                  className="w-full break-all rounded bg-slate-100 px-2 py-1 text-left font-mono text-[10px] text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                >
+                  {id}
+                </button>
               </li>
             ))}
           </ul>
         </div>
-      ) : null}
+      ) : (
+        // Structural edge (project / thread / domain evidence): no message
+        // citation exists. Explain the provenance instead of showing nothing —
+        // never fabricate a message id here.
+        <div className="mb-3">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">
+            Evidence
+          </div>
+          <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            {EVIDENCE_KIND_NOTE[edge.evidence_kind] ??
+              EVIDENCE_KIND_NOTE.message_headers}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { EvidenceMessage, RetrievalStatus } from "../api/types";
+import { SourceDetailView } from "./SourceDetail";
 
 /** The citation the user clicked: the cited header plus its evidence (if any). */
 export interface SelectedCitation {
@@ -6,6 +7,8 @@ export interface SelectedCitation {
   id: string;
   /** Matching supporting_evidence row, or undefined when none was returned. */
   evidence: EvidenceMessage | undefined;
+  /** How many claims in this answer cite this header (S14.4 grouping). */
+  citationCount?: number;
 }
 
 interface EvidenceDrawerProps {
@@ -15,30 +18,11 @@ interface EvidenceDrawerProps {
   onClose: () => void;
 }
 
-const RETRIEVAL_SOURCE_LABEL: Record<RetrievalStatus, string> = {
-  active: "Hybrid retrieval (structured + message search)",
-  active_l1_only: "Structured data only",
-  disabled_no_key: "Structured data only (message search not configured)",
-  degraded_rate_limit: "Structured data only (message search rate-limited)",
-  no_embeddings: "Structured data only (no message embeddings)",
-  unavailable: "Structured data only (message search unavailable)",
-};
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 /**
  * Slide-in drawer that lets a user inspect *why* a Cover-for-me claim was made
- * by opening the cited source message's metadata: subject, date, the RFC 5322
- * message_id_header (the durable citation key), the normalized snippet, and the
- * retrieval source/status.
+ * by opening the cited source message's metadata: subject, sender, date, the
+ * normalized snippet, the source layer, the RFC 5322 message_id_header (with a
+ * copy action), and — for Gmail mailboxes — a best-effort "Search in Gmail" link.
  *
  * It only ever renders data already present in `supporting_evidence` — it never
  * fetches raw message bodies, tokens, keys, or provider internals, and sensitive
@@ -76,50 +60,11 @@ export function EvidenceDrawer({
       <div className="flex-1 overflow-y-auto p-4">
         {selected ? (
           ev ? (
-            <div className="space-y-4">
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Subject
-                </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {ev.subject || "(no subject)"}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Date
-                </div>
-                <div className="text-sm text-slate-700">{formatDate(ev.date)}</div>
-              </div>
-
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Snippet
-                </div>
-                <p className="mt-0.5 whitespace-pre-wrap rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                  {ev.snippet || "(no preview available)"}
-                </p>
-              </div>
-
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Retrieval source
-                </div>
-                <div className="text-sm text-slate-700">
-                  {RETRIEVAL_SOURCE_LABEL[retrievalStatus] ?? "Structured data"}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Message ID
-                </div>
-                <div className="mt-0.5 break-all rounded bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500">
-                  {ev.message_id_header}
-                </div>
-              </div>
-            </div>
+            <SourceDetailView
+              source={ev}
+              retrievalStatus={retrievalStatus}
+              citationCount={selected.citationCount}
+            />
           ) : (
             // Degraded: the claim cited this header but no evidence row was
             // returned (e.g. an L1-structured citation with no message snippet).
@@ -128,22 +73,15 @@ export function EvidenceDrawer({
                 No message preview is available for this citation. The claim still
                 references a real source message by its ID below.
               </div>
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Message ID
-                </div>
-                <div className="mt-0.5 break-all rounded bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500">
-                  {selected.id}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Retrieval source
-                </div>
-                <div className="text-sm text-slate-700">
-                  {RETRIEVAL_SOURCE_LABEL[retrievalStatus] ?? "Structured data"}
-                </div>
-              </div>
+              <SourceDetailView
+                source={{
+                  message_id_header: selected.id,
+                  subject: "",
+                  date: "",
+                  snippet: "",
+                }}
+                retrievalStatus={retrievalStatus}
+              />
             </div>
           )
         ) : null}

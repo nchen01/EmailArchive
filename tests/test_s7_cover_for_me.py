@@ -248,6 +248,34 @@ def test_run_l2_rate_limit_returns_degraded():
     assert hits == []
 
 
+def _safe_row(header, subject="", clean_text="", sender_email="a@acme.com", addresses=None):
+    """A row dict shaped like fetch_safe_source_rows() output (a Mapping)."""
+    return {
+        "message_id_header": header,
+        "subject": subject,
+        "ts": _TS,
+        "clean_text": clean_text,
+        "sender_email": sender_email,
+        "addresses": addresses,
+    }
+
+
+def _patch_safe_rows(rows):
+    """Patch the shared safe-source gate to return exactly ``rows`` (header→row).
+
+    Lets these DB-free unit tests exercise the ordering / hit-vs-row / gating
+    logic of _build_supporting_evidence without a real Postgres. The gate itself
+    (whole-thread sensitivity exclusion) is covered by DB-gated tests in
+    test_s14_source_message.py.
+    """
+    from unittest.mock import patch
+
+    return patch(
+        "services.api.routers.cover_for_me.fetch_safe_source_rows",
+        return_value=rows,
+    )
+
+
 def test_build_supporting_evidence_only_cited_headers():
     """_build_supporting_evidence includes only headers that appear in claims."""
     from unittest.mock import MagicMock
@@ -264,7 +292,10 @@ def test_build_supporting_evidence_only_cited_headers():
     cited_hit = _make_hit(cited_header, subject="Cited Subject", snippet="Cited snippet.")
     uncited_hit = _make_hit(uncited_header, subject="Uncited Subject", snippet="Uncited snippet.")
 
-    evidence = _build_supporting_evidence(result, [cited_hit, uncited_hit], MagicMock(), "mailbox")
+    with _patch_safe_rows({cited_header: _safe_row(cited_header)}):
+        evidence = _build_supporting_evidence(
+            result, [cited_hit, uncited_hit], MagicMock(), "mailbox", "gmail"
+        )
 
     headers = [e.message_id_header for e in evidence]
     assert cited_header in headers
@@ -272,7 +303,12 @@ def test_build_supporting_evidence_only_cited_headers():
 
 
 def test_build_supporting_evidence_uses_hit_metadata():
-    """_build_supporting_evidence uses l2 hit subject/snippet directly (no DB call)."""
+    """L2 hit subject/snippet win over the DB row; sender is filled from the DB.
+
+    S14: the builder now looks up every cited header through the shared safe
+    gate to populate the sender fields (RetrievalHit carries no sender). The L2
+    hit's subject/snippet still take precedence over the DB row for that header.
+    """
     from unittest.mock import MagicMock
     from services.api.routers.cover_for_me import _build_supporting_evidence
     from services.synthesis.contracts import SynthesisClaim, SynthesisResult
@@ -284,14 +320,42 @@ def test_build_supporting_evidence_uses_hit_metadata():
         model="fake", usage={},
     )
 
-    db_mock = MagicMock()
-    db_mock.execute.side_effect = AssertionError("DB should not be queried for L2-sourced headers")
-
-    evidence = _build_supporting_evidence(result, [hit], db_mock, "mailbox")
+    safe = {header: _safe_row(
+        header, subject="DB Subject (ignored for L2)",
+        clean_text="DB body (ignored for L2).", sender_email="sender@corp.example",
+    )}
+    with _patch_safe_rows(safe):
+        evidence = _build_supporting_evidence(result, [hit], MagicMock(), "mailbox", "gmail")
 
     assert len(evidence) == 1
-    assert evidence[0].subject == "Hit Subject"
-    assert evidence[0].snippet == "Hit snippet text."
+    assert evidence[0].subject == "Hit Subject"        # hit wins over DB row
+    assert evidence[0].snippet == "Hit snippet text."  # hit wins over DB row
+    assert evidence[0].sender_domain == "corp.example"  # from the DB row
+    assert evidence[0].source_type == "l2_retrieval"
+
+
+def test_build_supporting_evidence_omits_blocked_l2_hit():
+    """Even an L2 hit is dropped when its header fails the safe gate (no safe row).
+
+    Retrieval should already exclude sensitive messages, but the builder must not
+    rely on that — a hit whose header is absent from fetch_safe_source_rows()
+    yields no EvidenceMessage (no snippet/sender/open_url leak).
+    """
+    from unittest.mock import MagicMock
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    header = "blocked@example.com"
+    hit = _make_hit(header, subject="Blocked Subject", snippet="Should not appear.")
+    result = SynthesisResult(
+        claims=[SynthesisClaim(text="Claim.", source_message_ids=[header])],
+        model="fake", usage={},
+    )
+
+    with _patch_safe_rows({}):  # gate returns nothing → blocked
+        evidence = _build_supporting_evidence(result, [hit], MagicMock(), "mailbox", "gmail")
+
+    assert evidence == []
 
 
 def test_build_supporting_evidence_empty_claims():
@@ -301,16 +365,16 @@ def test_build_supporting_evidence_empty_claims():
     from services.synthesis.contracts import SynthesisResult
 
     result = SynthesisResult(claims=[], model="fake", usage={})
-    evidence = _build_supporting_evidence(result, [], MagicMock(), "mailbox")
+    evidence = _build_supporting_evidence(result, [], MagicMock(), "mailbox", "gmail")
     assert evidence == []
 
 
 def test_build_supporting_evidence_mixed_l1_l2_preserves_claim_order():
     """Mixed L1/L2 citations in one claim preserve first-seen citation order.
 
-    Claim cites [l1-header, l2-header].  L1 requires a DB lookup; L2 is in
-    l2_hits.  supporting_evidence must return [l1-entry, l2-entry], not
-    all-L2-first then all-L1.
+    Claim cites [l1-header, l2-header].  Both pass the safe gate; L2 is in
+    l2_hits, L1 is not.  supporting_evidence must return [l1-entry, l2-entry],
+    not all-L2-first then all-L1.
     """
     from unittest.mock import MagicMock
     from services.api.routers.cover_for_me import _build_supporting_evidence
@@ -328,17 +392,14 @@ def test_build_supporting_evidence_mixed_l1_l2_preserves_claim_order():
     )
     l2_hit = _make_hit(l2_header, subject="L2 Subject")
 
-    # Simulate a DB row for the L1 header
-    l1_row = MagicMock()
-    l1_row.message_id_header = l1_header
-    l1_row.subject = "L1 Subject"
-    l1_row.ts = _TS
-    l1_row.clean_text = "L1 snippet."
-
-    db_mock = MagicMock()
-    db_mock.execute.return_value.all.return_value = [l1_row]
-
-    evidence = _build_supporting_evidence(result, [l2_hit], db_mock, "mailbox")
+    safe = {
+        l1_header: _safe_row(l1_header, subject="L1 Subject", clean_text="L1 snippet.",
+                             sender_email="l1sender@example.com"),
+        l2_header: _safe_row(l2_header, subject="L2 DB Subject", clean_text="L2 db.",
+                             sender_email="l2sender@example.com"),
+    }
+    with _patch_safe_rows(safe):
+        evidence = _build_supporting_evidence(result, [l2_hit], MagicMock(), "mailbox", "gmail")
 
     assert len(evidence) == 2
     assert evidence[0].message_id_header == l1_header, "L1 must come first (matches claim order)"
