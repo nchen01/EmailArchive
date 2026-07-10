@@ -1,8 +1,40 @@
 # S14 — Evidence & Source Navigation Polish
 
-**Status:** 🟡 In progress (spec written 2026-07-09). UX + evidence-trust polish
-on top of the existing S0–S13 engine. **No new retrieval model, no raw-MIME
-archive, no provider-wide sync, no M365, no permissions/admin.**
+**Status:** ✅ Implemented / live-validated (2026-07-10). UX + evidence-trust
+polish on top of the existing S0–S13 engine. **No new retrieval model, no
+raw-MIME archive, no provider-wide sync, no M365, no permissions/admin.**
+
+## Live validation (product-side, 2026-07-10)
+
+Manually validated against the real `puluo` mailbox demo path:
+
+- Cover-for-me answers render with cited evidence; citation chips open the
+  drawer, which shows the richer S14 source context (subject / date / sender /
+  snippet / Message-ID).
+- **Copy Message-ID** affordance is present; the Gmail `rfc822msgid` **"Search
+  in Gmail"** affordance is accepted as *best-effort* wording, not an
+  exact-email guarantee (see D-S14-1 verdict below).
+- Owner-tree Relationship Map `direct_exchange` edges show clickable source
+  message IDs and open the S14 source detail view.
+- Project-tree structural edges correctly do **not** fabricate source message
+  IDs; the new `evidence_kind`-based provenance note (project / thread / domain)
+  clearly explains why no source-message citation exists.
+- Sensitive / HR-style no-leak behavior looked correct in the demo path.
+- Network Map appears unchanged.
+
+**D-S14-1 verdict:** "Search in Gmail" via `rfc822msgid` is accepted as
+best-effort (it opens a Gmail search in whatever account the operator is signed
+into); **Copy Message-ID remains the guaranteed fallback**. The API keeps the
+`open_url` field; no `provider_id` links.
+
+**Relationship Map evidence nuance (confirmed expected):** only
+`direct_exchange` / `evidence_kind="message_headers"` edges carry clickable
+source-message details. Structural `project_copresence` / `thread_copresence` /
+`org_affiliation` / `bridge` edges are backed by project / thread / domain
+evidence and intentionally have empty `source_message_ids`; the drawer shows a
+provenance note instead of fabricating a Message-ID. See
+`services/relationships/derive.py` (`_direct` is the only path that populates
+`rel.message_ids`, gated on ≥1 safe header).
 
 ## Product goal
 
