@@ -236,7 +236,15 @@ Where summaries get generated — and where the grounding discipline lives.
   Map structural (project/thread/domain) edges show provenance notes instead of
   fabricated message IDs.
 
-**Deferred beyond S14:**
+**Implemented (S15, complete):**
+- **S15.1** Verification hardening: fixed S9 materialization test contamination
+  by isolating DB fixture state, preserving dry-run invariants, and preventing
+  aborted transactions from cascading into unrelated tests.
+- **S15.2** Verification matrix: `docs/s15-verification-matrix.md` defines the
+  four green tiers (minimum local, DB-gated, demo-mailbox, live-integration),
+  the manual UI checklist, and the cleanup policy for `ekc_test` vs `ekc_dev`.
+
+**Deferred beyond S15:**
 - **Thread-context neighbor expansion** (per spec).
 - **Chunk-level splitting, attachment embeddings** — message-level only currently.
 - **Permissioned sensitive-message embedding override** — requires a permission model first (Q3).

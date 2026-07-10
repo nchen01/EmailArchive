@@ -76,7 +76,7 @@ Key docs:
 - `docs/s7-implementation-plan.md` — S7 task breakdown and locked decisions
 - `docs/implementation-plan.md` — overall pipeline architecture
 
-Current status: **S0–S14 complete.** S7 L2 hybrid retrieval (Voyage AI voyage-4,
+Current status: **S0–S15 complete.** S7 L2 hybrid retrieval (Voyage AI voyage-4,
 pgvector HNSW, cover-for-me upgrade) shipped and live-validated. S8 real-mailbox
 demo readiness, S9 project-clustering materialization, and S10 local runtime
 reliability are all complete. S10 switched the Voyage embedding runtime from the
@@ -88,4 +88,6 @@ Relationship Map tree (`services/relationships/`, `/api/relationship-map`) with
 the Network Map preserved. S14 shipped evidence/source-navigation trust polish:
 safe source-message detail, richer citation drawers, best-effort Gmail search,
 and structural relationship provenance notes — see
-`docs/s14-implementation-plan.md`.
+`docs/s14-implementation-plan.md`. S15 fixed the S9 DB-test contamination and
+added `docs/s15-verification-matrix.md` as the canonical guide for local,
+DB-gated, demo-mailbox, and live-integration green states.

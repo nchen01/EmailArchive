@@ -158,6 +158,12 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   direct-exchange message IDs open source detail, while structural project /
   thread / domain edges show provenance notes and never fabricate message IDs.
   See `docs/s14-implementation-plan.md`.
+- **S15 ✓** — Verification hardening. S15.1 fixes S9 materialization test
+  contamination by isolating DB fixture state and preserving dry-run invariants.
+  S15.2 adds `docs/s15-verification-matrix.md`, the canonical definition of
+  local, DB-gated, demo-mailbox, and live-integration "green" states. Use it
+  before quoting test counts; counts differ by environment and by whether
+  `DATABASE_URL` / live API keys are configured.
 
 ## 6. Known gaps — flag, don't fake
 
