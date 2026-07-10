@@ -212,7 +212,31 @@ Where summaries get generated — and where the grounding discipline lives.
   preflight embed-client construction probe; blessed Windows launch scripts; frontend request
   timeout + typed errors (no infinite "Loading…"); Vite `strictPort`; `GET /api/health`.
 
-**Deferred beyond S10:**
+**Implemented (S11–S14, complete):**
+- **S11** Frontend demo polish: clickable citation chips open an evidence drawer
+  (subject/date/`message_id_header`/snippet/retrieval source, from
+  `supporting_evidence` only); repeated citations deduped; distinct titled error
+  states; display-only project-label cleanup (`utils/projectLabels.ts`);
+  demo-readiness strip.
+- **S12** Product shell + landing: dependency-free client router (`src/router.tsx`)
+  over the History API; workspace shell holding mailbox state across navigation;
+  Workspace Overview as the default `/app` entry (counts, readiness, suggested
+  questions, top projects); status screen; marketing landing page; Cover-for-me
+  onboarding (suggested-question chips); project search filter. Frontend-only.
+- **S13** Relationship Map: new `services/relationships/` derives a graph-backed,
+  tree-renderable relationship map *live* from L1 tables (owner/project/org/graph
+  modes); `GET /api/relationship-map/{mailbox_id}`; whole-thread sensitivity +
+  noise exclusion; edge width = evidence volume, not importance; Network Map
+  preserved.
+- **S14** Evidence & source navigation: safe `GET /api/source-message/{mailbox_id}`
+  keyed on `message_id_header` (mailbox-boundary + malformed-UUID 404s); a shared
+  whole-thread sensitivity gate applied to both that endpoint and Cover-for-me
+  `supporting_evidence`; richer citation drawer (subject/sender/date/snippet),
+  copy Message-ID, best-effort Gmail `rfc822msgid` "Search in Gmail"; Relationship
+  Map structural (project/thread/domain) edges show provenance notes instead of
+  fabricated message IDs.
+
+**Deferred beyond S14:**
 - **Thread-context neighbor expansion** (per spec).
 - **Chunk-level splitting, attachment embeddings** — message-level only currently.
 - **Permissioned sensitive-message embedding override** — requires a permission model first (Q3).
@@ -223,9 +247,12 @@ Where summaries get generated — and where the grounding discipline lives.
 - **Redis queue, full OAuth/secrets manager, OTel** — needed before real customer mailboxes;
   not needed for a controlled demo against a test inbox.
 
-**Plug-in point:** the existing RAG query pipeline maps onto **Layer 2** and parts of
-the project-clustering retrieval in **Layer 1**. `// TODO: confirm which signals the
-current pipeline already extracts and where it slots in.`
+**Plug-in point (resolved by D12 / S7):** Layer 2 retrieval is now implemented
+locally under `services/retrieval/` (Voyage `voyage-4` embeddings, pgvector HNSW,
+Postgres FTS, hybrid merge) — see `docs/decisions.md` (D12) and
+`docs/s7-implementation-plan.md`. The earlier TODO to confirm which signals the
+current RAG pipeline extracts and where it slots in is resolved; this note is
+kept only as historical context.
 
 ## 9. Open questions
 

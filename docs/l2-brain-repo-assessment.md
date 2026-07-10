@@ -1,5 +1,10 @@
 # L2 Assessment of `nchen01/brain`
 
+> **Historical / superseded by D12 and S7.** This was pre-S7 research into
+> `nchen01/brain`. L2 is now implemented locally under `services/retrieval` with
+> Voyage `voyage-4`, pgvector, FTS, hybrid retrieval, and the S7/S8/S14 evidence
+> paths. Read this doc only as prior-art rationale.
+
 This note records what is reusable from `https://github.com/nchen01/brain`
 for EmailArchive's upcoming L2 retrieval sprint.
 

@@ -488,7 +488,16 @@ walkthrough is unbilled.
 10. Click the **Network** tab — confirm the original Network Map still works
     unchanged.
 
-Open product question for the canonical demo (Q10): which exact project should be
-the scripted project-tree root on `e21c187a` (Nexus Auth was the suggested story,
-but the highest-confidence project there is currently "Account Https"). Pick the
-canonical project before the live demo.
+**S14 evidence note:** in the edge drawer, `direct_exchange` (`message_headers`)
+edges now show clickable source-message IDs that open the S14 source-detail
+view; structural `project_copresence` / `thread_copresence` / `org_affiliation`
+edges intentionally show a provenance note ("backed by shared project membership
+/ thread participation / organization affiliation") instead of fabricated
+Message-IDs.
+
+Resolved (canonical demo, was Q10): the project-tree default uses the
+recommended coverage ordering. For the `puluo` mailbox (`e21c187a`) the expected
+default root is **Ml Engineer**. Users can sort project roots by **Recommended**,
+**Recent**, **Relationship-rich**, or **A–Z**. "Account Https" is intentionally
+demoted in Recommended / Recent / Relationship-rich because it is low-value /
+automated-looking.

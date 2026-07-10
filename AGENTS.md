@@ -124,6 +124,16 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   `supporting_evidence` only — no sensitive content, no claim without citation);
   repeated citations deduped; distinct titled error states; display-only project
   label cleanup (`utils/projectLabels.ts`); demo-readiness strip.
+- **S12 ✓** — Product shell + landing. Dependency-free client router
+  (`src/router.tsx`) over the History API; routes `/` (landing), `/app`
+  (overview), `/app/network`, `/app/projects`, `/app/cover`, `/app/status`.
+  Workspace shell (`src/workspace/Workspace.tsx`) holds mailbox state + data
+  hooks across navigation; professional nav + compact mailbox + single health
+  dot. Workspace Overview is the default `/app` entry (counts, readiness,
+  suggested questions, top projects). Marketing landing page (`Landing.tsx`).
+  Cover-for-me suggested-question chips; project search filter. Frontend-only —
+  no backend/schema/AI/retrieval/clustering changes. See
+  `docs/s12-product-shell-landing-plan.md` for the manual demo script.
 - **S13 ✓** — Relationship Map / tree. New `services/relationships/`
   package derives a graph-backed, tree-renderable relationship map *live* from
   existing L1 tables (no persisted table — see the persistence note in
@@ -139,16 +149,6 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   an evidence drawer; Network Map is preserved. Edge weight/width is labeled as
   evidence volume, never importance. 13 derivation tests; live-validated on the
   smoke mailbox (36 eligible vs 383 excluded threads).
-- **S12 ✓** — Product shell + landing. Dependency-free client router
-  (`src/router.tsx`) over the History API; routes `/` (landing), `/app`
-  (overview), `/app/network`, `/app/projects`, `/app/cover`, `/app/status`.
-  Workspace shell (`src/workspace/Workspace.tsx`) holds mailbox state + data
-  hooks across navigation; professional nav + compact mailbox + single health
-  dot. Workspace Overview is the default `/app` entry (counts, readiness,
-  suggested questions, top projects). Marketing landing page (`Landing.tsx`).
-  Cover-for-me suggested-question chips; project search filter. Frontend-only —
-  no backend/schema/AI/retrieval/clustering changes. See
-  `docs/s12-product-shell-landing-plan.md` for the manual demo script.
 - **S14 ✓** — Evidence & source navigation polish. New safe
   `GET /api/source-message/{mailbox_id}` endpoint keyed by
   `message_id_header`, with mailbox-boundary checks, malformed-UUID 404s, and

@@ -218,9 +218,10 @@ authorization per `CLAUDE.md`. Steps:
 1. Cover-for-me query that yields multiple citations across claims.
 2. Open a citation → confirm subject / date / sender / snippet are readable.
 3. Confirm a header cited by several claims is grouped (one row, "cited in N").
-4. Confirm **copy Message-ID** works; if `provider == gmail`, click **Open in
-   Gmail** and confirm it lands on the right message (records the D-S14-1
-   result).
+4. Confirm **copy Message-ID** works; if `provider == gmail`, click **Search in
+   Gmail** and confirm it opens a Gmail `rfc822msgid` search in the signed-in
+   account; if Gmail returns the expected message, record that as the live
+   verdict. Copy Message-ID remains the guaranteed fallback.
 5. Run a sensitive HR-style query → confirm no source content is exposed and the
    detail endpoint 404s for any excluded header.
 6. Open the Relationship Map, pick an edge with source messages → confirm the

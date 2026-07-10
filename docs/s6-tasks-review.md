@@ -1,5 +1,9 @@
 # S6 Task Breakdown — Reviewer Sign-Off
 
+> **Historical S6 review.** Final S6 outcomes are recorded in
+> `docs/s6-real-mailbox-quality-pass.md`. S6.4 was deferred pending a broader
+> labeled workmail corpus; S6.7 documentation was completed.
+
 Source spec: `docs/s6-real-mailbox-quality-pass.md`
 Reviewer sign-off: 2026-06-06 — S6.1–S6.5 and S6.7 approved. S6.6 deferred to L2.
 
@@ -320,10 +324,10 @@ what comes next.
 | S6.1 | Redacted live quality report script | — | **done** |
 | S6.2 | Local label template workflow | S6.1 | **done** |
 | S6.3 | Noise/sensitivity eval script | S6.2 | **done** |
-| S6.4 | L0 tuning pass | S6.3 | **blocked — awaiting labeling pass** |
+| S6.4 | L0 tuning pass | S6.3 | **deferred — pending broader labeled corpus** |
 | S6.5 | Identity/graph quality inspection | S6.3 | **done** |
 | S6.6 | Optional live clustering diagnostic | S6.4, S6.5 | deferred to L2 |
-| S6.7 | Documentation update | S6.4, S6.5 | **in progress — findings pending labeling** |
+| S6.7 | Documentation update | S6.4, S6.5 | **done (historical)** |
 
 Pre-work already complete: `.local/` added to `.gitignore` (`8ee8101`).
 
