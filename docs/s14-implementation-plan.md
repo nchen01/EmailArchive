@@ -57,7 +57,8 @@ Response DTO `SourceMessageDetail` (new `services/api/schemas/evidence.py`):
   `canonical_email`, so a display name or bare local-part is strictly less
   exposure; that is the guarantee we hold to (no first-char masking — it would
   be inconsistent with, and stricter than, the rest of the workspace).
-- `sender_domain: str` — `tldextract`-safe registered domain of the sender.
+- `sender_domain: str` — the sender's email domain (the part after `@`, already
+  lowercased by ingest). Not a `tldextract` registered domain — just the domain.
 - `provider_type: Literal["gmail", "msgraph"]` — from `mailbox.provider`.
 - `snippet: str` — first 200 chars of `clean_text`.
 - `source_type: Literal["l1_structured", "l2_retrieval"] | None` — retrieval
@@ -117,8 +118,19 @@ the L2 hit / L1 row already loaded (sender fields come from `Message.sender_emai
 passing. **No `SCHEMA_VERSION` bump** — `EvidenceMessage` is an API DTO, not an
 `ekc_schemas` contract model (confirm before editing).
 
-**Done when:** cover-for-me responses carry the richer labels and existing
-cover-for-me tests still pass unchanged.
+**Safety (P1, post-review):** because S14 makes `supporting_evidence` richer
+(snippet/sender/`open_url`), `_build_supporting_evidence` MUST apply the *same*
+whole-thread sensitivity gate as `/api/source-message`, not a weaker "all cited
+headers" query. Both paths now share one predicate — `fetch_safe_source_rows` in
+`services/api/evidence.py`. A cited header that is missing, wrong-mailbox,
+directly sensitive, or in a thread with a sensitive sibling is omitted from
+`supporting_evidence` entirely (the claim chip degrades to "detail not
+available"); no snippet/sender/link is emitted for it. L2 hits are re-checked
+against the safe row here rather than trusting that retrieval already excluded
+them.
+
+**Done when:** cover-for-me responses carry the richer labels, blocked headers
+are omitted, and existing cover-for-me tests still pass.
 
 ### S14.4 — Evidence Drawer UX upgrade (`EvidenceDrawer.tsx`)
 

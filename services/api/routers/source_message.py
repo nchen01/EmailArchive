@@ -25,39 +25,18 @@ sensitivity excludes.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from services.db import models as orm
 from services.ingest.normalize.mime import decode_mime_words
 
 from ..deps import get_db
-from ..evidence import gmail_search_url, sender_fields
+from ..evidence import fetch_safe_source_rows, gmail_search_url, sender_fields
 from ..schemas.evidence import SourceMessageDetail
 
 router = APIRouter(tags=["source-message"])
 
 _SNIPPET_CHARS = 200
-
-# One query: fetch the message by (mailbox, header) only when it is itself
-# non-sensitive AND no sibling in its thread is sensitive (whole-thread rule).
-_LOOKUP_SQL = text(
-    """
-    SELECT m.message_id_header, m.subject, m.ts, m.clean_text,
-           m.sender_email, m.addresses
-    FROM message m
-    WHERE m.mailbox_id = :mid
-      AND m.message_id_header = :hdr
-      AND m.sensitivity = '{none}'
-      AND NOT EXISTS (
-          SELECT 1 FROM message m2
-          WHERE m2.thread_id = m.thread_id
-            AND m2.mailbox_id = :mid
-            AND m2.sensitivity != '{none}'
-      )
-    LIMIT 1
-    """
-)
 
 
 @router.get("/source-message/{mailbox_id}", response_model=SourceMessageDetail)
@@ -70,9 +49,10 @@ async def source_message_endpoint(
     if mbx is None:
         raise HTTPException(status_code=404, detail="mailbox not found")
 
-    row = db.execute(
-        _LOOKUP_SQL, {"mid": mailbox_id, "hdr": message_id_header}
-    ).mappings().first()
+    # Shared whole-thread sensitivity gate (same predicate as supporting_evidence).
+    row = fetch_safe_source_rows(db, mailbox_id, [message_id_header]).get(
+        message_id_header
+    )
     if row is None:
         # Missing, wrong-mailbox, or sensitivity-excluded — indistinguishable.
         raise HTTPException(status_code=404, detail="source message not available")

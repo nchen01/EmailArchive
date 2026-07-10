@@ -169,6 +169,50 @@ def _classify_headers(session, mailbox_id):
     return clean, sensitive, tainted
 
 
+def _seed_mixed_sensitivity_thread(session, mailbox_id, clean_hdr, sens_hdr):
+    """Seed one thread holding a {none} message and a sensitive sibling.
+
+    The Thread is flushed before the Messages because Message.thread_id is a raw
+    ForeignKey with no ORM relationship() to Thread, so the unit of work does not
+    reliably order the parent insert first.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    from services.db import models as orm
+
+    tid = str(uuid.uuid4())
+    ts = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    session.add(orm.Thread(
+        id=tid, mailbox_id=mailbox_id, subject_norm="mixed", t_start=ts, t_end=ts,
+    ))
+    session.flush()
+    session.add_all([
+        orm.Message(
+            mailbox_id=mailbox_id, message_id_header=clean_hdr, provider_id=clean_hdr,
+            thread_id=tid, sender_email="a@acme.com", ts=ts, subject="Clean sibling",
+            clean_text="ok", sensitivity=["none"],
+        ),
+        orm.Message(
+            mailbox_id=mailbox_id, message_id_header=sens_hdr, provider_id=sens_hdr,
+            thread_id=tid, sender_email="hr@acme.com", ts=ts, subject="HR matter",
+            clean_text="secret", sensitivity=["hr"],
+        ),
+    ])
+    session.commit()
+    return tid
+
+
+def _cite(*headers):
+    """A SynthesisResult whose single claim cites ``headers``."""
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    return SynthesisResult(
+        claims=[SynthesisClaim(text="x", source_message_ids=list(headers))],
+        model="fake", usage={},
+    )
+
+
 @requires_db
 def test_source_message_clean_returns_safe_dto(seeded_l0):
     client, mailbox_id, session = seeded_l0
@@ -229,34 +273,10 @@ def test_source_message_whole_thread_exclusion_synthetic(seeded_l0):
     Seeded directly (not relying on the fixture having this shape) so the privacy
     guarantee is actually exercised, not skipped.
     """
-    import uuid
-    from datetime import datetime, timezone
-
-    from services.db import models as orm
-
     client, mailbox_id, session = seeded_l0
-    tid = str(uuid.uuid4())
-    ts = datetime(2026, 2, 1, tzinfo=timezone.utc)
-    # Flush the thread before the messages: Message.thread_id is a raw ForeignKey
-    # with no ORM relationship() to Thread, so the unit of work does not reliably
-    # order the parent insert first.
-    session.add(orm.Thread(
-        id=tid, mailbox_id=mailbox_id, subject_norm="mixed", t_start=ts, t_end=ts,
-    ))
-    session.flush()
-    session.add_all([
-        orm.Message(
-            mailbox_id=mailbox_id, message_id_header="wt-clean@acme.com",
-            provider_id="wt_clean", thread_id=tid, sender_email="a@acme.com",
-            ts=ts, subject="Clean sibling", clean_text="ok", sensitivity=["none"],
-        ),
-        orm.Message(
-            mailbox_id=mailbox_id, message_id_header="wt-sensitive@acme.com",
-            provider_id="wt_sens", thread_id=tid, sender_email="hr@acme.com",
-            ts=ts, subject="HR matter", clean_text="secret", sensitivity=["hr"],
-        ),
-    ])
-    session.commit()
+    _seed_mixed_sensitivity_thread(
+        session, mailbox_id, "wt-clean@acme.com", "wt-sensitive@acme.com"
+    )
 
     # Clean sibling is itself {none}, but its thread has a sensitive message.
     clean_resp = client.get(
@@ -298,16 +318,12 @@ def test_source_message_wrong_mailbox_404(seeded_l0):
 def test_build_supporting_evidence_populates_s14_fields(seeded_l0):
     """The upgraded builder fills sender/source_type/open_url for a cited header."""
     from services.api.routers.cover_for_me import _build_supporting_evidence
-    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
 
     _client, mailbox_id, session = seeded_l0
     clean, _s, _t = _classify_headers(session, mailbox_id)
     assert clean is not None
 
-    result = SynthesisResult(
-        claims=[SynthesisClaim(text="x", source_message_ids=[clean])],
-        model="fake", usage={},
-    )
+    result = _cite(clean)
     evidence = _build_supporting_evidence(result, [], session, mailbox_id, "gmail")
 
     assert len(evidence) == 1
@@ -316,3 +332,38 @@ def test_build_supporting_evidence_populates_s14_fields(seeded_l0):
     assert ev.source_type == "l1_structured"
     assert ev.sender_domain
     assert ev.open_url.startswith(_GMAIL_PREFIX)
+
+
+@requires_db
+def test_supporting_evidence_omits_whole_thread_sensitive(seeded_l0):
+    """P1 regression: a cited {none} message whose thread has a sensitive sibling
+    must NOT appear in supporting_evidence (no snippet/sender/open_url leak),
+    matching the source-message endpoint's whole-thread gate."""
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+
+    _client, mailbox_id, session = seeded_l0
+    _seed_mixed_sensitivity_thread(
+        session, mailbox_id, "se-clean@acme.com", "se-sensitive@acme.com"
+    )
+
+    # Cite the clean sibling — it is itself {none} but sits in a sensitive thread.
+    evidence = _build_supporting_evidence(
+        _cite("se-clean@acme.com"), [], session, mailbox_id, "gmail"
+    )
+    assert evidence == [], "whole-thread-sensitive header must be omitted"
+
+
+@requires_db
+def test_supporting_evidence_omits_directly_sensitive(seeded_l0):
+    """P1 regression: a cited directly-sensitive message must be omitted too."""
+    from services.api.routers.cover_for_me import _build_supporting_evidence
+
+    _client, mailbox_id, session = seeded_l0
+    _seed_mixed_sensitivity_thread(
+        session, mailbox_id, "ds-clean@acme.com", "ds-sensitive@acme.com"
+    )
+
+    evidence = _build_supporting_evidence(
+        _cite("ds-sensitive@acme.com"), [], session, mailbox_id, "gmail"
+    )
+    assert evidence == [], "directly-sensitive header must be omitted"

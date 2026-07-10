@@ -328,9 +328,19 @@ def test_build_supporting_evidence_decodes_l2_hit_subject():
         usage={},
     )
 
-    db = MagicMock()
-    db.execute.return_value.all.return_value = []  # no DB row needed for the L2 hit
-    evidence = _build_supporting_evidence(result, [hit], db, "mailbox-id", "gmail")
+    # The header must still pass the safe gate to be emitted; the L2 hit then
+    # supplies subject/snippet. Patch the gate to return a safe row.
+    from unittest.mock import patch
+
+    safe = {msg_header: {
+        "message_id_header": msg_header, "subject": "DB subject (ignored for L2)",
+        "ts": datetime(2026, 1, 15, tzinfo=timezone.utc),
+        "clean_text": "db body", "sender_email": "noreply@ssa.gov", "addresses": None,
+    }}
+    with patch(
+        "services.api.routers.cover_for_me.fetch_safe_source_rows", return_value=safe
+    ):
+        evidence = _build_supporting_evidence(result, [hit], MagicMock(), "mailbox-id", "gmail")
 
     assert evidence, "Expected one EvidenceMessage"
     assert "=?" not in evidence[0].subject, (
@@ -356,19 +366,19 @@ def test_build_supporting_evidence_decodes_l1_db_subject():
         usage={},
     )
 
-    # Fake DB row returned by the L1 DB query
-    class _FakeRow:
-        message_id_header = msg_header
-        subject = encoded_subject
-        ts = datetime(2026, 1, 15, tzinfo=timezone.utc)
-        clean_text = "P1 incident body."
-        sender_email = "oncall@acme.com"
-        addresses = None
+    # Safe row returned by the shared gate (dict Mapping, like the real query).
+    from unittest.mock import patch
 
-    db = MagicMock()
-    db.execute.return_value.all.return_value = [_FakeRow()]
-
-    evidence = _build_supporting_evidence(result, [], db, "mailbox-id", "gmail")
+    safe = {msg_header: {
+        "message_id_header": msg_header, "subject": encoded_subject,
+        "ts": datetime(2026, 1, 15, tzinfo=timezone.utc),
+        "clean_text": "P1 incident body.", "sender_email": "oncall@acme.com",
+        "addresses": None,
+    }}
+    with patch(
+        "services.api.routers.cover_for_me.fetch_safe_source_rows", return_value=safe
+    ):
+        evidence = _build_supporting_evidence(result, [], MagicMock(), "mailbox-id", "gmail")
 
     assert evidence, "Expected one EvidenceMessage"
     assert "=?" not in evidence[0].subject, (

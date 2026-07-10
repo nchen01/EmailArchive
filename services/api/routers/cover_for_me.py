@@ -50,7 +50,7 @@ from services.synthesis.cover_for_me import synthesize_cover_for_me
 from services.synthesis.params import PARAMS
 
 from ..deps import get_db
-from ..evidence import gmail_search_url, sender_fields
+from ..evidence import fetch_safe_source_rows, gmail_search_url, sender_fields
 from ..schemas.cover_for_me import (
     CoverForMeRequest,
     CoverForMeResponse,
@@ -173,10 +173,16 @@ def _build_supporting_evidence(
     """Build EvidenceMessage list for every header cited in result.claims.
 
     Derives from cited source_message_ids only — never from all l2_hits.
-    L2 hits provide subject/ts/snippet directly; every cited header (L1 and L2)
-    gets a single DB lookup for the sender fields (RetrievalHit does not carry
-    the sender) and the L1 subject/ts/snippet fallback. ``provider`` gates the
-    best-effort Gmail link (S14).
+
+    Safety (S14 P1): every emitted header must pass the SAME whole-thread
+    sensitivity gate as GET /api/source-message. A cited header that is missing,
+    in another mailbox, directly sensitive, or in a thread with a sensitive
+    sibling is OMITTED entirely — no snippet, sender, source_type, or open_url is
+    returned for it, and the UI leaves that citation chip in "detail not
+    available" mode. This holds for L2 hits too: even though retrieval should
+    already exclude sensitive messages, we re-check the safe DB row here rather
+    than trust the hit. Sender fields always come from that safe row (a
+    RetrievalHit carries no sender); ``provider`` gates the Gmail link.
     """
     # Walk claims in order, collecting first-seen headers — preserves claim order
     # and is deterministic (a set would produce arbitrary ordering).
@@ -192,34 +198,21 @@ def _build_supporting_evidence(
 
     l2_by_header = {h.message_id_header: h for h in l2_hits}
 
-    # One DB query over ALL cited headers: sender fields for every row, plus
-    # subject/ts/clean_text used as the L1 fallback when a header has no L2 hit.
-    rows = db.execute(
-        select(
-            orm.Message.message_id_header,
-            orm.Message.subject,
-            orm.Message.ts,
-            orm.Message.clean_text,
-            orm.Message.sender_email,
-            orm.Message.addresses,
-        ).where(
-            orm.Message.mailbox_id == mailbox_id,
-            orm.Message.message_id_header.in_(cited_ordered),
-        )
-    ).all()
-    rows_by_header = {row.message_id_header: row for row in rows}
+    # The gate: only headers whose message passes the whole-thread sensitivity
+    # exclusion come back. Anything else is dropped from supporting_evidence.
+    safe_rows = fetch_safe_source_rows(db, mailbox_id, cited_ordered)
 
-    # Single walk over cited_ordered — emits L2 and L1 evidence interleaved
-    # in first-seen citation order.
     evidence: list[EvidenceMessage] = []
     for header in cited_ordered:
-        row = rows_by_header.get(header)
-        display, domain = sender_fields(
-            row.sender_email if row else "", row.addresses if row else None
-        )
+        row = safe_rows.get(header)
+        if row is None:
+            # Blocked or unknown — omit so the claim chip degrades gracefully.
+            continue
+        display, domain = sender_fields(row["sender_email"], row["addresses"])
         open_url = gmail_search_url(provider, header)
-        if header in l2_by_header:
-            hit = l2_by_header[header]
+        hit = l2_by_header.get(header)
+        if hit is not None:
+            # Same (safe) message; use the retrieval-provided subject/snippet.
             evidence.append(EvidenceMessage(
                 message_id_header=header,
                 subject=decode_mime_words(hit.subject or ""),
@@ -230,12 +223,12 @@ def _build_supporting_evidence(
                 source_type="l2_retrieval",
                 open_url=open_url,
             ))
-        elif row is not None:
+        else:
             evidence.append(EvidenceMessage(
                 message_id_header=header,
-                subject=decode_mime_words(row.subject or ""),
-                date=row.ts.isoformat() if row.ts else "",
-                snippet=(row.clean_text or "")[:200],
+                subject=decode_mime_words(row["subject"] or ""),
+                date=row["ts"].isoformat() if row["ts"] else "",
+                snippet=(row["clean_text"] or "")[:200],
                 sender_display=display,
                 sender_domain=domain,
                 source_type="l1_structured",
