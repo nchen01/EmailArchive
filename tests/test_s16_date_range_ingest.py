@@ -842,3 +842,138 @@ def test_api_writes_audit_rows(gmail_mailbox, monkeypatch):
         assert {"ingest_start", "ingest_finish"} <= actions
     finally:
         s.close()
+
+
+# ── P1.1: replace_snapshot REQUIRES a date window ─────────────────────────────
+
+def test_cli_replace_snapshot_gate_requires_window():
+    from scripts.gmail_smoke_ingest import _replace_snapshot_error
+
+    # No window → error mentioning the date flags.
+    err = _replace_snapshot_error(replace_snapshot=True, plan_only=False, dry_run=False, windowed=False)
+    assert err and "date-from" in err.lower()
+    # plan-only / dry-run → error.
+    assert _replace_snapshot_error(replace_snapshot=True, plan_only=True, dry_run=False, windowed=True)
+    assert _replace_snapshot_error(replace_snapshot=True, plan_only=False, dry_run=True, windowed=True)
+    # Windowed real ingest → OK; not-replace → OK.
+    assert _replace_snapshot_error(replace_snapshot=True, plan_only=False, dry_run=False, windowed=True) is None
+    assert _replace_snapshot_error(replace_snapshot=False, plan_only=False, dry_run=False, windowed=False) is None
+
+
+def test_cli_main_replace_without_window_exits_before_db(monkeypatch):
+    import sys
+    from scripts import gmail_smoke_ingest as cli
+
+    # Token/DB access must NOT be reached.
+    monkeypatch.setattr(cli, "_get_token_dict",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not read token")))
+    monkeypatch.setattr(sys, "argv",
+                        ["prog", "--owner-email", "o@acme.corp", "--confirm", "--replace-snapshot"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert "date-from" in str(exc.value).lower()
+
+
+@requires_db
+def test_api_replace_without_dates_400(gmail_mailbox, monkeypatch):
+    from services.api.routers import gmail_ingest as router
+
+    monkeypatch.setattr(router, "_provider_for",
+                        lambda _id: (_ for _ in ()).throw(AssertionError("must not build provider")))
+    monkeypatch.setattr(router, "run_windowed_ingest",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not ingest")))
+    client, mailbox_id = gmail_mailbox
+    resp = client.post(
+        f"/api/gmail-ingest/{mailbox_id}/ingest",
+        json={"confirm": True, "replace_snapshot": True},  # no date bounds
+    )
+    assert resp.status_code == 400
+
+
+# ── P1.2: internal_domains persisted ONLY after successful verified ingest ────
+
+def _config_domains(mailbox_id):
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+    s = SessionLocal()
+    try:
+        return (s.get(orm.Mailbox, mailbox_id).config or {}).get("internal_domains")
+    finally:
+        s.close()
+
+
+@requires_db
+def test_api_mismatch_does_not_persist_internal_domains(gmail_mailbox, monkeypatch):
+    from services.api.routers import gmail_ingest as router
+
+    class _Mismatch:
+        def get_profile_email(self):
+            return "someone-else@gmail.com"
+
+    monkeypatch.setattr(router, "_provider_for", lambda _id: _Mismatch())
+    monkeypatch.setattr(router, "run_windowed_ingest",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest on mismatch")))
+    client, mailbox_id = gmail_mailbox
+    resp = client.post(
+        f"/api/gmail-ingest/{mailbox_id}/ingest",
+        json={"date_from": "2026-04-01", "confirm": True, "internal_domains": ["new.example"]},
+    )
+    assert resp.status_code == 409
+    assert _config_domains(mailbox_id) == ["acme.corp"]  # fixture default, unchanged
+
+
+@requires_db
+def test_api_ingest_failure_does_not_persist_internal_domains(gmail_mailbox, monkeypatch):
+    from services.api.routers import gmail_ingest as router
+
+    monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+    monkeypatch.setattr(router, "run_windowed_ingest",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    client, mailbox_id = gmail_mailbox
+    resp = client.post(
+        f"/api/gmail-ingest/{mailbox_id}/ingest",
+        json={"date_from": "2026-04-01", "confirm": True, "internal_domains": ["new.example"]},
+    )
+    assert resp.status_code == 502
+    assert _config_domains(mailbox_id) == ["acme.corp"]  # unchanged after failure
+
+
+# ── P2: replace clear + L0 are atomic (persist_l0 failure rolls back the clear) ─
+
+@requires_db
+def test_replace_persist_l0_failure_rolls_back_clear(gmail_session_mailbox, monkeypatch):
+    from sqlalchemy import select
+
+    import services.db.store as store
+    from services.db import models as orm
+    from services.ingest.gmail_windowed import run_windowed_ingest
+    from services.ingest.list_options import ListOptions
+
+    session, mid = gmail_session_mailbox
+    opts = ListOptions(date_from=date(2026, 4, 1))
+
+    # Seed batch A.
+    run_windowed_ingest(
+        session, db_mailbox_id=mid, token_mailbox_id=mid, owner_email=OWNER,
+        internal_domains=["acme.corp"], options=opts, max_messages=100,
+        provider=FakeGmailProvider([_raw("a1", "t1", "<a1@mail.acme.corp>", "alice@ext.com", OWNER)]),
+    )
+    assert _count(session, orm.Message, mid) == 1
+
+    # Replace mode, but persist_l0 fails AFTER the (commit=False) clear.
+    monkeypatch.setattr(store, "persist_l0",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("persist boom")))
+    with pytest.raises(RuntimeError):
+        run_windowed_ingest(
+            session, db_mailbox_id=mid, token_mailbox_id=mid, owner_email=OWNER,
+            internal_domains=["acme.corp"], options=opts, max_messages=100, replace_snapshot=True,
+            provider=FakeGmailProvider([_raw("b1", "t2", "<b1@mail.acme.corp>", "bob@ext.com", OWNER)]),
+        )
+    session.rollback()  # caller discards the pending (uncommitted) clear
+
+    # Batch A is intact — the clear was rolled back together with the failed L0.
+    headers = set(session.execute(
+        select(orm.Message.message_id_header).where(orm.Message.mailbox_id == mid)
+    ).scalars())
+    assert headers == {"a1@mail.acme.corp"}

@@ -476,11 +476,21 @@ rows). Replace mode:
   "Replace current mailbox snapshot" checkbox with destructive warning copy.
 - Requires `confirm=true` / `--confirm`; **cannot** run in preview/plan-only or
   dry-run; still a scoped snapshot (no sync token saved).
+- **Requires an explicit date window** (`date_from` and/or `date_to`). Without
+  one, a run would use the stored incremental token and could wipe the mailbox
+  then refill it with only a small delta — so replace with no window fails
+  *before* any Gmail/API/DB access (CLI `sys.exit`; API 400).
 - When `replace_snapshot` is false, the API/UI honestly label the run as
   append/upsert (response `mode`), not clean replacement.
 
-**Fetch-before-clear:** the new window is fetched first, and only then is the old
-snapshot cleared — a Gmail failure can never leave a mailbox wiped-but-empty.
+**Fetch-before-clear + atomic clear/L0:** the new window is fetched and
+normalized first, then the clear runs with `commit=False` so it commits
+**atomically with the L0 write** — a Gmail failure never wipes the snapshot, and
+a failed `persist_l0` rolls the clear back too. **Accepted limitation:** L1
+(`persist_l1`) commits separately (persist_* commit internally), so an L1 failure
+after L0 committed leaves the new window's L0 with partial/absent L1 — a
+re-runnable state, not data loss. Full clear→L0→L1 atomicity is out of scope for
+this sprint.
 
 **Cleared tables** (centralized in `clear_mailbox_snapshot_for_reingest`, scoped
 strictly by `mailbox_id`): `message_embedding`, `message_attachment`, `event`,
@@ -501,8 +511,10 @@ row itself, operator `project_label_override`, and any other mailbox.
   `GMAIL_TOKEN_<id>` and the fallback `GMAIL_TOKEN`.
 - **Mailbox metadata:** `/ingest` sets `Mailbox.owner_person_id` after L1 (like
   the CLI), and resolves `internal_domains` explicitly — a request may supply
-  `internal_domains` (validated, lowercased, persisted into `mailbox.config`),
-  otherwise `mailbox.config` is used.
+  `internal_domains` (validated + lowercased, and used for enrichment), otherwise
+  `mailbox.config` is used. Request-supplied domains are persisted into
+  `mailbox.config` **only after a successful, account-verified ingest** — an
+  account mismatch or a failed ingest never mutates `mailbox.config`.
 
 ## Out Of Scope
 

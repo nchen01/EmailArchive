@@ -207,6 +207,26 @@ def _smoke_check(provider, owner_email: str, show_body: bool) -> int:
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+def _replace_snapshot_error(*, replace_snapshot: bool, plan_only: bool,
+                            dry_run: bool, windowed: bool) -> str | None:
+    """Return an error string if ``--replace-snapshot`` is misused, else None.
+
+    Replacement is destructive: it may only run on a real, confirmed ingest, and
+    it MUST carry an explicit date window. Without a window a run would use the
+    stored incremental token and could wipe the whole mailbox, then refill it
+    with only a small incremental delta (P1). Enforced before any Gmail/DB call.
+    """
+    if not replace_snapshot:
+        return None
+    if plan_only or dry_run:
+        return ("--replace-snapshot cannot be used with --plan-only or --dry-run "
+                "(replacement only happens on a real, confirmed ingest).")
+    if not windowed:
+        return ("replace_snapshot requires --date-from and/or --date-to so the "
+                "replacement snapshot has an explicit window.")
+    return None
+
+
 def _decide_sync_token(*, windowed: bool, hit_cap: bool, new_sync_token: str):
     """Decide whether to save a sync token; return (token_to_save, status_str).
 
@@ -348,8 +368,9 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at,
 
     # ── Replace-snapshot: clear existing derived data (fetch already done) ──
     # Fetch happened above, so a Gmail failure can never leave the mailbox wiped.
+    # commit=False → the clear commits atomically with persist_l0 below.
     if args.replace_snapshot:
-        cleared = clear_mailbox_snapshot_for_reingest(session, mailbox_id)
+        cleared = clear_mailbox_snapshot_for_reingest(session, mailbox_id, commit=False)
         log.warning("mailbox_snapshot_cleared", tables=cleared)
 
     # ── Persist L0 ─────────────────────────────────────────────────────
@@ -517,15 +538,16 @@ def main() -> None:
     except DateWindowError as exc:
         sys.exit(f"ERROR: {exc}")
 
-    # ── Replace-snapshot gating (destructive; confirm-gated, snapshot-only) ──
-    if args.replace_snapshot:
-        if args.plan_only or args.dry_run:
-            sys.exit(
-                "ERROR: --replace-snapshot cannot be used with --plan-only or "
-                "--dry-run (replacement only happens on a real, confirmed ingest)."
-            )
-        # --confirm is already required above; replacement is destructive so we
-        # make the intent explicit in the audit/summary.
+    # ── Replace-snapshot gating (destructive; confirm-gated, windowed-only) ──
+    # Checked BEFORE any Gmail/API/DB access. --confirm is already required above.
+    _rep_err = _replace_snapshot_error(
+        replace_snapshot=args.replace_snapshot,
+        plan_only=args.plan_only,
+        dry_run=args.dry_run,
+        windowed=list_options.is_windowed(),
+    )
+    if _rep_err:
+        sys.exit(f"ERROR: {_rep_err}")
 
     # ── Token handling (never logged) ──────────────────────────────────────
     mailbox_id_for_token = args.mailbox_id or "default"

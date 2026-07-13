@@ -106,9 +106,20 @@ def run_windowed_ingest(
 
     ``replace_snapshot=True`` first fetches the new window, THEN clears all
     mailbox-scoped derived data (see ``clear_mailbox_snapshot_for_reingest``), so
-    the resulting surfaces reflect only this window. Fetch-before-clear means a
-    Gmail failure never wipes an existing snapshot. The default (False) is a plain
-    append/upsert.
+    the resulting surfaces reflect only this window. The default (False) is a
+    plain append/upsert.
+
+    Transaction boundary (partial atomicity — an accepted limitation this sprint):
+      - **Fetch-before-clear**: the window is fetched and normalized before any
+        delete, so a Gmail failure never wipes an existing snapshot.
+      - The clear runs with ``commit=False``, so it commits **atomically with the
+        L0 write** — if ``persist_l0`` fails, the clear rolls back and the old
+        snapshot is intact.
+      - L1 (``persist_l1``) commits separately (it commits internally). If L1
+        fails *after* L0 committed, the mailbox holds the new window's L0 with
+        partial/absent L1 — a re-runnable state, not data loss. Full
+        clear→L0→L1 atomicity would require persist_* to stop committing
+        internally, which is out of scope here.
 
     Returns a summary dict (no token, no raw content).
     """
@@ -140,9 +151,11 @@ def run_windowed_ingest(
     store = ingest_persist(messages, threads)
 
     # Only now (new data safely in hand) clear the old snapshot, if requested.
+    # commit=False → the clear commits atomically with persist_l0 below, so a
+    # failed L0 write rolls the clear back and leaves the old snapshot intact.
     cleared: dict[str, int] | None = None
     if replace_snapshot:
-        cleared = clear_mailbox_snapshot_for_reingest(session, db_mailbox_id)
+        cleared = clear_mailbox_snapshot_for_reingest(session, db_mailbox_id, commit=False)
 
     persist_l0(store, db_mailbox_id, session, replace_snapshot=False)
     result = run_enrichment(

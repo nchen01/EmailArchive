@@ -82,7 +82,9 @@ def load_sync_token(session: Session, mailbox_id: str) -> str | None:
     return row.sync_token if row else None
 
 
-def clear_mailbox_snapshot_for_reingest(session: Session, mailbox_id: str) -> dict[str, int]:
+def clear_mailbox_snapshot_for_reingest(
+    session: Session, mailbox_id: str, *, commit: bool = True
+) -> dict[str, int]:
     """Delete ALL mailbox-scoped derived data for a clean re-ingest snapshot (S16.0).
 
     Removes every L0/L1/L2 row belonging to THIS mailbox, in FK-safe order
@@ -102,6 +104,10 @@ def clear_mailbox_snapshot_for_reingest(session: Session, mailbox_id: str) -> di
 
     Cascade is not assumed: ``identity`` has no FK to ``mailbox``, and the
     composite-key child tables are cleared explicitly. Returns per-table counts.
+
+    ``commit=False`` leaves the deletes pending in the caller's transaction — used
+    by replace-mode ingest so the clear and the subsequent L0 write commit
+    together (a failed L0 persist rolls the clear back too).
     """
     from sqlalchemy import delete, select
 
@@ -134,7 +140,8 @@ def clear_mailbox_snapshot_for_reingest(session: Session, mailbox_id: str) -> di
     # ── Operational: drop the stale incremental token (scoped snapshot) ──────
     _del(delete(orm.SyncState).where(orm.SyncState.mailbox_id == mid), "sync_state")
 
-    session.commit()
+    if commit:
+        session.commit()
     return counts
 
 

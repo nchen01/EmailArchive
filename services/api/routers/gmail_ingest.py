@@ -82,26 +82,23 @@ def _get_gmail_mailbox(db: Session, mailbox_id: str) -> orm.Mailbox:
     return mbx
 
 
-def _resolve_internal_domains(db: Session, mbx: orm.Mailbox, body: IngestConfirmRequest) -> list[str]:
-    """Return the effective internal domains.
+def _clean_internal_domains(body: IngestConfirmRequest) -> list[str] | None:
+    """Validate + normalize request-supplied internal_domains. NO DB write.
 
-    If the request supplies ``internal_domains`` (each non-empty), use them AND
-    persist them to ``mailbox.config`` (so later runs are consistent). Otherwise
-    fall back to the mailbox's configured domains.
+    Returns the cleaned list when the request supplied any, or ``None`` when the
+    request omitted the field (caller falls back to mailbox.config). Raises 422
+    if the field was supplied but resolves to nothing usable. Persisting to
+    mailbox.config happens ONLY after a successful account-verified ingest (P1.2).
     """
-    if body.internal_domains is not None:
-        cleaned = [d.strip().lower() for d in body.internal_domains if d and d.strip()]
-        if not cleaned:
-            raise HTTPException(
-                status_code=422,
-                detail="internal_domains, when provided, must be non-empty strings",
-            )
-        cfg = dict(mbx.config or {})
-        cfg["internal_domains"] = cleaned
-        mbx.config = cfg  # reassign so JSONB change is tracked
-        db.commit()
-        return cleaned
-    return list((mbx.config or {}).get("internal_domains", []))
+    if body.internal_domains is None:
+        return None
+    cleaned = [d.strip().lower() for d in body.internal_domains if d and d.strip()]
+    if not cleaned:
+        raise HTTPException(
+            status_code=422,
+            detail="internal_domains, when provided, must be non-empty strings",
+        )
+    return cleaned
 
 
 def _window_fields(body: DateWindowRequest, options: ListOptions) -> dict:
@@ -171,7 +168,22 @@ async def ingest_window(
             detail="confirm=true is required for a live date-windowed ingest"
             + (" (replace_snapshot is destructive)" if body.replace_snapshot else ""),
         )
-    internal_domains = _resolve_internal_domains(db, mbx, body)
+    # P1: a destructive replace MUST have an explicit date window, so it can never
+    # wipe the mailbox and refill it with only an incremental delta.
+    if body.replace_snapshot and not options.is_windowed():
+        raise HTTPException(
+            status_code=400,
+            detail="replace_snapshot requires date_from and/or date_to so the "
+                   "replacement snapshot has an explicit window",
+        )
+    # Validate request internal_domains but DO NOT persist yet — a mismatched
+    # token or a failed ingest must not mutate mailbox.config (P1.2).
+    requested_domains = _clean_internal_domains(body)
+    effective_domains = (
+        requested_domains
+        if requested_domains is not None
+        else list((mbx.config or {}).get("internal_domains", []))
+    )
     provider = _provider_for(mailbox_id)
 
     started = _now()
@@ -186,7 +198,7 @@ async def ingest_window(
             db_mailbox_id=mailbox_id,
             token_mailbox_id=mailbox_id,
             owner_email=mbx.owner_email,
-            internal_domains=internal_domains,
+            internal_domains=effective_domains,
             options=options,
             max_messages=body.max_messages,
             replace_snapshot=body.replace_snapshot,
@@ -199,6 +211,14 @@ async def ingest_window(
         _log.error("gmail_ingest_failed", extra={"error_type": type(exc).__name__})
         _audit_error(db, mailbox_id, started)
         raise HTTPException(status_code=502, detail="gmail ingest failed") from None
+
+    # Success path only: now persist request-supplied internal_domains to config.
+    if requested_domains is not None:
+        mbx = db.get(orm.Mailbox, UUID(mailbox_id))
+        cfg = dict(mbx.config or {})
+        cfg["internal_domains"] = requested_domains
+        mbx.config = cfg  # reassign so the JSONB change is tracked
+        db.commit()
 
     write_audit_event(
         db, mailbox_id=mailbox_id, actor=_ACTOR, action="ingest_finish",
