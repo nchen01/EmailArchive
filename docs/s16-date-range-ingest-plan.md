@@ -465,6 +465,45 @@ $env:EKC_MAILBOX_ID = "<mailbox uuid if reusing>"
      backed by the same validated CLI/provider semantics. This is not a full
      production customer onboarding wizard.
 
+## Revision — replace-snapshot mode + hardening (2026-07-13)
+
+### D-S16.0-10 — Explicit "replace current mailbox snapshot" mode
+Choosing a date window can produce a **clean** workspace, not just a smaller
+fetch. This is **explicit and opt-in** — never implied by the presence of
+`date_from`/`date_to`. Default remains append/upsert (preserves out-of-window
+rows). Replace mode:
+- API `replace_snapshot: bool = false`; CLI `--replace-snapshot`; frontend
+  "Replace current mailbox snapshot" checkbox with destructive warning copy.
+- Requires `confirm=true` / `--confirm`; **cannot** run in preview/plan-only or
+  dry-run; still a scoped snapshot (no sync token saved).
+- When `replace_snapshot` is false, the API/UI honestly label the run as
+  append/upsert (response `mode`), not clean replacement.
+
+**Fetch-before-clear:** the new window is fetched first, and only then is the old
+snapshot cleared — a Gmail failure can never leave a mailbox wiped-but-empty.
+
+**Cleared tables** (centralized in `clear_mailbox_snapshot_for_reingest`, scoped
+strictly by `mailbox_id`): `message_embedding`, `message_attachment`, `event`,
+`thread_project_assignment`, `project_member`, `project`, `edge`, `identity`,
+`person`, `org`, `message`, `thread`, and `sync_state` (drops the stale
+incremental token). **Never** touched: `audit_log` (append-only), the `mailbox`
+row itself, operator `project_label_override`, and any other mailbox.
+
+### API hardening
+- **Audit logging:** both `/preview` and `/ingest` write `ingest_start` (before
+  provider access), `ingest_finish` (with `message_count`) on success, and
+  `ingest_error` on failure — actor `api:gmail-ingest`, scope `gmail.readonly`.
+  OAuth tokens, raw message content, and raw exception messages are never logged
+  or returned (errors surface as a sanitized 502).
+- **Account guard:** before any listing/fetch, the endpoints call Gmail
+  `getProfile` and require the token's account to match `Mailbox.owner_email`
+  (case-insensitive) — a mismatch is a 409 with no persistence. Protects both
+  `GMAIL_TOKEN_<id>` and the fallback `GMAIL_TOKEN`.
+- **Mailbox metadata:** `/ingest` sets `Mailbox.owner_person_id` after L1 (like
+  the CLI), and resolves `internal_domains` explicitly — a request may supply
+  `internal_domains` (validated, lowercased, persisted into `mailbox.config`),
+  otherwise `mailbox.config` is used.
+
 ## Out Of Scope
 
 - Production customer onboarding wizard.

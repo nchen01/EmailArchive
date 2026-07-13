@@ -254,7 +254,7 @@ def _cli_args(**kw):
     defaults = dict(
         smoke_check=False, plan_only=False, dry_run=False, show_body=False,
         max_messages=200, owner_email="o@acme.corp", internal_domains=[],
-        date_from=None, date_to=None,
+        date_from=None, date_to=None, replace_snapshot=False,
     )
     defaults.update(kw)
     return argparse.Namespace(**defaults)
@@ -438,10 +438,14 @@ def test_api_ingest_confirm_shares_snapshot_semantics(gmail_mailbox, monkeypatch
         captured.update(kwargs)
         return {
             "messages": 4, "threads": 2, "people": 3, "edges": 1, "hit_cap": False,
+            "replaced": kwargs.get("replace_snapshot", False), "cleared": None,
             "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True,
         }
 
     monkeypatch.setattr(router, "run_windowed_ingest", _fake_ingest)
+    # Skip the real getProfile account check in this pure-forwarding test.
+    monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
     client, mailbox_id = gmail_mailbox
 
     resp = client.post(
@@ -451,6 +455,8 @@ def test_api_ingest_confirm_shares_snapshot_semantics(gmail_mailbox, monkeypatch
     assert resp.status_code == 200
     body = resp.json()
     assert body["persisted"] is True
+    assert body["mode"] == "append_upsert"
+    assert body["replaced"] is False
     assert "date-windowed snapshot" in body["sync_token_disposition"]
     # Confirms the endpoint forwarded the validated window + cap to the shared runner.
     assert captured["options"].date_from == date(2026, 4, 1)
@@ -466,3 +472,373 @@ def test_api_bad_mailbox_404(gmail_mailbox):
         json={"date_from": "2026-04-01"},
     )
     assert resp.status_code == 404
+
+
+# ── Replace-snapshot: clear helper, append vs replace, safety (DB-gated) ──────
+
+OWNER = "demo.handoff@acme.corp"
+
+
+def _raw(provider_id, thread_id, header, sender, to, subject="s", body="hello there team"):
+    return {
+        "provider_id": provider_id, "thread_id": thread_id, "message_id_header": header,
+        "from": sender, "to": to, "date": "Wed, 15 Apr 2026 10:00:00 +0000",
+        "subject": subject, "body": body,
+    }
+
+
+class FakeGmailProvider:
+    """In-memory Gmail-shaped provider for date-window ingest tests."""
+    def __init__(self, msgs, account_email=OWNER):
+        self._msgs = msgs
+        self._account = account_email
+
+    def get_profile_email(self):
+        return self._account
+
+    def list_ids(self, since_token, options=None):
+        for m in self._msgs:
+            yield m["provider_id"]
+
+    def fetch(self, provider_id):
+        from services.ingest.providers.base import MimePart, RawMessage
+        m = next(x for x in self._msgs if x["provider_id"] == provider_id)
+        return RawMessage(
+            provider_id=m["provider_id"], provider_thread_id=m["thread_id"],
+            headers={
+                "Message-ID": m["message_id_header"], "From": m["from"],
+                "To": m["to"], "Date": m["date"], "Subject": m["subject"],
+            },
+            mime_parts=[MimePart(type="text/plain", bytes=m["body"].encode("utf-8"), charset="utf-8")],
+        )
+
+    def sync_token(self):
+        return ""
+
+
+@pytest.fixture()
+def gmail_session_mailbox():
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+
+    session = SessionLocal()
+    mbx = orm.Mailbox(
+        provider="gmail", owner_email=OWNER, embed_model="deferred", embed_dim=0,
+        config={"internal_domains": ["acme.corp"]},
+    )
+    session.add(mbx)
+    session.commit()
+    mid = str(mbx.id)
+    try:
+        yield session, mid
+    finally:
+        session.execute(orm.Identity.__table__.delete().where(orm.Identity.mailbox_id == mid))
+        session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
+        session.commit()
+        session.close()
+
+
+def _count(session, model, mailbox_id):
+    from sqlalchemy import func, select
+    return session.execute(
+        select(func.count()).select_from(model).where(model.mailbox_id == mailbox_id)
+    ).scalar()
+
+
+@requires_db
+def test_clear_helper_removes_derived_preserves_audit_and_other_mailbox(gmail_session_mailbox):
+    from sqlalchemy import func, select
+
+    from services.db import models as orm
+    from services.db.store import (
+        clear_mailbox_snapshot_for_reingest,
+        save_sync_token,
+        write_audit_event,
+    )
+    from services.ingest.gmail_windowed import run_windowed_ingest
+    from services.ingest.list_options import ListOptions
+
+    session, mid = gmail_session_mailbox
+
+    # Seed L0 + L1 for this mailbox via the real windowed ingest path.
+    prov = FakeGmailProvider([
+        _raw("a1", "t1", "<a1@mail.acme.corp>", "alice@ext.com", OWNER),
+        _raw("a2", "t1", "<a2@mail.acme.corp>", OWNER, "alice@ext.com"),
+    ])
+    run_windowed_ingest(
+        session, db_mailbox_id=mid, token_mailbox_id=mid, owner_email=OWNER,
+        internal_domains=["acme.corp"], options=ListOptions(date_from=date(2026, 4, 1)),
+        max_messages=100, provider=prov,
+    )
+    save_sync_token(session, mid, "H999")  # a stale token to prove it's cleared
+    write_audit_event(session, mailbox_id=mid, actor="test", action="ingest_finish", started_at=None)
+
+    # Add L1 project + member + assignment + event + embedding referencing real rows.
+    person_id = session.execute(
+        select(orm.Person.id).where(orm.Person.mailbox_id == mid)
+    ).scalars().first()
+    thread_id = session.execute(
+        select(orm.Thread.id).where(orm.Thread.mailbox_id == mid)
+    ).scalars().first()
+    message_id = session.execute(
+        select(orm.Message.id).where(orm.Message.mailbox_id == mid)
+    ).scalars().first()
+    now = _dt()
+    proj = orm.Project(mailbox_id=mid, label="P", label_source="fallback", start=now, end=now, confidence=0.5)
+    session.add(proj)
+    session.flush()
+    session.add(orm.ProjectMember(project_id=proj.id, person_id=person_id, involvement=1.0, message_count=1))
+    session.add(orm.ThreadProjectAssignment(thread_id=thread_id, project_id=proj.id, weight=1.0, is_primary=True))
+    session.add(orm.Event(
+        mailbox_id=mid, actor_person_id=person_id, type="did", summary="x",
+        source_message_ids=["<a1@mail.acme.corp>"], confidence=0.5,
+    ))
+    session.add(orm.MessageEmbedding(
+        mailbox_id=mid, message_id=message_id, embed_model="voyage-4", embed_dim=1024,
+        content_hash="h", embedding=[0.0] * 1024,
+    ))
+    session.commit()
+
+    # A second mailbox that must remain untouched.
+    other = orm.Mailbox(provider="gmail", owner_email="other@acme.corp", embed_model="deferred", embed_dim=0, config={})
+    session.add(other)
+    session.commit()
+    other_id = str(other.id)
+    run_windowed_ingest(
+        session, db_mailbox_id=other_id, token_mailbox_id=other_id, owner_email="other@acme.corp",
+        internal_domains=[], options=ListOptions(date_from=date(2026, 4, 1)), max_messages=100,
+        provider=FakeGmailProvider([_raw("o1", "ot", "<o1@x>", "z@ext.com", "other@acme.corp")],
+                                   account_email="other@acme.corp"),
+    )
+
+    audit_before = session.execute(
+        select(func.count()).select_from(orm.AuditLog).where(orm.AuditLog.mailbox_id == mid)
+    ).scalar()
+    assert audit_before > 0
+
+    counts = clear_mailbox_snapshot_for_reingest(session, mid)
+
+    # Every mailbox-scoped derived table is empty for THIS mailbox.
+    for model in (orm.Message, orm.Thread, orm.Person, orm.Org, orm.Edge, orm.Project,
+                  orm.Event, orm.MessageEmbedding):
+        assert _count(session, model, mid) == 0, f"{model.__tablename__} not cleared"
+    assert session.execute(
+        select(func.count()).select_from(orm.Identity).where(orm.Identity.mailbox_id == mid)
+    ).scalar() == 0
+    assert session.get(orm.SyncState, mid) is None  # stale token cleared
+    # project_member / thread_project_assignment gone (via project).
+    assert counts["project_member"] >= 1 and counts["thread_project_assignment"] >= 1
+    assert counts["message_embedding"] >= 1 and counts["event"] >= 1
+
+    # Audit rows preserved; mailbox row + config preserved.
+    assert session.execute(
+        select(func.count()).select_from(orm.AuditLog).where(orm.AuditLog.mailbox_id == mid)
+    ).scalar() == audit_before
+    mbx = session.get(orm.Mailbox, mid)
+    assert mbx is not None and mbx.config.get("internal_domains") == ["acme.corp"]
+
+    # The other mailbox is untouched.
+    assert _count(session, orm.Message, other_id) > 0
+    assert _count(session, orm.Person, other_id) > 0
+    session.execute(orm.Identity.__table__.delete().where(orm.Identity.mailbox_id == other_id))
+    session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == other_id))
+    session.commit()
+
+
+@requires_db
+def test_run_windowed_append_preserves_and_replace_removes(gmail_session_mailbox):
+    from sqlalchemy import select
+
+    from services.db import models as orm
+    from services.ingest.gmail_windowed import run_windowed_ingest
+    from services.ingest.list_options import ListOptions
+
+    session, mid = gmail_session_mailbox
+    opts = ListOptions(date_from=date(2026, 4, 1))
+
+    def _ingest(msgs, replace):
+        run_windowed_ingest(
+            session, db_mailbox_id=mid, token_mailbox_id=mid, owner_email=OWNER,
+            internal_domains=["acme.corp"], options=opts, max_messages=100,
+            replace_snapshot=replace, provider=FakeGmailProvider(msgs),
+        )
+
+    def _headers():
+        return set(session.execute(
+            select(orm.Message.message_id_header).where(orm.Message.mailbox_id == mid)
+        ).scalars())
+
+    batch_a = [_raw("a1", "t1", "<a1@mail.acme.corp>", "alice@ext.com", OWNER)]
+    batch_b = [_raw("b1", "t2", "<b1@mail.acme.corp>", "bob@ext.com", OWNER)]
+
+    # Stored headers are normalized without angle brackets (norm_mid).
+    _ingest(batch_a, replace=False)
+    _ingest(batch_b, replace=False)  # append preserves out-of-window (batch A)
+    assert _headers() == {"a1@mail.acme.corp", "b1@mail.acme.corp"}
+
+    _ingest(batch_b, replace=True)  # replace clears everything, then ingests B only
+    assert _headers() == {"b1@mail.acme.corp"}
+    # Owner participates → owner_person_id was set during enrichment.
+    assert session.get(orm.Mailbox, mid).owner_person_id is not None
+
+
+def _dt():
+    from datetime import datetime, timezone
+    return datetime(2026, 4, 15, tzinfo=timezone.utc)
+
+
+# ── Runner-level: plan-only / dry-run can never replace (DB-free) ─────────────
+
+def test_runner_plan_only_and_dry_run_never_clear(monkeypatch):
+    import services.db.store as store
+    from scripts import gmail_smoke_ingest as cli
+
+    monkeypatch.setattr(store, "write_audit_event", lambda *a, **k: None)
+    monkeypatch.setattr(store, "clear_mailbox_snapshot_for_reingest",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not clear")))
+
+    opts = ListOptions(date_from=date(2026, 4, 1))
+
+    # plan-only returns before any clear, even with replace_snapshot set.
+    class _P:
+        def list_ids(self, since_token, options=None):
+            yield "id0"
+        def fetch(self, pid):
+            raise AssertionError("plan-only must not fetch")
+        def sync_token(self):
+            return ""
+
+    from datetime import datetime, timezone
+    args = _cli_args(plan_only=True, replace_snapshot=True, date_from="2026-04-01")
+    cli._run_post_start(args, _P(), object(), "mb", "actor",
+                        datetime.now(timezone.utc), None, None, opts)  # no raise → no clear
+
+    # dry-run also returns before any clear, even with replace_snapshot set.
+    from services.ingest.params import IngestParams
+    dry_prov = FakeGmailProvider([_raw("d1", "t", "<d1@mail.acme.corp>", "alice@ext.com", OWNER)])
+    dargs = _cli_args(dry_run=True, replace_snapshot=True, date_from="2026-04-01")
+    cli._run_post_start(dargs, dry_prov, object(), "mb", "actor",
+                        datetime.now(timezone.utc), None, IngestParams(), opts)  # no raise → no clear
+
+
+# ── API: replace requires confirm; account guard; internal_domains; audit ─────
+
+@requires_db
+def test_api_replace_requires_confirm(gmail_mailbox, monkeypatch):
+    from services.api.routers import gmail_ingest as router
+    monkeypatch.setattr(router, "run_windowed_ingest",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not ingest")))
+    client, mailbox_id = gmail_mailbox
+    resp = client.post(
+        f"/api/gmail-ingest/{mailbox_id}/ingest",
+        json={"date_from": "2026-04-01", "replace_snapshot": True},  # no confirm
+    )
+    assert resp.status_code == 400
+
+
+@requires_db
+def test_api_account_mismatch_409_no_persist(gmail_mailbox, monkeypatch):
+    from services.api.routers import gmail_ingest as router
+
+    class _MismatchProvider:
+        def get_profile_email(self):
+            return "someone-else@gmail.com"  # != mailbox owner
+
+    monkeypatch.setattr(router, "_provider_for", lambda _id: _MismatchProvider())
+    monkeypatch.setattr(router, "run_windowed_ingest",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not persist on mismatch")))
+    client, mailbox_id = gmail_mailbox
+    resp = client.post(
+        f"/api/gmail-ingest/{mailbox_id}/ingest",
+        json={"date_from": "2026-04-01", "confirm": True},
+    )
+    assert resp.status_code == 409
+
+
+@requires_db
+def test_api_account_match_ok(gmail_mailbox, monkeypatch):
+    from services.api.routers import gmail_ingest as router
+
+    class _MatchProvider:
+        def get_profile_email(self):
+            return "demo.handoff@acme.corp"  # == fixture owner
+
+    monkeypatch.setattr(router, "_provider_for", lambda _id: _MatchProvider())
+    monkeypatch.setattr(router, "run_windowed_ingest", lambda *a, **k: {
+        "messages": 2, "threads": 1, "people": 2, "edges": 1, "hit_cap": False,
+        "replaced": False, "cleared": None,
+        "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True,
+    })
+    client, mailbox_id = gmail_mailbox
+    resp = client.post(
+        f"/api/gmail-ingest/{mailbox_id}/ingest",
+        json={"date_from": "2026-04-01", "confirm": True},
+    )
+    assert resp.status_code == 200
+
+
+@requires_db
+def test_api_internal_domains_used_and_persisted(gmail_mailbox, monkeypatch):
+    from services.api.routers import gmail_ingest as router
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+
+    captured = {}
+    monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+
+    def _fake(session, **kw):
+        captured.update(kw)
+        return {"messages": 1, "threads": 1, "people": 1, "edges": 0, "hit_cap": False,
+                "replaced": False, "cleared": None,
+                "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True}
+
+    monkeypatch.setattr(router, "run_windowed_ingest", _fake)
+    client, mailbox_id = gmail_mailbox
+    resp = client.post(
+        f"/api/gmail-ingest/{mailbox_id}/ingest",
+        json={"date_from": "2026-04-01", "confirm": True, "internal_domains": ["Acme.Corp", " "]},
+    )
+    assert resp.status_code == 200
+    assert captured["internal_domains"] == ["acme.corp"]  # cleaned + lowercased
+    # Persisted into mailbox.config.
+    s = SessionLocal()
+    try:
+        mbx = s.get(orm.Mailbox, mailbox_id)
+        assert mbx.config.get("internal_domains") == ["acme.corp"]
+    finally:
+        s.close()
+
+
+@requires_db
+def test_api_writes_audit_rows(gmail_mailbox, monkeypatch):
+    from sqlalchemy import func, select
+
+    from services.api.routers import gmail_ingest as router
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+
+    monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+    monkeypatch.setattr(router, "run_windowed_ingest", lambda *a, **k: {
+        "messages": 3, "threads": 1, "people": 2, "edges": 1, "hit_cap": False,
+        "replaced": False, "cleared": None,
+        "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True,
+    })
+    client, mailbox_id = gmail_mailbox
+    resp = client.post(
+        f"/api/gmail-ingest/{mailbox_id}/ingest",
+        json={"date_from": "2026-04-01", "confirm": True},
+    )
+    assert resp.status_code == 200
+    s = SessionLocal()
+    try:
+        actions = set(s.execute(
+            select(orm.AuditLog.action).where(
+                orm.AuditLog.mailbox_id == mailbox_id,
+                orm.AuditLog.actor == "api:gmail-ingest",
+            )
+        ).scalars())
+        assert {"ingest_start", "ingest_finish"} <= actions
+    finally:
+        s.close()

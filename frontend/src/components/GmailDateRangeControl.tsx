@@ -30,6 +30,7 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [maxMessages, setMaxMessages] = useState(500);
+  const [replace, setReplace] = useState(false);
   const [preview, setPreview] = useState<GmailWindowResponse | null>(null);
   const [ingested, setIngested] = useState<GmailWindowResponse | null>(null);
   const [busy, setBusy] = useState<null | "preview" | "ingest">(null);
@@ -78,7 +79,14 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
     }
     setBusy("ingest");
     try {
-      setIngested(await ingestGmailWindow(mailboxId, { ...req(), confirm: true }));
+      // replace_snapshot is sent ONLY when the operator explicitly enabled it.
+      setIngested(
+        await ingestGmailWindow(mailboxId, {
+          ...req(),
+          confirm: true,
+          replace_snapshot: replace,
+        }),
+      );
     } catch (e) {
       setError(describeError(e).message);
     } finally {
@@ -145,9 +153,36 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
           disabled={!canIngest}
           title={preview === null ? "Preview the window first" : undefined}
         >
-          {busy === "ingest" ? "Ingesting…" : "Confirm ingest"}
+          {busy === "ingest"
+            ? "Ingesting…"
+            : replace
+              ? "Replace + ingest"
+              : "Confirm ingest"}
         </button>
       </div>
+
+      <label
+        style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.75rem", fontSize: "0.85rem" }}
+      >
+        <input
+          type="checkbox"
+          checked={replace}
+          onChange={(e) => { setReplace(e.target.checked); setIngested(null); }}
+        />
+        Replace current mailbox snapshot
+      </label>
+      {replace ? (
+        <div className="status-failed" role="alert" style={{ marginTop: "0.5rem" }}>
+          <strong>Destructive:</strong> This removes existing messages and derived
+          data for this mailbox before ingesting the selected date window. Use this
+          when preparing a clean demo workspace.
+        </div>
+      ) : (
+        <p className="overview-section-sub" style={{ marginTop: "0.5rem" }}>
+          Append/upsert: adds or updates messages in the window and preserves
+          existing out-of-window data. Enable “Replace” for a clean workspace.
+        </p>
+      )}
 
       {clientError ? (
         <p role="alert" style={{ color: "#b45309", marginTop: "0.5rem", fontSize: "0.85rem" }}>
@@ -181,7 +216,10 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
             </div>
           ) : null}
           <div style={{ marginTop: "0.25rem" }}>
-            Ready to persist this window — click <strong>Confirm ingest</strong> (scoped snapshot).
+            Ready to persist this window (scoped snapshot) —{" "}
+            {replace
+              ? "will REPLACE the current mailbox snapshot before ingesting."
+              : "append/upsert; existing out-of-window data is preserved."}
           </div>
         </div>
       ) : null}
@@ -189,10 +227,11 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
       {ingested ? (
         <div className="status-list" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
           <div>
-            Ingested <strong>{ingested.count}</strong> messages for window{" "}
+            {ingested.replaced ? "Replaced snapshot — ingested" : "Ingested"}{" "}
+            <strong>{ingested.count}</strong> messages for window{" "}
             {ingested.date_from ?? "(open)"} – {ingested.date_to ?? "(open)"}.
           </div>
-          <div>Sync token: {ingested.sync_token_disposition}.</div>
+          <div>Mode: {ingested.mode}. Sync token: {ingested.sync_token_disposition}.</div>
           {ingested.cap_hit ? (
             <div style={{ color: "#b45309" }}>
               Cap was hit — snapshot may be incomplete; narrow the range or raise the cap.

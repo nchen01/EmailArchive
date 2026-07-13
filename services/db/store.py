@@ -82,6 +82,62 @@ def load_sync_token(session: Session, mailbox_id: str) -> str | None:
     return row.sync_token if row else None
 
 
+def clear_mailbox_snapshot_for_reingest(session: Session, mailbox_id: str) -> dict[str, int]:
+    """Delete ALL mailbox-scoped derived data for a clean re-ingest snapshot (S16.0).
+
+    Removes every L0/L1/L2 row belonging to THIS mailbox, in FK-safe order
+    (children before parents), so a subsequent date-windowed ingest leaves the
+    product surfaces reflecting only the newly-ingested window.
+
+    Hard boundaries (destructive — call ONLY after an explicit, confirmed
+    replace request):
+      - scoped strictly by ``mailbox_id`` (directly, or via a subquery over this
+        mailbox's own messages/projects) — never touches another mailbox;
+      - NEVER deletes ``audit_log`` (append-only retention, spec 00 §12);
+      - NEVER deletes the ``mailbox`` row itself;
+      - clears ``sync_state`` too, so the wiped mailbox carries no stale
+        incremental token (a windowed snapshot never saves one);
+      - preserves operator config (``project_label_override``) — it is not
+        ingest-derived state.
+
+    Cascade is not assumed: ``identity`` has no FK to ``mailbox``, and the
+    composite-key child tables are cleared explicitly. Returns per-table counts.
+    """
+    from sqlalchemy import delete, select
+
+    mid = mailbox_id
+    msg_ids = select(orm.Message.id).where(orm.Message.mailbox_id == mid)
+    proj_ids = select(orm.Project.id).where(orm.Project.mailbox_id == mid)
+
+    counts: dict[str, int] = {}
+
+    def _del(stmt, name: str) -> None:
+        res = session.execute(stmt.execution_options(synchronize_session=False))
+        counts[name] = int(res.rowcount or 0)
+
+    # ── L2 embeddings + L0 attachments (message children) ────────────────────
+    _del(delete(orm.MessageEmbedding).where(orm.MessageEmbedding.mailbox_id == mid), "message_embedding")
+    _del(delete(orm.MessageAttachment).where(orm.MessageAttachment.message_id.in_(msg_ids)), "message_attachment")
+    # ── L1 events + project graph (project/person children first) ────────────
+    _del(delete(orm.Event).where(orm.Event.mailbox_id == mid), "event")
+    _del(delete(orm.ThreadProjectAssignment).where(orm.ThreadProjectAssignment.project_id.in_(proj_ids)), "thread_project_assignment")
+    _del(delete(orm.ProjectMember).where(orm.ProjectMember.project_id.in_(proj_ids)), "project_member")
+    _del(delete(orm.Project).where(orm.Project.mailbox_id == mid), "project")
+    _del(delete(orm.Edge).where(orm.Edge.mailbox_id == mid), "edge")
+    # identity.mailbox_id is TEXT with no FK cascade — must be explicit.
+    _del(delete(orm.Identity).where(orm.Identity.mailbox_id == mid), "identity")
+    _del(delete(orm.Person).where(orm.Person.mailbox_id == mid), "person")
+    _del(delete(orm.Org).where(orm.Org.mailbox_id == mid), "org")
+    # ── L0 messages + threads (parents last) ─────────────────────────────────
+    _del(delete(orm.Message).where(orm.Message.mailbox_id == mid), "message")
+    _del(delete(orm.Thread).where(orm.Thread.mailbox_id == mid), "thread")
+    # ── Operational: drop the stale incremental token (scoped snapshot) ──────
+    _del(delete(orm.SyncState).where(orm.SyncState.mailbox_id == mid), "sync_state")
+
+    session.commit()
+    return counts
+
+
 def _upsert(session: Session, model, rows: list[dict], index_elements: list[str]) -> None:
     """Upsert ``rows`` into ``model``, updating all non-key columns on conflict."""
     if not rows:

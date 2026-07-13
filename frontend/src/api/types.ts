@@ -294,6 +294,10 @@ export interface GmailWindowRequest {
 export interface GmailIngestRequest extends GmailWindowRequest {
   /** Live (persisting) ingest requires an explicit confirm. */
   confirm: boolean;
+  /** DESTRUCTIVE: clear existing derived data before ingesting the window. */
+  replace_snapshot?: boolean;
+  /** Optional internal domains; persisted to mailbox.config when provided. */
+  internal_domains?: string[] | null;
 }
 
 export interface GmailWindowResponse {
@@ -305,5 +309,8 @@ export interface GmailWindowResponse {
   is_estimate: boolean;
   cap_hit: boolean;
   persisted: boolean;
+  /** "preview" | "replace" | "append_upsert" — honest description of writes. */
+  mode: string;
+  replaced: boolean;
   sync_token_disposition: string;
 }

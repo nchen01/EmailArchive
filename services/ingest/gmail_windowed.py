@@ -40,6 +40,37 @@ def plan_window(provider, options: ListOptions, max_messages: int) -> PlanResult
     return PlanResult(count=min(len(ids), max_messages), is_estimate=hit_cap, hit_cap=hit_cap)
 
 
+class AccountMismatchError(ValueError):
+    """The OAuth token's Gmail account does not match the target mailbox owner.
+
+    Message is intentionally generic (no email addresses) so it is safe to
+    surface to an operator/UI without leaking which account the token belongs to.
+    """
+
+
+def verify_account(provider, expected_owner_email: str) -> None:
+    """Fail BEFORE any listing/fetch if the token's account != the mailbox owner.
+
+    Guards a browser- or env-triggered ingest from using a Gmail token for one
+    account and persisting that account's mail into a different mailbox row
+    (protects both GMAIL_TOKEN_<id> and the fallback GMAIL_TOKEN). Compared
+    case-insensitively. Providers without ``get_profile_email`` (e.g. test fakes)
+    are skipped.
+    """
+    getter = getattr(provider, "get_profile_email", None)
+    if getter is None:
+        return
+    actual = (getter() or "").strip().lower()
+    expected = (expected_owner_email or "").strip().lower()
+    if not actual:
+        raise AccountMismatchError("could not verify the Gmail account for this token")
+    if actual != expected:
+        raise AccountMismatchError(
+            "the Gmail token's account does not match this mailbox's owner; "
+            "refusing to ingest to avoid mixing accounts"
+        )
+
+
 def build_gmail_provider(token_mailbox_id: str, params: IngestParams | None = None):
     """Construct + authorize a GmailProvider using the env-configured OAuth token.
 
@@ -63,6 +94,7 @@ def run_windowed_ingest(
     internal_domains: list[str],
     options: ListOptions,
     max_messages: int,
+    replace_snapshot: bool = False,
     params: IngestParams | None = None,
     provider=None,
 ) -> dict:
@@ -71,9 +103,21 @@ def run_windowed_ingest(
     Shares the CLI snapshot semantics: the sync token is bypassed
     (``list_ids(None, options)``) and **never saved**. Clustering + event
     extraction are deferred (no embedding model here), matching the smoke runner.
+
+    ``replace_snapshot=True`` first fetches the new window, THEN clears all
+    mailbox-scoped derived data (see ``clear_mailbox_snapshot_for_reingest``), so
+    the resulting surfaces reflect only this window. Fetch-before-clear means a
+    Gmail failure never wipes an existing snapshot. The default (False) is a plain
+    append/upsert.
+
     Returns a summary dict (no token, no raw content).
     """
-    from services.db.store import persist_l0, persist_l1
+    from services.db import models as orm
+    from services.db.store import (
+        clear_mailbox_snapshot_for_reingest,
+        persist_l0,
+        persist_l1,
+    )
     from services.enrich.params import EnrichParams
     from services.enrich.pipeline import run_enrichment
 
@@ -84,7 +128,9 @@ def run_windowed_ingest(
     if provider is None:
         provider = build_gmail_provider(token_mailbox_id, params)
 
-    # Scoped snapshot: since_token=None; N+1 to detect the cap, then cap.
+    # Fetch FIRST (scoped snapshot, token bypassed; N+1 to detect the cap). Doing
+    # this before any destructive clear guarantees a Gmail failure cannot leave a
+    # replace-mode mailbox wiped-but-empty.
     raw_ids = list(itertools.islice(provider.list_ids(None, options), max_messages + 1))
     hit_cap = len(raw_ids) > max_messages
     ids = raw_ids[:max_messages]
@@ -92,6 +138,11 @@ def run_windowed_ingest(
 
     messages, threads = reconstruct(raws, owner_email, params, db_mailbox_id)
     store = ingest_persist(messages, threads)
+
+    # Only now (new data safely in hand) clear the old snapshot, if requested.
+    cleared: dict[str, int] | None = None
+    if replace_snapshot:
+        cleared = clear_mailbox_snapshot_for_reingest(session, db_mailbox_id)
 
     persist_l0(store, db_mailbox_id, session, replace_snapshot=False)
     result = run_enrichment(
@@ -103,12 +154,25 @@ def run_windowed_ingest(
     )
     persist_l1(result, db_mailbox_id, session)
 
+    # Mirror the CLI: set the mailbox owner_person_id from the owner identity if
+    # it is not already set, so downstream surfaces resolve the owner.
+    owner_pid = next(
+        (i.person_id for i in result.identities if i.email == owner_email.lower()), None
+    )
+    if owner_pid:
+        mbx = session.get(orm.Mailbox, db_mailbox_id)
+        if mbx and not mbx.owner_person_id:
+            mbx.owner_person_id = owner_pid
+            session.commit()
+
     return {
         "messages": len(store.messages),
         "threads": len(store.threads),
         "people": len(result.people),
         "edges": len(result.edges),
         "hit_cap": hit_cap,
+        "replaced": replace_snapshot,
+        "cleared": cleared,
         # Windowed run is a scoped snapshot — a sync token is never saved.
         "sync_token_disposition": "not_saved (date-windowed snapshot)",
         "persisted": True,

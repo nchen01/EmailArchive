@@ -94,6 +94,19 @@ class GmailProvider:
             raise RuntimeError("GmailProvider.authorize() must be called first")
         return self._service
 
+    def get_profile_email(self) -> str:
+        """Return the authenticated account's email (Gmail getProfile).
+
+        Used to verify the OAuth token's account matches the target mailbox
+        before any listing/fetch (guards against a token/mailbox mismatch).
+        Returns "" if the provider does not report an address.
+        """
+        svc = self._require_service()
+        profile = self._with_backoff(
+            lambda: svc.users().getProfile(userId="me").execute()
+        )
+        return profile.get("emailAddress", "") or ""
+
     # ── retry helper ────────────────────────────────────────────────────────
     def _with_backoff(self, fn):
         from googleapiclient.errors import HttpError

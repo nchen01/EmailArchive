@@ -21,6 +21,12 @@ class DateWindowRequest(BaseModel):
 class IngestConfirmRequest(DateWindowRequest):
     # A live (persisting) ingest requires an explicit confirm.
     confirm: bool = False
+    # Destructive clean-workspace mode: clear the mailbox's existing derived data
+    # before ingesting this window. Requires confirm=true. Default is append/upsert.
+    replace_snapshot: bool = False
+    # Optional per-request internal domains; when provided (each non-empty), they
+    # are used AND persisted into mailbox.config; otherwise mailbox.config is used.
+    internal_domains: list[str] | None = None
 
 
 class IngestWindowResponse(BaseModel):
@@ -32,4 +38,9 @@ class IngestWindowResponse(BaseModel):
     is_estimate: bool             # True when capped (count is a lower bound)
     cap_hit: bool
     persisted: bool
+    # Honest description of write behavior: "replace" clears existing derived data
+    # first; "append_upsert" adds/updates and preserves out-of-window rows;
+    # "preview" persists nothing.
+    mode: str
+    replaced: bool
     sync_token_disposition: str   # human string; windowed snapshots never save one

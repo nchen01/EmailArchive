@@ -244,6 +244,7 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at,
     "ingest_error" audit row if anything here raises.
     """
     from services.db.store import (
+        clear_mailbox_snapshot_for_reingest,
         persist_l0,
         persist_l1,
         save_sync_token,
@@ -345,6 +346,12 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at,
         )
         return
 
+    # ── Replace-snapshot: clear existing derived data (fetch already done) ──
+    # Fetch happened above, so a Gmail failure can never leave the mailbox wiped.
+    if args.replace_snapshot:
+        cleared = clear_mailbox_snapshot_for_reingest(session, mailbox_id)
+        log.warning("mailbox_snapshot_cleared", tables=cleared)
+
     # ── Persist L0 ─────────────────────────────────────────────────────
     persist_l0(store, mailbox_id, session, replace_snapshot=False)
     log.info("l0_persisted", messages=len(store.messages), threads=len(store.threads))
@@ -418,6 +425,7 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at,
   date_from       : {w['date_from']}
   date_to         : {w['date_to']}{" (inclusive)" if not w['open_ended'] or options.date_to else ""}
   provider filter : {'applied (date-windowed snapshot)' if windowed else 'none'}
+  mode            : {'REPLACE (cleared prior snapshot)' if args.replace_snapshot else 'append/upsert'}
   messages        : {len(store.messages)} ({noise_count} noise-flagged)
   threads         : {len(store.threads)}
   sensitivity     : {sensitivity_counts}
@@ -462,6 +470,14 @@ def parse_args() -> argparse.Namespace:
              "message IDs only. No raw body fetch, no normalization, no L0/L1 "
              "persistence, no sync token saved.",
     )
+    p.add_argument(
+        "--replace-snapshot", action="store_true",
+        help="DESTRUCTIVE: clear this mailbox's existing messages and ALL derived "
+             "data (people, edges, projects, events, embeddings) BEFORE ingesting "
+             "the selected window, so surfaces reflect only that window. Requires "
+             "--confirm; cannot be used with --plan-only or --dry-run. Never "
+             "deletes audit_log and never touches other mailboxes.",
+    )
     p.add_argument("--dry-run", action="store_true",
                    help="Fetch + normalize + print, persist nothing. Audit log is still written.")
     p.add_argument("--smoke-check", action="store_true",
@@ -500,6 +516,16 @@ def main() -> None:
         list_options = parse_date_window(args.date_from, args.date_to)
     except DateWindowError as exc:
         sys.exit(f"ERROR: {exc}")
+
+    # ── Replace-snapshot gating (destructive; confirm-gated, snapshot-only) ──
+    if args.replace_snapshot:
+        if args.plan_only or args.dry_run:
+            sys.exit(
+                "ERROR: --replace-snapshot cannot be used with --plan-only or "
+                "--dry-run (replacement only happens on a real, confirmed ingest)."
+            )
+        # --confirm is already required above; replacement is destructive so we
+        # make the intent explicit in the audit/summary.
 
     # ── Token handling (never logged) ──────────────────────────────────────
     mailbox_id_for_token = args.mailbox_id or "default"
