@@ -241,3 +241,43 @@ bounded "who to ask / project state" job the MVP specifies.
 without changing the surface API or the citation contract.
 **Scope.** S5. **Affects.** new `services/api/routers/cover_for_me.py`; frontend query box;
 docs/implementation-plan.md §6.3.
+
+## D13 — Canonical demo runs on a purpose-built fixture; puluo is validation only
+**Decision.** The S16 product demo (the coverage-handoff story) runs on a **purpose-built,
+deterministic, authored-to-outcome demo fixture**, ingested into a dedicated demo mailbox and run
+through the **real product pipeline end to end** —
+**L0 ingest → L1 enrichment → project clustering / materialization → embeddings → L2 retrieval →
+L3 synthesis**. Both the derived **structure** (people, projects, relationships, events) and the
+**cited answers** are produced by that pipeline, exactly as they are for any real mailbox — nothing
+is hardcoded. "Authored-to-outcome" governs only the **input emails**: we tune realistic content
+until the genuine pipeline yields the intended structure; we never fabricate its output. (The one
+narrow exception is the S16 _citation-honest fallback_ for canonical demo questions, which is a
+reliability net, not a bypass: it still cites real fixture `message_id_header`s, still passes the
+citation allow-list and evidence drawer, and never invents evidence — see the S16 plan §5.) The
+`puluo` real Gmail mailbox (`e21c187a-956a-47ee-92aa-b21badd16f4d`) is retained as the **messy
+real-mailbox validation path only** — it is not the canonical demo story, and the demo must not
+depend on it producing coherent project clusters.
+**Why.** `puluo` is a real personal inbox: ~82% noise (379/460 messages), and its materialized
+"projects" are dominated by newsletter/notification clusters (top project "Email Govdelivery",
+17 threads) plus low-confidence single-thread fragments (confidence 0.40–0.67). That output cannot
+carry the demo's "projects / people / relationships worth understanding" beats, and the demo's win
+condition is **trust** ("I'd trust a stand-in to use this") — which collapses if the first thing a
+coverage buyer sees is structured noise. A purpose-built fixture lets us author a coherent
+coverage-handoff narrative while the structure is still **genuinely derived by the real pipeline**
+(authored-to-outcome = tune realistic content until the real clustering yields it; never hardcode
+the result), so the demo stays authentic.
+**Trade-off considered.** Demoing the real mailbox we validated in S6/S8 is more obviously "real",
+but authenticity is worthless if the derived structure is incoherent. Keeping `puluo` as the
+documented validation path preserves the "works on real messy data too" proof without betting the
+demo on it. Rejected alternatives: a hand-authored/hardcoded mockup (breaks the evidence-trust hero);
+extending the S0/S3/S7 test fixture (ripples through the gold-label eval gates and couples demo to
+tests).
+**Boundaries.** The demo fixture is **separate** from `fixtures/mailbox.json` and its gold labels
+(untouched). Dedicated identity `demo.handoff@acme.corp`, company domain `acme.corp`, deterministic
+prefixed Message-IDs (e.g. `demo-s16-nexus-auth-001@mail.acme.corp`), ground truth stored
+separately. The `puluo`-exposed real-data quality gaps (noise filtering, confidence gating, project
+labeling) are **not** fixed in S16 — logged as S17+ follow-ups.
+**Scope.** S16. **Affects.** new `docs/s16-demo-readiness-plan.md`; new `fixtures/demo_mailbox.json`
+(+ deterministic generator) and a demo seed path; a citation-honest demo-fallback path in
+`services/api/routers/cover_for_me.py`; Landing + Overview reframes; a "demo green" tier note in
+`docs/s15-verification-matrix.md`.
