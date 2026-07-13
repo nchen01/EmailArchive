@@ -280,3 +280,30 @@ export interface PreflightResponse {
   ok: boolean;
   checks: PreflightCheck[];
 }
+
+// ── Date-windowed Gmail ingest (S16.0, demo-side control) ────────────────────
+
+export interface GmailWindowRequest {
+  /** YYYY-MM-DD (inclusive) or null/omitted for an open bound. */
+  date_from?: string | null;
+  date_to?: string | null;
+  /** Safety cap inside the window. */
+  max_messages?: number;
+}
+
+export interface GmailIngestRequest extends GmailWindowRequest {
+  /** Live (persisting) ingest requires an explicit confirm. */
+  confirm: boolean;
+}
+
+export interface GmailWindowResponse {
+  date_from: string | null;
+  date_to: string | null;
+  open_ended: boolean;
+  provider_filter_applied: boolean;
+  count: number;
+  is_estimate: boolean;
+  cap_hit: boolean;
+  persisted: boolean;
+  sync_token_disposition: string;
+}

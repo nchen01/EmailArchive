@@ -1,6 +1,9 @@
 import type {
   ContactDetail,
   CoverForMeResponse,
+  GmailIngestRequest,
+  GmailWindowRequest,
+  GmailWindowResponse,
   NetworkMapData,
   PreflightResponse,
   ProjectDetailData,
@@ -318,4 +321,29 @@ export async function fetchPreflight(
 ): Promise<PreflightResponse> {
   const qs = mailboxId ? `?mailbox_id=${encodeURIComponent(mailboxId)}` : "";
   return getJson<PreflightResponse>(`${API_BASE}/api/preflight${qs}`);
+}
+
+/**
+ * Preview a date-windowed Gmail ingest (S16.0): counts matching messages without
+ * fetching bodies or persisting. The browser never sends an OAuth token — the
+ * backend reads it from its own environment.
+ */
+export async function previewGmailWindow(
+  mailboxId: string,
+  req: GmailWindowRequest,
+): Promise<GmailWindowResponse> {
+  const url = `${API_BASE}/api/gmail-ingest/${encodeURIComponent(mailboxId)}/preview`;
+  return postJsonBody<GmailWindowResponse>(url, req);
+}
+
+/**
+ * Run a date-windowed Gmail ingest (S16.0). A scoped snapshot: no sync token is
+ * saved. Requires `confirm: true`.
+ */
+export async function ingestGmailWindow(
+  mailboxId: string,
+  req: GmailIngestRequest,
+): Promise<GmailWindowResponse> {
+  const url = `${API_BASE}/api/gmail-ingest/${encodeURIComponent(mailboxId)}/ingest`;
+  return postJsonBody<GmailWindowResponse>(url, req);
 }

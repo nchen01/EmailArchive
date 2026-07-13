@@ -68,7 +68,7 @@ def test_run_ingest_max_messages_stops_iterator_early():
         def authorize(self, grant):
             pass
 
-        def list_ids(self, since_token):
+        def list_ids(self, since_token, options=None):
             n = 0
             while True:
                 yield f"fake-id-{n}"

@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterator, Protocol, runtime_checkable
 
+from ..list_options import ListOptions
+
 
 @dataclass
 class MimePart:
@@ -29,7 +31,9 @@ class RawMessage:
 @runtime_checkable
 class MailProvider(Protocol):
     def authorize(self, grant: dict) -> None: ...
-    def list_ids(self, since_token: str | None) -> Iterator[str]: ...
+    def list_ids(
+        self, since_token: str | None, options: ListOptions | None = None
+    ) -> Iterator[str]: ...
     def fetch(self, provider_id: str) -> RawMessage: ...
     def fetch_all(self) -> Iterator[RawMessage]: ...
     def sync_token(self) -> str: ...

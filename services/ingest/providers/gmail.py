@@ -11,11 +11,40 @@ import email
 import json
 import os
 import time
+from datetime import timedelta
 from email.message import Message as EmailMessage
 from typing import Iterator
 
+from ..list_options import ListOptions
 from ..params import IngestParams
 from .base import MimePart, RawMessage
+
+
+def build_gmail_query(options: ListOptions | None) -> str | None:
+    """Translate a provider-neutral date window into a Gmail ``q=`` search string.
+
+    Returns ``None`` when there is no window (so the caller omits ``q`` entirely
+    and lists the whole mailbox, unchanged behavior).
+
+    Gmail's ``after:``/``before:`` operators compare the message's internal
+    (received) date at day granularity, in ``YYYY/MM/DD`` form:
+      - ``after:D``  matches messages received on or after day D (inclusive).
+      - ``before:D`` matches messages received strictly before day D (exclusive).
+    So the product-level **inclusive** ``date_to`` is implemented by shifting the
+    Gmail ``before:`` bound forward by one day (D-S16.0-1/-3).
+
+    Only validated ``date`` objects are ever formatted into the query — no raw
+    user text is interpolated.
+    """
+    if options is None or not options.is_windowed():
+        return None
+    parts: list[str] = []
+    if options.date_from is not None:
+        parts.append(f"after:{options.date_from.strftime('%Y/%m/%d')}")
+    if options.date_to is not None:
+        upper = options.date_to + timedelta(days=1)  # inclusive date_to → before next day
+        parts.append(f"before:{upper.strftime('%Y/%m/%d')}")
+    return " ".join(parts) if parts else None
 
 
 def get_token(mailbox_id: str) -> dict:
@@ -24,7 +53,7 @@ def get_token(mailbox_id: str) -> dict:
     Production wires a secrets manager; S1 reads an env var (decision D6).
     Tokens never touch the app DB or logs.
     """
-    token_json = os.environ.get(f"GMAIL_TOKEN_{mailbox_id}")
+    token_json = os.environ.get(f"GMAIL_TOKEN_{mailbox_id}") or os.environ.get("GMAIL_TOKEN")
     if not token_json:
         raise RuntimeError(f"No token found for mailbox {mailbox_id}")
     return json.loads(token_json)
@@ -84,9 +113,16 @@ class GmailProvider:
                 raise
 
     # ── listing ─────────────────────────────────────────────────────────────
-    def list_ids(self, since_token: str | None) -> Iterator[str]:
+    def list_ids(
+        self, since_token: str | None, options: ListOptions | None = None
+    ) -> Iterator[str]:
         svc = self._require_service()
-        if since_token:
+        query = build_gmail_query(options)
+        # A date window is a scoped snapshot: Gmail history is not date-scoped, so
+        # a windowed run must NOT use the incremental history path (D-S16.0-5).
+        # The caller (run_ingest / the CLI) also forces since_token=None for
+        # windowed runs; guarding here keeps the provider correct on its own.
+        if since_token and query is None:
             yield from self._list_incremental(since_token)
             return
         # getProfile reliably returns the mailbox's current historyId before we
@@ -98,11 +134,15 @@ class GmailProvider:
             self._history_id = profile["historyId"]
         page_token = None
         while True:
+            list_kwargs = {
+                "userId": "me",
+                "maxResults": self.params.batch_size,
+                "pageToken": page_token,
+            }
+            if query is not None:
+                list_kwargs["q"] = query
             resp = self._with_backoff(
-                lambda: svc.users()
-                .messages()
-                .list(userId="me", maxResults=self.params.batch_size, pageToken=page_token)
-                .execute()
+                lambda: svc.users().messages().list(**list_kwargs).execute()
             )
             for m in resp.get("messages", []):
                 yield m["id"]

@@ -1,4 +1,5 @@
 import type { PreflightCheck } from "../api/types";
+import { GmailDateRangeControl } from "./GmailDateRangeControl";
 
 interface StatusScreenProps {
   mailboxId: string;
@@ -77,6 +78,8 @@ export function StatusScreen({
           })}
         </ul>
       )}
+
+      <GmailDateRangeControl mailboxId={mailboxId} />
     </div>
   );
 }

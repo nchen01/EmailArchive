@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Iterator
 
+from ..list_options import ListOptions
 from .base import MailProvider, MimePart, RawMessage
 
 
@@ -27,7 +28,11 @@ class FixtureProvider:
     def authorize(self, grant: dict) -> None:  # no-op for the fixture
         return None
 
-    def list_ids(self, since_token: str | None) -> Iterator[str]:
+    def list_ids(
+        self, since_token: str | None, options: ListOptions | None = None
+    ) -> Iterator[str]:
+        # The fixture is not date-windowed source data; date options are accepted
+        # for protocol compatibility and ignored (documented no-op, D-S16.0-2).
         for m in self._messages:
             yield m["provider_id"]
 
