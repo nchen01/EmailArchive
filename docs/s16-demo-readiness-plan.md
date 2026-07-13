@@ -10,6 +10,11 @@ algorithm changes.
 > This plan is committed and pushed **first**; coding then starts from the
 > accepted plan. Until then this document is planning-only.
 
+> **Pre-demo ingest control.** For large real mailboxes used as validation data,
+> see `docs/s16-date-range-ingest-plan.md`. That plan is a bounded CLI +
+> demo-side frontend feature for choosing a customizable date window before
+> Gmail ingest; it does not replace the purpose-built S16 demo fixture.
+
 This plan is the output of an S16 design grilling. The pivotal decision is
 recorded as **D13** in `docs/decisions.md` (canonical demo runs on a purpose-built
 fixture; `puluo` is validation only). Terms in _italics_ on first use are defined

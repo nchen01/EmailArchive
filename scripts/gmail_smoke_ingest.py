@@ -207,18 +207,71 @@ def _smoke_check(provider, owner_email: str, show_body: bool) -> int:
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-def _run_post_start(args, provider, session, mailbox_id, actor, started_at, since_token, ingest_params):
+def _replace_snapshot_error(*, replace_snapshot: bool, plan_only: bool,
+                            dry_run: bool, windowed: bool) -> str | None:
+    """Return an error string if ``--replace-snapshot`` is misused, else None.
+
+    Replacement is destructive: it may only run on a real, confirmed ingest, and
+    it MUST carry an explicit date window. Without a window a run would use the
+    stored incremental token and could wipe the whole mailbox, then refill it
+    with only a small incremental delta (P1). Enforced before any Gmail/DB call.
+    """
+    if not replace_snapshot:
+        return None
+    if plan_only or dry_run:
+        return ("--replace-snapshot cannot be used with --plan-only or --dry-run "
+                "(replacement only happens on a real, confirmed ingest).")
+    if not windowed:
+        return ("replace_snapshot requires --date-from and/or --date-to so the "
+                "replacement snapshot has an explicit window.")
+    return None
+
+
+def _decide_sync_token(*, windowed: bool, hit_cap: bool, new_sync_token: str):
+    """Decide whether to save a sync token; return (token_to_save, status_str).
+
+    Precedence (never save in the first three cases):
+      windowed snapshot > capped run > provider returned no historyId > save.
+    A date-windowed run is a scoped snapshot (D-S16.0-5); a capped run may be
+    incomplete; an empty historyId must not be persisted as a valid token.
+    """
+    if windowed:
+        return None, "NOT saved (date-windowed snapshot)"
+    if hit_cap:
+        return None, "NOT saved (capped run)"
+    if not new_sync_token:
+        return None, "NOT saved (provider returned no historyId)"
+    return new_sync_token, new_sync_token[:16] + "..."
+
+
+def _window_desc(options) -> dict:
+    """Observable description of the date window for logs/summary (D-S16.0-7)."""
+    df = options.date_from.isoformat() if options.date_from else None
+    dt = options.date_to.isoformat() if options.date_to else None
+    return {
+        "date_from": df or "(open)",
+        "date_to": dt or "(open)",
+        "open_ended": (df is None) or (dt is None),
+        "provider_filter_applied": options.is_windowed(),
+    }
+
+
+def _run_post_start(args, provider, session, mailbox_id, actor, started_at,
+                    since_token, ingest_params, options):
     """All work that happens after the audit-start row is written.
 
     Extracted so that main() can wrap it in a try/except and guarantee an
     "ingest_error" audit row if anything here raises.
     """
     from services.db.store import (
+        clear_mailbox_snapshot_for_reingest,
         persist_l0,
         persist_l1,
         save_sync_token,
         write_audit_event,
     )
+
+    windowed = options.is_windowed()
 
     # ── Smoke check ────────────────────────────────────────────────────
     if args.smoke_check:
@@ -230,9 +283,43 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at, sinc
         )
         return
 
+    # ── Plan-only preview: list/estimate matching IDs only ────────────
+    # Lists message IDs (metadata) for the window up to the cap; NEVER fetches
+    # a raw body, normalizes, persists L0/L1, or saves a sync token (D-S16.0-4).
+    if args.plan_only:
+        from services.ingest.gmail_windowed import plan_window
+        plan = plan_window(provider, options, args.max_messages)
+        count, hit_cap = plan.count, plan.hit_cap
+        w = _window_desc(options)
+        log.info("plan_only_result", count=count, is_estimate=hit_cap,
+                 hit_max_messages=hit_cap, **w)
+        write_audit_event(
+            session, mailbox_id=mailbox_id, actor=actor, action="ingest_finish",
+            scope="gmail.readonly", message_count=count,
+            started_at=started_at, finished_at=datetime.now(timezone.utc),
+        )
+        count_label = f"{count} (exact)" if not hit_cap else f"≥ {count} (capped at --max-messages)"
+        print(f"""
+╔══════════════════════════════════════════════════════╗
+║  Gmail Date-Window Preview (plan-only)               ║
+╠══════════════════════════════════════════════════════╣
+  mailbox_id      : {mailbox_id}
+  date_from       : {w['date_from']}
+  date_to         : {w['date_to']} (inclusive)
+  provider filter : {'applied' if w['provider_filter_applied'] else 'none (open window)'}
+  matching msgs   : {count_label}
+  fetched bodies  : NONE (plan-only)
+  persisted       : NO
+  sync_token      : NOT saved (plan-only)
+  {"HINT: narrow the date range or raise --max-messages to see the full count." if hit_cap else ""}
+╚══════════════════════════════════════════════════════╝
+""")
+        return
+
     # ── Fetch N+1 IDs to distinguish exact-fit from truncated run ─────
-    log.info("fetch_start", max_messages=args.max_messages, since_token=bool(since_token))
-    raw_ids = list(itertools.islice(provider.list_ids(since_token), args.max_messages + 1))
+    log.info("fetch_start", max_messages=args.max_messages,
+             since_token=bool(since_token), windowed=windowed)
+    raw_ids = list(itertools.islice(provider.list_ids(since_token, options), args.max_messages + 1))
     hit_cap = len(raw_ids) > args.max_messages
     ids = raw_ids[: args.max_messages]
     log.info("ids_fetched", count=len(ids), hit_cap=hit_cap)
@@ -268,11 +355,23 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at, sinc
             scope="gmail.readonly", message_count=len(store.messages),
             started_at=started_at, finished_at=datetime.now(timezone.utc),
         )
+        w = _window_desc(options)
+        window_note = (
+            f" Window {w['date_from']}..{w['date_to']} (scoped snapshot; sync_token NOT saved)."
+            if windowed else ""
+        )
         print(
             f"\nDry-run complete — {len(store.messages)} messages normalized, "
-            f"{noise_count} noise-flagged. Nothing persisted."
+            f"{noise_count} noise-flagged. Nothing persisted.{window_note}"
         )
         return
+
+    # ── Replace-snapshot: clear existing derived data (fetch already done) ──
+    # Fetch happened above, so a Gmail failure can never leave the mailbox wiped.
+    # commit=False → the clear commits atomically with persist_l0 below.
+    if args.replace_snapshot:
+        cleared = clear_mailbox_snapshot_for_reingest(session, mailbox_id, commit=False)
+        log.warning("mailbox_snapshot_cleared", tables=cleared)
 
     # ── Persist L0 ─────────────────────────────────────────────────────
     persist_l0(store, mailbox_id, session, replace_snapshot=False)
@@ -303,22 +402,31 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at, sinc
             mbx.owner_person_id = owner_pid
             session.commit()
 
-    # ── Sync token: save only when uncapped AND non-empty ─────────────
+    # ── Sync token: save only when uncapped AND non-empty AND not windowed ──
     # GmailProvider.sync_token() returns "" when no historyId was captured
     # (e.g. the mailbox returned no messages). Saving "" would be treated as
     # a valid incremental token on the next run.
-    token_to_save = new_sync_token if (new_sync_token and not hit_cap) else None
-    if hit_cap:
+    #
+    # A date-windowed run is a scoped snapshot (D-S16.0-5): Gmail history is not
+    # date-scoped, so saving a token here could make a later run look complete
+    # while silently excluding messages outside this window. Windowed → never
+    # save, and this takes precedence over the cap/empty reasons.
+    token_to_save, sync_token_status = _decide_sync_token(
+        windowed=windowed, hit_cap=hit_cap, new_sync_token=new_sync_token,
+    )
+    if token_to_save is not None:
+        save_sync_token(session, mailbox_id, new_sync_token)
+        log.info("sync_token_saved", preview=new_sync_token[:16] + "...")
+    elif windowed:
+        log.info("sync_token_not_saved", reason="date-windowed snapshot")
+    elif hit_cap:
         log.warning(
             "sync_token_not_saved",
             reason="run hit --max-messages cap; snapshot may be incomplete",
             hint="re-run without --max-messages or with a higher cap to enable incremental",
         )
-    elif not new_sync_token:
-        log.warning("sync_token_not_saved", reason="provider returned no historyId")
     else:
-        save_sync_token(session, mailbox_id, new_sync_token)
-        log.info("sync_token_saved", preview=new_sync_token[:16] + "...")
+        log.warning("sync_token_not_saved", reason="provider returned no historyId")
 
     # ── Audit finish ───────────────────────────────────────────────────
     write_audit_event(
@@ -328,19 +436,25 @@ def _run_post_start(args, provider, session, mailbox_id, actor, started_at, sinc
         started_at=started_at, finished_at=datetime.now(timezone.utc),
     )
 
+    w = _window_desc(options)
     print(f"""
 ╔══════════════════════════════════════════════════════╗
 ║  Gmail Smoke Ingest — Complete                       ║
 ╠══════════════════════════════════════════════════════╣
   mailbox_id      : {mailbox_id}
   owner           : {args.owner_email}
+  date_from       : {w['date_from']}
+  date_to         : {w['date_to']}{" (inclusive)" if not w['open_ended'] or options.date_to else ""}
+  provider filter : {'applied (date-windowed snapshot)' if windowed else 'none'}
+  mode            : {'REPLACE (cleared prior snapshot)' if args.replace_snapshot else 'append/upsert'}
   messages        : {len(store.messages)} ({noise_count} noise-flagged)
   threads         : {len(store.threads)}
   sensitivity     : {sensitivity_counts}
   people          : {len(result.people)}
   edges           : {len(result.edges)}
+  hit_max_messages: {hit_cap}
   clustering      : deferred (no embedding model configured)
-  sync_token      : {token_to_save[:16] + "..." if token_to_save else ("NOT saved (capped run)" if hit_cap else "NOT saved (provider returned no historyId)")}
+  sync_token      : {sync_token_status}
   persisted       : YES (L0 + L1 identity/graph/roles)
 ╚══════════════════════════════════════════════════════╝
 """)
@@ -361,6 +475,30 @@ def parse_args() -> argparse.Namespace:
              "to avoid marking an incomplete snapshot as incremental-ready.",
     )
     p.add_argument("--since-token", default=None)
+    p.add_argument(
+        "--date-from", default=None, metavar="YYYY-MM-DD",
+        help="Inclusive start of the ingest date window (received date). "
+             "Presence of any date bound makes the run a scoped snapshot: the "
+             "stored sync token is ignored and no new token is saved.",
+    )
+    p.add_argument(
+        "--date-to", default=None, metavar="YYYY-MM-DD",
+        help="Inclusive end of the ingest date window (received date).",
+    )
+    p.add_argument(
+        "--plan-only", action="store_true",
+        help="Preview the date window: authenticate and list/estimate matching "
+             "message IDs only. No raw body fetch, no normalization, no L0/L1 "
+             "persistence, no sync token saved.",
+    )
+    p.add_argument(
+        "--replace-snapshot", action="store_true",
+        help="DESTRUCTIVE: clear this mailbox's existing messages and ALL derived "
+             "data (people, edges, projects, events, embeddings) BEFORE ingesting "
+             "the selected window, so surfaces reflect only that window. Requires "
+             "--confirm; cannot be used with --plan-only or --dry-run. Never "
+             "deletes audit_log and never touches other mailboxes.",
+    )
     p.add_argument("--dry-run", action="store_true",
                    help="Fetch + normalize + print, persist nothing. Audit log is still written.")
     p.add_argument("--smoke-check", action="store_true",
@@ -393,6 +531,24 @@ def main() -> None:
             "the project's privacy guidelines (see docs/implementation-plan.md §7)."
         )
 
+    # ── Date-window validation — BEFORE any Gmail/API/DB access ─────────────
+    from services.ingest.list_options import DateWindowError, parse_date_window
+    try:
+        list_options = parse_date_window(args.date_from, args.date_to)
+    except DateWindowError as exc:
+        sys.exit(f"ERROR: {exc}")
+
+    # ── Replace-snapshot gating (destructive; confirm-gated, windowed-only) ──
+    # Checked BEFORE any Gmail/API/DB access. --confirm is already required above.
+    _rep_err = _replace_snapshot_error(
+        replace_snapshot=args.replace_snapshot,
+        plan_only=args.plan_only,
+        dry_run=args.dry_run,
+        windowed=list_options.is_windowed(),
+    )
+    if _rep_err:
+        sys.exit(f"ERROR: {_rep_err}")
+
     # ── Token handling (never logged) ──────────────────────────────────────
     mailbox_id_for_token = args.mailbox_id or "default"
     token_dict = _get_token_dict(mailbox_id_for_token)
@@ -413,7 +569,18 @@ def main() -> None:
         mailbox_id = _get_or_create_mailbox(session, args.owner_email, args.mailbox_id)
 
         since_token = args.since_token
-        if since_token is None and not args.smoke_check:
+        if list_options.is_windowed():
+            # Date-windowed run = scoped snapshot (D-S16.0-5): ignore any stored
+            # or passed sync token so the window is not silently narrowed by
+            # incremental history, and do not save a new one (handled below).
+            if since_token:
+                log.info("date_window_ignores_since_token", provided_token=True)
+            since_token = None
+            log.info(
+                "date_windowed_snapshot",
+                date_from=args.date_from, date_to=args.date_to,
+            )
+        elif since_token is None and not args.smoke_check:
             since_token = load_sync_token(session, mailbox_id)
             if since_token:
                 log.info("incremental_sync", using_stored_token=True)
@@ -446,7 +613,7 @@ def main() -> None:
         try:
             _run_post_start(
                 args, provider, session, mailbox_id, actor, started_at,
-                since_token, ingest_params,
+                since_token, ingest_params, list_options,
             )
         except Exception as exc:
             err_type = type(exc).__name__
