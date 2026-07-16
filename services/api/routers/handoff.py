@@ -16,7 +16,7 @@ production owner auth is implied by this slice).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from services.db import models as orm
 from services.handoff.audit import write_handoff_audit
 from services.handoff.generator import generate_candidate
+from services.handoff.tokens import actor_hash_prefix, hash_token, new_capability_code
 from services.ingest.list_options import DateWindowError, parse_date_window
 
 from ..deps import get_db
@@ -34,6 +35,8 @@ from ..schemas.handoff import (
     HandoffEvidenceOut,
     HandoffPackageOut,
     HandoffScopeOut,
+    PublishRequest,
+    PublishResponse,
     ScopeRequest,
 )
 
@@ -42,6 +45,8 @@ router = APIRouter(tags=["handoff"])
 _VALID_REASONS = {"vacation", "leave", "transfer", "delegation", "other"}
 # Scope/generate are only legal while the package is still being drafted.
 _MUTABLE_STATES = {"draft", "generated"}
+# Publish is only legal from a generated candidate (draft must generate first).
+_DEFAULT_EXPIRY_DAYS = 30
 
 
 def _uuid_or_404(value: str) -> str:
@@ -96,6 +101,9 @@ def _package_out(db: Session, pkg: orm.HandoffPackage) -> HandoffPackageOut:
         id=pkg.id, mailbox_id=pkg.mailbox_id, creator_email=pkg.creator_email,
         status=pkg.status, reason=pkg.reason, title=pkg.title, version=pkg.version,
         created_at=pkg.created_at.isoformat(), updated_at=pkg.updated_at.isoformat(),
+        published_at=pkg.published_at.isoformat() if pkg.published_at else None,
+        expires_at=pkg.expires_at.isoformat() if pkg.expires_at else None,
+        revoked_at=pkg.revoked_at.isoformat() if pkg.revoked_at else None,
         scope=HandoffScopeOut(
             date_from=scope.date_from.isoformat() if scope and scope.date_from else None,
             date_to=scope.date_to.isoformat() if scope and scope.date_to else None,
@@ -199,3 +207,121 @@ async def generate_package(
 @router.get("/handoff/{package_id}", response_model=HandoffPackageOut)
 async def get_handoff(package_id: str, db: Session = Depends(get_db)) -> HandoffPackageOut:
     return _package_out(db, _get_package(db, package_id))
+
+
+@router.post("/handoff/{package_id}/publish", response_model=PublishResponse)
+async def publish_handoff(
+    package_id: str, body: PublishRequest, db: Session = Depends(get_db)
+) -> PublishResponse:
+    """Freeze a generated candidate and grant one recipient package-local access.
+
+    Publish is only legal from ``generated`` (a draft must generate first), and
+    only if the candidate actually has cited evidence — publishing an empty
+    package would hand the recipient nothing to read and no claim could satisfy
+    "no citation, no claim", so it is rejected rather than silently allowed.
+
+    The package freezes here: scope/generate already reject any non-mutable
+    status (§immutability), so a published package can only change via a new
+    version (deferred to S17.6). A one-time capability code is minted; only its
+    hash is stored, and the raw code is returned to the creator exactly once.
+    """
+    pkg = _get_package(db, package_id)
+    if pkg.status != "generated":
+        raise HTTPException(
+            status_code=409,
+            detail=f"only a generated package can be published (status '{pkg.status}')",
+        )
+
+    recipient_email = body.recipient_email.strip()
+    if not recipient_email:
+        raise HTTPException(status_code=422, detail="recipient_email is required")
+
+    evidence_count = db.execute(
+        select(func.count()).select_from(orm.HandoffEvidence)
+        .where(orm.HandoffEvidence.package_id == pkg.id)
+    ).scalar_one()
+    if evidence_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="cannot publish a package with no cited evidence; widen the scope and regenerate",
+        )
+
+    now = datetime.now(timezone.utc)
+    days = body.expires_in_days or _DEFAULT_EXPIRY_DAYS
+    expires_at = now + timedelta(days=days)
+
+    raw_code = new_capability_code()
+    code_hash = hash_token(raw_code)
+
+    db.add(orm.HandoffRecipient(
+        package_id=pkg.id, recipient_email=recipient_email,
+        capability_code_hash=code_hash, granted_at=now, expires_at=expires_at,
+    ))
+    pkg.status = "published"
+    pkg.published_at = now
+    pkg.expires_at = expires_at
+    pkg.updated_at = now
+    db.commit()
+
+    write_handoff_audit(
+        db, package_id=pkg.id, lineage_id=pkg.lineage_id,
+        actor=f"owner:{pkg.creator_email}", action="package_published",
+        metadata={
+            "recipient_email": recipient_email,
+            "expires_at": expires_at.isoformat(),
+            "evidence": int(evidence_count),
+            "recipient_hash_prefix": actor_hash_prefix(code_hash),
+        },
+    )
+    return PublishResponse(
+        package=_package_out(db, pkg),
+        recipient_email=recipient_email,
+        expires_at=expires_at.isoformat(),
+        capability_code=raw_code,
+        share_fragment=f"#c={raw_code}",
+    )
+
+
+@router.post("/handoff/{package_id}/revoke", response_model=HandoffPackageOut)
+async def revoke_handoff(
+    package_id: str, db: Session = Depends(get_db)
+) -> HandoffPackageOut:
+    """Revoke a published package: block recipient access immediately.
+
+    Marks the package + recipient revoked and kills any live session. Audit rows
+    are retained (no cascade). Only a published package can be revoked.
+    """
+    pkg = _get_package(db, package_id)
+    if pkg.status != "published":
+        raise HTTPException(
+            status_code=409,
+            detail=f"only a published package can be revoked (status '{pkg.status}')",
+        )
+
+    now = datetime.now(timezone.utc)
+    pkg.status = "revoked"
+    pkg.revoked_at = now
+    pkg.updated_at = now
+
+    recipient = db.execute(
+        select(orm.HandoffRecipient).where(orm.HandoffRecipient.package_id == pkg.id)
+    ).scalar_one_or_none()
+    if recipient is not None and recipient.revoked_at is None:
+        recipient.revoked_at = now
+    # Kill any live sessions so an already-issued bearer cannot outlive the revoke.
+    db.execute(
+        orm.HandoffRecipientSession.__table__.update()
+        .where(
+            orm.HandoffRecipientSession.package_id == pkg.id,
+            orm.HandoffRecipientSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=now)
+    )
+    db.commit()
+
+    write_handoff_audit(
+        db, package_id=pkg.id, lineage_id=pkg.lineage_id,
+        actor=f"owner:{pkg.creator_email}", action="package_revoked",
+        metadata={"revoked_at": now.isoformat()},
+    )
+    return _package_out(db, pkg)

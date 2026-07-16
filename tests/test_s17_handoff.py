@@ -330,3 +330,261 @@ def test_illegal_transitions_rejected(env):
     # unknown ids → 404
     assert env.client.get(f"/api/handoff/{uuid.uuid4()}").status_code == 404
     assert env.client.get("/api/handoff/not-a-uuid").status_code == 404
+
+
+# ── S17.5 — publish + recipient foundation ───────────────────────────────────
+
+def _generated_package(env, header="atlas-1@acme.corp", summary="Completed the Atlas cutover"):
+    """Seed one clean thread + event, then create+generate → returns package id."""
+    tid = str(uuid.uuid4())
+    _seed_thread(env.session, env.mid, tid, [
+        {"header": header, "subject": "Atlas cutover", "body": "Cutover Friday."},
+    ])
+    _seed_event(env.session, env.mid, env.owner_pid, [header], type_="did", summary=summary)
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    assert env.client.post(f"/api/handoff/{pid}/generate").status_code == 200
+    return pid
+
+
+def _publish(env, pid, recipient_email="cover@acme.corp", **body):
+    return env.client.post(
+        f"/api/handoff/{pid}/publish",
+        json={"recipient_email": recipient_email, **body},
+    )
+
+
+def _exchange(env, code):
+    return env.client.post("/api/handoff/recipient/session", json={"code": code})
+
+
+@requires_db
+def test_publish_creates_recipient_grant_and_default_expiry(env):
+    from datetime import datetime as dt
+
+    pid = _generated_package(env)
+    r = _publish(env, pid)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["package"]["status"] == "published"
+    assert body["package"]["published_at"] and body["package"]["expires_at"]
+    assert body["recipient_email"] == "cover@acme.corp"
+    # raw code returned once + share fragment (never a path/query).
+    assert body["capability_code"]
+    assert body["share_fragment"] == f"#c={body['capability_code']}"
+
+    published = dt.fromisoformat(body["package"]["published_at"])
+    expires = dt.fromisoformat(body["expires_at"])
+    assert 29 <= (expires - published).days <= 30  # default +30d
+
+    # A recipient grant exists; only the HASH of the code is stored.
+    s = _fresh()
+    try:
+        from sqlalchemy import select
+
+        from services.db import models as orm
+        from services.handoff.tokens import hash_token
+        rec = s.execute(select(orm.HandoffRecipient).where(
+            orm.HandoffRecipient.package_id == pid)).scalar_one()
+        assert rec.recipient_email == "cover@acme.corp"
+        assert rec.capability_code_hash == hash_token(body["capability_code"])
+        assert body["capability_code"] not in rec.capability_code_hash
+    finally:
+        s.close()
+
+
+@requires_db
+def test_publish_expiry_override_honored(env):
+    from datetime import datetime as dt
+
+    pid = _generated_package(env)
+    body = _publish(env, pid, expires_in_days=7).json()
+    published = dt.fromisoformat(body["package"]["published_at"])
+    expires = dt.fromisoformat(body["expires_at"])
+    assert 6 <= (expires - published).days <= 7
+
+
+@requires_db
+def test_cannot_publish_empty_or_ungenerated_package(env):
+    # Generated but with no events → no evidence → publish blocked (nothing to read).
+    empty_pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    assert env.client.post(f"/api/handoff/{empty_pid}/generate").json()["evidence"] == []
+    assert _publish(env, empty_pid).status_code == 409
+
+    # A draft that was never generated cannot be published either.
+    draft_pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    assert _publish(env, draft_pid).status_code == 409
+
+
+@requires_db
+def test_published_package_is_immutable(env):
+    pid = _generated_package(env)
+    assert _publish(env, pid).status_code == 200
+    # Scope edit and regenerate are both rejected once published.
+    assert env.client.patch(f"/api/handoff/{pid}/scope", json={}).status_code == 409
+    assert env.client.post(f"/api/handoff/{pid}/generate").status_code == 409
+
+
+@requires_db
+def test_session_exchange_valid_and_invalid(env):
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+
+    ok = _exchange(env, code)
+    assert ok.status_code == 200
+    sess = ok.json()
+    assert sess["session_token"] and sess["package_id"] == pid
+
+    # Wrong code → neutral unavailable, no session issued.
+    bad = _exchange(env, "not-a-real-code")
+    assert bad.status_code == 403
+
+    # Only the session-token HASH is stored, never the raw bearer.
+    s = _fresh()
+    try:
+        from sqlalchemy import select
+
+        from services.db import models as orm
+        from services.handoff.tokens import hash_token
+        row = s.execute(select(orm.HandoffRecipientSession).where(
+            orm.HandoffRecipientSession.package_id == pid)).scalar_one()
+        assert row.session_token_hash == hash_token(sess["session_token"])
+        assert sess["session_token"] not in row.session_token_hash
+    finally:
+        s.close()
+
+
+@requires_db
+def test_session_exchange_blocked_when_expired(env):
+    from datetime import datetime as dt, timedelta, timezone as tz
+
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+
+    # Force expiry into the past while status stays 'published' → exchange blocked
+    # at request time (does not depend on a status-flip job).
+    s = _fresh()
+    try:
+        from services.db import models as orm
+        pkg = s.get(orm.HandoffPackage, pid)
+        pkg.expires_at = dt.now(tz.utc) - timedelta(days=1)
+        s.commit()
+    finally:
+        s.close()
+    assert _exchange(env, code).status_code == 403
+
+
+@requires_db
+def test_session_exchange_blocked_when_revoked(env):
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+    # Revoke a live published package, then the code can no longer be exchanged.
+    assert env.client.post(f"/api/handoff/{pid}/revoke").status_code == 200
+    assert _exchange(env, code).status_code == 403
+
+
+@requires_db
+def test_recipient_package_is_local_and_omits_counts_and_links(env):
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+    token = _exchange(env, code).json()["session_token"]
+
+    r = env.client.get("/api/handoff/recipient/package",
+                        headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    # Claims + evidence come straight from the package tables.
+    assert len(body["claims"]) == 1
+    assert {e["message_id_header"] for e in body["evidence"]} == {"atlas-1@acme.corp"}
+    # Global posture present; NO counts, NO Gmail/source link, NO mailbox id.
+    assert body["privacy_posture"]["sensitive_excluded"] is True
+    assert "exclusion_counts" not in body
+    assert "mailbox_id" not in body
+    for e in body["evidence"]:
+        assert "open_url" not in e
+        assert "gmail" not in json_dumps(e).lower()
+
+    # No bearer → neutral unavailable.
+    assert env.client.get("/api/handoff/recipient/package").status_code == 403
+
+
+@requires_db
+def test_recipient_blocked_after_expiry_even_if_status_published(env):
+    from datetime import datetime as dt, timedelta, timezone as tz
+
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+    token = _exchange(env, code).json()["session_token"]
+    # Session is live now; GET works.
+    assert env.client.get("/api/handoff/recipient/package",
+                          headers={"Authorization": f"Bearer {token}"}).status_code == 200
+
+    # Expire the package at the DB level but keep status 'published' (as if the
+    # status-flip job never ran). Access must still be blocked at request time.
+    s = _fresh()
+    try:
+        from services.db import models as orm
+        pkg = s.get(orm.HandoffPackage, pid)
+        pkg.expires_at = dt.now(tz.utc) - timedelta(minutes=1)
+        assert pkg.status == "published"
+        s.commit()
+    finally:
+        s.close()
+    assert env.client.get("/api/handoff/recipient/package",
+                          headers={"Authorization": f"Bearer {token}"}).status_code == 403
+
+
+@requires_db
+def test_revoke_blocks_recipient_access(env):
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+    token = _exchange(env, code).json()["session_token"]
+    assert env.client.get("/api/handoff/recipient/package",
+                          headers={"Authorization": f"Bearer {token}"}).status_code == 200
+
+    assert env.client.post(f"/api/handoff/{pid}/revoke").status_code == 200
+    # Existing session is dead and the code can no longer be exchanged.
+    assert env.client.get("/api/handoff/recipient/package",
+                          headers={"Authorization": f"Bearer {token}"}).status_code == 403
+    assert _exchange(env, code).status_code == 403
+
+
+@requires_db
+def test_recipient_audit_is_safe_and_actor_is_hashed(env):
+    # Seed content-bearing message so we can prove no body/subject leaks into audit.
+    tid = str(uuid.uuid4())
+    _seed_thread(env.session, env.mid, tid, [
+        {"header": "rcpt-1@acme.corp", "subject": "SECRET RECIPIENT SUBJECT",
+         "body": "CONFIDENTIAL RECIPIENT BODY"},
+    ])
+    _seed_event(env.session, env.mid, env.owner_pid, ["rcpt-1@acme.corp"], summary="did work")
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    env.client.post(f"/api/handoff/{pid}/generate")
+
+    code = _publish(env, pid).json()["capability_code"]
+    token = _exchange(env, code).json()["session_token"]
+    env.client.get("/api/handoff/recipient/package",
+                   headers={"Authorization": f"Bearer {token}"})
+
+    s = _fresh()
+    try:
+        from sqlalchemy import select
+
+        from services.db import models as orm
+        rows = s.execute(select(orm.HandoffAuditEvent).where(
+            orm.HandoffAuditEvent.package_id == pid)).scalars().all()
+        actions = {r.action for r in rows}
+        assert {"recipient_session_started", "recipient_viewed"} <= actions
+        # Recipient actor is a hash prefix, never a raw code/token.
+        rcpt_actors = [r.actor for r in rows if r.actor.startswith("recipient:")]
+        assert rcpt_actors and all(code not in a and token not in a for a in rcpt_actors)
+        # No content, no raw secret anywhere in audit metadata.
+        blob = " ".join(str(r.metadata_) for r in rows)
+        for banned in ("SECRET RECIPIENT SUBJECT", "CONFIDENTIAL RECIPIENT BODY", code, token):
+            assert banned not in blob
+    finally:
+        s.close()
+
+
+def json_dumps(obj) -> str:
+    import json
+    return json.dumps(obj)

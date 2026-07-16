@@ -572,3 +572,53 @@ class HandoffAuditEvent(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
+
+
+# ── S17.5 — publish / recipient foundation (migration 0008) ───────────────────
+#
+# The recipient authenticates with a one-time capability CODE; only its sha256
+# hash is stored. Session exchange issues a short-lived bearer token whose hash
+# alone is stored. Raw tokens are never persisted (a leaked row cannot be
+# replayed). Exactly one recipient per package (unique package_id).
+
+class HandoffRecipient(Base):
+    __tablename__ = "handoff_recipient"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    package_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="CASCADE"),
+        nullable=False, unique=True,
+    )
+    recipient_email: Mapped[str] = mapped_column(Text, nullable=False)
+    recipient_person_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("person.id", ondelete="SET NULL")
+    )
+    capability_code_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class HandoffRecipientSession(Base):
+    __tablename__ = "handoff_recipient_session"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    package_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="CASCADE"), nullable=False
+    )
+    recipient_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_recipient.id", ondelete="CASCADE"), nullable=False
+    )
+    session_token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
