@@ -1,6 +1,6 @@
 # S16.0 - Date-Range Ingest Planning Spec
 
-Status: ✅ Implemented (2026-07-13) on branch `s16-date-range-ingest-plan`.
+Status: ✅ Implemented (2026-07-13), merged to `master` via PR #6.
 Provider-neutral `ListOptions` + shared date validation
 (`services/ingest/list_options.py`); Gmail `q=` translation with inclusive
 `date_to` (`providers/gmail.py::build_gmail_query`); CLI `--date-from/--date-to/

@@ -1,7 +1,7 @@
 # S16 — Demo Readiness Plan
 
 **Status:** 🔒 Plan locked (2026-07-12). A **bounded demo-readiness sprint** —
-product-narrative and demo-flow polish on top of the S0–S15 engine. **Not** a
+product-narrative and demo-flow polish on top of the S0–S16.0 engine. **Not** a
 real-data quality sprint; **no** core clustering / retrieval / synthesis
 algorithm changes.
 
@@ -14,6 +14,13 @@ algorithm changes.
 > see `docs/s16-date-range-ingest-plan.md`. That plan is a bounded CLI +
 > demo-side frontend feature for choosing a customizable date window before
 > Gmail ingest; it does not replace the purpose-built S16 demo fixture.
+
+> **Product direction update (D14).** The S16 demo should preview the next MVP
+> direction: an employee-initiated, scoped, audited handoff package. The S16
+> surfaces may still be a capability tour, but the story should make clear that
+> the covered employee reviews scope and evidence before a successor receives a
+> package. The implementation plan for that product shape lives in
+> `docs/s17-handoff-package-mvp-plan.md`.
 
 This plan is the output of an S16 design grilling. The pivotal decision is
 recorded as **D13** in `docs/decisions.md` (canonical demo runs on a purpose-built
@@ -32,7 +39,9 @@ Everything below is judged against that win, not against feature breadth.
 
 ## 2. The demo spine — a coverage-handoff capability tour with evidence-trust as the hero
 
-The demo walks one continuous _coverage handoff story_ in seven beats:
+The demo walks one continuous _coverage handoff story_ in seven beats. With D14,
+read these beats as the preview of an audited handoff package workflow, not as a
+generic mailbox-search tour:
 
 1. **This mailbox is ready for handoff.** (Overview readiness strip.)
 2. **Here are the projects / people / relationships worth understanding.** (Overview briefing.)
@@ -196,9 +205,12 @@ recommended question).
   + a deterministic generator; seed into a dedicated demo mailbox via the real
   pipeline; iterate content until clustering yields the §4.2 shape (5–8 projects,
   incident + HR-sensitive + vendor/legal-sensitive threads, noise, relationship
-  density). Store ground truth separately. **Done:** the real pipeline produces
-  the target structure deterministically; `fixtures/mailbox.json` + gold labels
-  untouched; a seed script creates the demo mailbox.
+  density). Store ground truth separately. Author the story so it naturally
+  supports a future employee-reviewed handoff package: scoped date window,
+  recipient, projects to include, sensitive exclusions, and cited package
+  evidence. **Done:** the real pipeline produces the target structure
+  deterministically; `fixtures/mailbox.json` + gold labels untouched; a seed
+  script creates the demo mailbox.
 - **S16.2 — Demo embeddings backfill (authorized).** One authorized `voyage-4`
   backfill for the demo mailbox. **Done:** `preflight --mailbox-id <demo>` reports
   embeddings present; no other mailbox touched.
@@ -265,6 +277,10 @@ this repo's `docs/`-centric convention.
   brief (readiness verdict + who/what matters + a recommended first question),
   as opposed to a passive stat dashboard. An active surface that tells the user
   what to do next.
+- **Handoff package** — the D14 product artifact: a scoped, audited continuity
+  package created by the covered employee for a specific recipient. It includes
+  only approved projects, people, open loops, decisions, blockers, and cited
+  evidence; it is not raw mailbox access.
 - **Demo fixture vs test fixture** — the **demo fixture** (`fixtures/demo_mailbox.json`,
   new in S16) is a purpose-built, authored-to-outcome mailbox for the product
   narrative. The **test fixture** (`fixtures/mailbox.json` + `gold/`, since S0)

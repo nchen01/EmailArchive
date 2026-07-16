@@ -72,11 +72,12 @@ the sprint history, hard rules, and the convention that specs and decisions
 in `docs/decisions.md` override anything written elsewhere.
 
 Key docs:
-- `docs/decisions.md` — D1–D12 resolved build decisions (authoritative)
+- `docs/decisions.md` — resolved build decisions (authoritative; D14 locks the handoff-package MVP direction)
 - `docs/s7-implementation-plan.md` — S7 task breakdown and locked decisions
 - `docs/implementation-plan.md` — overall pipeline architecture
 
-Current status: **S0–S15 complete.** S7 L2 hybrid retrieval (Voyage AI voyage-4,
+Current status: **S0–S16.0 complete; S16/S17 planned.**
+S7 L2 hybrid retrieval (Voyage AI voyage-4,
 pgvector HNSW, cover-for-me upgrade) shipped and live-validated. S8 real-mailbox
 demo readiness, S9 project-clustering materialization, and S10 local runtime
 reliability are all complete. S10 switched the Voyage embedding runtime from the
@@ -90,4 +91,10 @@ safe source-message detail, richer citation drawers, best-effort Gmail search,
 and structural relationship provenance notes — see
 `docs/s14-implementation-plan.md`. S15 fixed the S9 DB-test contamination and
 added `docs/s15-verification-matrix.md` as the canonical guide for local,
-DB-gated, demo-mailbox, and live-integration green states.
+DB-gated, demo-mailbox, and live-integration green states. S16.0 adds
+customizable date-window Gmail ingest for scoped snapshots. D13 locks the
+purpose-built canonical demo fixture; D14 locks the next MVP direction:
+employee-initiated audited handoff packages. Do not frame future work as
+generic mailbox search or employee monitoring. The covered employee scopes and
+reviews the package; the recipient gets package-scoped cited evidence; managers
+approve/govern; HR/legal/IT define policy.

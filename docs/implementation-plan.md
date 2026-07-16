@@ -1,41 +1,53 @@
 # Email Knowledge Continuity — Implementation Plan
 
-> Structuring a departing or covered employee's mailbox into a navigable map of
-> people, projects, and evidenced work, so a successor can pick up the role fast.
+> Structuring a covered employee's mailbox into a scoped, audited handoff package
+> of people, projects, open loops, decisions, and cited evidence, so a successor
+> can pick up the role fast without receiving raw mailbox access.
 
 ---
 
 ## 1. The problem
 
-Onboarding is well tooled; offboarding and coverage are not. When someone leaves,
-goes on leave, or hands off a role, the institutional memory in their inbox — who
-they worked with, what they owned, the live state of each project — evaporates.
-This product turns that unstructured mailbox into structured, queryable knowledge.
+Onboarding is well tooled; coverage handoff is not. When someone goes on leave,
+hands off a role, or delegates a project, the institutional memory in their inbox
+— who they worked with, what they owned, the live state of each project —
+evaporates. This product turns that unstructured mailbox into a scoped handoff
+package: the covered employee reviews what will be revealed, removes what does
+not belong, and publishes a cited continuity artifact to the person taking over.
 
 ## 2. Two products, one engine
 
 The same pipeline powers two go-to-market motions with very different risk profiles.
 Build the engine once; ship the safe version first.
 
-| | Coverage (0-to-1) | Offboarding (v2) |
+| | Employee-initiated coverage handoff (0-to-1) | Offboarding / admin handoff (v2) |
 |---|---|---|
-| Trigger | Vacation, leave, role handoff | Departure / termination |
-| Employee present? | Yes — participates | No |
-| Consent model | Employee opt-in (clean) | Admin-side, after the fact |
+| Trigger | Vacation, leave, role handoff, planned delegation | Departure / termination |
+| Employee present? | Yes — initiates, scopes, reviews, publishes | No or unavailable |
+| Consent model | Employee-initiated package with scoped recipient access | Admin-side, after the fact |
+| Artifact | Audited handoff package | Admin-created transition archive |
 | Data freshness | Current | Historical |
 | Stakes / scrutiny | Low | High (reads as monitoring) |
-| Buyer | Manager | HR / IT |
+| Daily user | Covered employee + coverage recipient | Manager / HR / IT |
+| Buyer / approver | Manager / department lead | HR / IT / Legal |
 
 The coverage motion is the wedge: cleaner consent, fresher data, an acute and
-recurring pain. Offboarding is the higher-value but harder follow-on.
+recurring pain. D14 tightens this wedge: the MVP should center on the employee
+creating an audited handoff package, not a manager or HR user searching an
+employee inbox. Offboarding is the higher-value but harder follow-on.
 
 ## 3. Core user job
 
-> *"I'm covering for X. Who do I ask about Y, and what's the state of project Z?"*
+> *"I'm covering for X. What do I need to know, who should I ask, and what evidence supports it?"*
 
-If a stand-in can type one sentence and get back the right two or three people plus
-the last thread that actually matters — each answer traceable to a real message —
+If a stand-in can open a package and understand the right projects, people,
+open loops, decisions, and risks — each claim traceable to approved evidence —
 the product has done its job.
+
+The package creator's job is equally important:
+
+> *"I'm stepping away. Help me create a scoped handoff that reveals what my
+> teammate needs, excludes what they do not need, and leaves an audit trail."*
 
 ---
 
@@ -149,11 +161,18 @@ Where summaries get generated — and where the grounding discipline lives.
 
 ## 6. Surfaces (MVP)
 
-1. **Network map** — the mailbox owner at center; contacts colored by role; edge
+These surfaces exist today as standalone workspace views. D14 makes them
+components of the handoff-package experience.
+
+1. **Handoff package** — the primary product artifact. The covered employee
+   selects date/project/person scope, reviews generated package content, removes
+   unnecessary evidence, publishes to a recipient, and leaves an audit trail.
+   This is planned in `docs/s17-handoff-package-mvp-plan.md`.
+2. **Network map** — the mailbox owner at center; contacts colored by role; edge
    weight = contact frequency; filterable by project. Click a node for the
    relationship detail and the threads behind it.
-2. **Project view** — members, timeline, current state, and the threads that define it.
-3. **Cover-for-me query** — the natural-language entry point that answers the §3 job,
+3. **Project view** — members, timeline, current state, and the threads that define it.
+4. **Cover-for-me query** — the natural-language entry point that answers the §3 job,
    every answer cited.
 
 ## 7. Privacy & compliance (design constraints, not afterthoughts)
@@ -163,6 +182,12 @@ Where summaries get generated — and where the grounding discipline lives.
   reads the data.
 - Privileged, HR-sensitive, and personal content must be detectable and excludable
   (the L0 sensitivity pass).
+- Recipients should receive package-scoped access, not raw mailbox access.
+- Employee-initiated review is the normal path. Manager-initiated or emergency
+  access is a separate higher-friction path, not the MVP default.
+- The product must not produce productivity scores, performance summaries,
+  responsiveness metrics, effort inference, ranking, compensation, promotion, or
+  termination support.
 - The offboarding config (admin-side, no employee consent) is the pattern that draws
   the most scrutiny and reads as employee monitoring — hard limits in the EU.
 - Keep an audit log of access; support retention limits and data-subject deletion.
@@ -244,12 +269,24 @@ Where summaries get generated — and where the grounding discipline lives.
   four green tiers (minimum local, DB-gated, demo-mailbox, live-integration),
   the manual UI checklist, and the cleanup policy for `ekc_test` vs `ekc_dev`.
 
-**Deferred beyond S15:**
+**Implemented / planned (S16+, current direction):**
+- **S16.0** Date-range ingest: customizable Gmail date-window preview/ingest for
+  large mailboxes and scoped snapshots. Date-windowed runs bypass stored sync
+  tokens and do not save new ones; replace-snapshot requires an explicit date
+  bound and confirmation.
+- **S16.1+** Canonical demo readiness: purpose-built demo fixture for the
+  coverage-handoff story; `puluo` remains messy real-mailbox validation only
+  (D13).
+- **S17+** Audited handoff package MVP: employee-initiated package creation,
+  scope review, package publish, recipient view, lifecycle/audit controls
+  (D14; `docs/s17-handoff-package-mvp-plan.md`).
+
+**Deferred beyond S17:**
 - **Thread-context neighbor expansion** (per spec).
 - **Chunk-level splitting, attachment embeddings** — message-level only currently.
 - **Permissioned sensitive-message embedding override** — requires a permission model first (Q3).
 - **Full production secrets manager, DPA/customer deployment gates** — before any non-demo mailbox.
-- **Multi-mailbox, offboarding motion, cross-channel ingestion** — v2 product scope.
+- **Multi-mailbox, admin-side offboarding motion, cross-channel ingestion** — v2 product scope.
 - **M365 provider** — stub now; drops in without pipeline changes (D2).
 - **Object store for raw MIME** — `raw_uri = None` until production deployment (D6).
 - **Redis queue, full OAuth/secrets manager, OTel** — needed before real customer mailboxes;
@@ -275,6 +312,10 @@ kept only as historical context.
   Fine-tuning per-tenant is deferred.
 - **Retention** after a coverage period ends: `retention_days` param in `IngestParams` (wired in
   params, not yet enforced in a scheduled job).
+- **Handoff package scope:** resolve whether manager approval is mandatory in
+  the first implementation, whether packages support one recipient or many, the
+  default expiration period, whether post-publish edits version the package, and
+  whether excluded-counts are shown as aggregate package metadata.
 - **Embedding model + dimension:** resolved by D12b. `voyage-4`, 1024 dimensions,
   HNSW cosine. Migration 0006 adds `message_embedding` table and combined FTS index.
 - **Data-subject deletion semantics** for third-party content inside shared threads — needs a

@@ -24,18 +24,18 @@ Live integration (tier 4) is **not** required for a normal local dev run.
 
 ---
 
-## Current known baseline (2026-07-10)
+## Current known baseline (2026-07-13)
 
 Baselines are environment-specific and dated so they don't rot silently. Re-run
 and update the date/commit when the suite changes materially.
 
-- **Minimum local green (no DB, no keys):** `481 passed, 115 skipped` — measured
-  on branch `s15.2-verification-matrix`. The 115 skips are DB-gated tests that
-  skip when `DATABASE_URL` is unset.
-- **DB-gated green (throwaway `ekc_test`):** `594 passed, 2 skipped, 0 failed,
-  0 errors` — this figure requires the S15.1 fix (`fix(tests): isolate S9
-  materialization DB state`, commit `3d42367`, PR #3). Before S15.1 the full
-  suite reported S9/`test_synthesis` contamination (2 failed / 6 errors).
+- **Minimum local green (no DB, no keys):** `509 passed, 131 skipped` — measured
+  after S16.0 date-range ingest landed on `master` (merge commit `82ed6e93`,
+  PR #6). The skips are DB-gated tests that skip when `DATABASE_URL` is unset.
+- **DB-gated green (throwaway `ekc_test`):** `638 passed, 2 skipped, 0 failed,
+  0 errors` — measured after S16.0 date-range ingest landed on `master`
+  (merge commit `82ed6e93`, PR #6). This includes the S15.1 test-contamination
+  fix and the S16.0 date-window ingest tests.
 
 Local no-DB runs and DB-gated runs have **different** counts by design — do not
 treat one number as valid everywhere.
@@ -61,10 +61,10 @@ Remove-Item Env:\DATABASE_URL -ErrorAction SilentlyContinue
 npm.cmd --prefix frontend run build
 ```
 
-**Expected:** `481 passed, 115 skipped` (see baseline; count moves as tests are
+**Expected:** `509 passed, 131 skipped` (see baseline; count moves as tests are
 added). The frontend build prints `built in …` and emits `frontend/dist/`.
 
-**Expected skips/warnings:** the 115 skips are the DB-gated backend tests
+**Expected skips/warnings:** the 131 skips are the DB-gated backend tests
 (they self-skip on "DATABASE_URL not set or Postgres unreachable"). A
 `StarletteDeprecationWarning` from the FastAPI TestClient is expected and
 harmless.
@@ -95,7 +95,7 @@ $env:DATABASE_URL = "postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/e
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**Expected (with S15.1 applied):** `594 passed, 2 skipped, 0 failed, 0 errors`.
+**Expected:** `638 passed, 2 skipped, 0 failed, 0 errors`.
 
 **The two intentional skips (both expected, neither is a failure):**
 

@@ -1,11 +1,11 @@
 # Email Knowledge Continuity
 
-> Turns a departing or covered employee's mailbox into a structured, queryable map
-> of people, projects, roles, and evidenced work — so a successor can take over fast.
+> Turns a covered employee's work email into a scoped, audited handoff package
+> of people, projects, open loops, decisions, and cited evidence — so a successor can take over fast.
 
-**Status:** S0–S15 complete. S7 L2 retrieval live-validated (S7.1–S7.11; optional S7.12 hosted Voyage reranker remains off by default). S8 real-mailbox demo readiness complete. S9 project-clustering materialization complete (`scripts/materialize_projects.py`). S10 local runtime reliability complete (Voyage embedding via direct HTTP, runtime preflight probe, blessed Windows launch scripts, no-hang frontend). S11 demo polish complete (inspectable citation evidence drawer, deduped citations, display-only project label cleanup, readiness strip). S12 product shell + landing complete (client routing, workspace overview, marketing landing page, Cover-for-me onboarding). S13 Relationship Map complete (new graph-backed, tree-renderable relationship view derived live from L1 tables; owner/project/org/graph modes; sensitive-thread exclusion; Network Map preserved). S14 evidence/source-navigation polish complete (safe source-message detail endpoint, richer evidence drawer, Gmail best-effort search link, structural relationship provenance notes). S15 verification hardening complete (S9 DB-test contamination fixed; `docs/s15-verification-matrix.md` defines local, DB-gated, demo, and live green tiers). See D12 in `docs/decisions.md`.
+**Status:** S0–S16.0 complete; S16/S17 planned. S16.0 date-range ingest is complete (custom date-window preview/ingest, scoped snapshot mode, replace-snapshot guardrails). S7 L2 retrieval live-validated (S7.1–S7.11; optional S7.12 hosted Voyage reranker remains off by default). S8 real-mailbox demo readiness complete. S9 project-clustering materialization complete (`scripts/materialize_projects.py`). S10 local runtime reliability complete (Voyage embedding via direct HTTP, runtime preflight probe, blessed Windows launch scripts, no-hang frontend). S11 demo polish complete (inspectable citation evidence drawer, deduped citations, display-only project label cleanup, readiness strip). S12 product shell + landing complete (client routing, workspace overview, marketing landing page, Cover-for-me onboarding). S13 Relationship Map complete (new graph-backed, tree-renderable relationship view derived live from L1 tables; owner/project/org/graph modes; sensitive-thread exclusion; Network Map preserved). S14 evidence/source-navigation polish complete (safe source-message detail endpoint, richer evidence drawer, Gmail best-effort search link, structural relationship provenance notes). S15 verification hardening complete (S9 DB-test contamination fixed; `docs/s15-verification-matrix.md` defines local, DB-gated, demo, and live green tiers). D14 locks the next MVP direction: employee-initiated audited handoff packages. See `docs/decisions.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
-Target wedge: **coverage** (employee present, opt-in).
+Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 
 ---
 
@@ -13,6 +13,8 @@ Target wedge: **coverage** (employee present, opt-in).
 
 - **AI agents implementing this: start with `AGENTS.md`** — read order, the hard rules, and how to pick up a sprint.
 - The pipeline has four stages: **L0 ingest → L1 enrich → L2 retrieve (RAG) → L3 synthesize.**
+- The product direction is an **audited handoff package**: the covered employee selects scope,
+  reviews evidence/exclusions, and publishes a package for the person taking over.
 - The differentiated value is **L1 (structuring)**, *not* retrieval. Start with
   `docs/specs/01-layer1-enrichment.md`.
 - Every user-facing claim MUST be **citation-bound** to a source `message_id_header`. No citation, no claim.
@@ -22,22 +24,29 @@ Target wedge: **coverage** (employee present, opt-in).
 
 ## Why
 
-Onboarding is well tooled; offboarding and coverage are not. When someone leaves, goes
-on leave, or hands off a role, the institutional memory in their inbox — who they worked
-with, what they owned, the live state of each project — evaporates. This system turns the
-unstructured mailbox into structured knowledge a successor can query.
+Onboarding is well tooled; coverage handoff is not. When someone goes on leave,
+hands off a role, or delegates a project, the institutional memory in their inbox
+— who they worked with, what they owned, the live state of each project —
+evaporates. This system turns the unstructured mailbox into a scoped handoff
+package a successor can use, with every claim tied back to approved evidence.
 
 ## Two products, one engine
 
-| | Coverage (0-to-1, build first) | Offboarding (v2) |
+| | Employee-initiated coverage handoff (0-to-1, build first) | Offboarding / admin handoff (v2) |
 |---|---|---|
-| Trigger | Vacation, leave, role handoff | Departure / termination |
-| Employee present? | Yes — participates (clean consent) | No (admin-side, after the fact) |
+| Trigger | Vacation, leave, role handoff, planned delegation | Departure / termination |
+| Employee present? | Yes — initiates, reviews, scopes, publishes | No or unavailable (admin-side, after the fact) |
+| Artifact | Audited handoff package | Admin-created transition archive |
 | Data freshness | Current | Historical |
 | Scrutiny | Low | High (reads as monitoring) |
-| Buyer | Manager | HR / IT |
+| Daily user | Covered employee + recipient | Manager / HR / IT |
+| Buyer / approver | Manager / department lead | HR / IT / Legal |
 
-Same pipeline underneath; different go-to-market and risk profile.
+Same pipeline underneath; different consent, access, go-to-market, and risk profile.
+
+The MVP should not feel like a manager searching an employee's inbox. It should feel like the
+employee creating a deliberate continuity artifact: choose scope, review what will be revealed,
+exclude what is unnecessary or sensitive, publish a package, and leave an audit trail.
 
 ## Architecture
 
@@ -106,7 +115,8 @@ email-archive/
       0006_message_embedding.py        # message_embedding + HNSW + subject_clean_tsv; schema v0.2.0 (S7.1)
   docs/
     implementation-plan.md          # the why + end-to-end design
-    decisions.md                    # D1–D12 resolved build decisions (supersede spec open decisions)
+    decisions.md                    # resolved build decisions (D14 locks audited handoff packages)
+    s17-handoff-package-mvp-plan.md # next MVP product shape after demo readiness
     specs/
       00-l0-ingest.md               # L0 ingest + normalization  ✓ S1
       01-layer1-enrichment.md       # L1: identity, graph, roles, clustering, events  ✓ S1-S4
@@ -208,6 +218,9 @@ email-archive/
 | S13 | Relationship Map — graph-backed tree views (owner/project/org/graph) derived live from L1; new `services/relationships/` + `/api/relationship-map`; new tab beside Network Map | ✓ done | `docs/s13-relationship-map-tree-plan.md` |
 | S14 | Evidence & source navigation — safe source-message detail, richer citation drawer, Gmail best-effort search, relationship provenance notes | ✓ done | `docs/s14-implementation-plan.md` |
 | S15 | Verification hardening — S15.1 isolates S9 DB test state; S15.2 adds the canonical green-tier verification matrix | ✓ done | `docs/s15-verification-matrix.md` |
+| S16.0 | Date-range ingest — customizable Gmail date-window preview/ingest for large mailboxes and scoped snapshots | ✓ done | `docs/s16-date-range-ingest-plan.md` |
+| S16 | Canonical demo readiness — purpose-built coverage-handoff fixture and evidence-trust demo spine | planned / next | `docs/s16-demo-readiness-plan.md` |
+| S17 | Audited handoff package MVP — employee-initiated scope review, package publish, recipient view, audit lifecycle | planned | `docs/s17-handoff-package-mvp-plan.md` |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash
@@ -234,7 +247,7 @@ demo-mailbox, and live-integration — with exact PowerShell commands, the requi
 env vars, and the two intentional test skips. Start there before the raw commands
 below.
 
-**Quick start (S0–S15 local stack):**
+**Quick start (S0–S16.0 local stack):**
 
 On Windows, prefer `scripts/run_backend.ps1` and `scripts/run_frontend.ps1` from
 the "Windows local stack" section below — they pin the blessed `.venv` interpreter

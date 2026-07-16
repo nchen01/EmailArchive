@@ -281,3 +281,60 @@ labeling) are **not** fixed in S16 — logged as S17+ follow-ups.
 (+ deterministic generator) and a demo seed path; a citation-honest demo-fallback path in
 `services/api/routers/cover_for_me.py`; Landing + Overview reframes; a "demo green" tier note in
 `docs/s15-verification-matrix.md`.
+
+## D14 — MVP product surface is an employee-initiated audited handoff package
+**Decision.** The MVP product direction is no longer "query a mailbox" as the
+primary user artifact. The engine still ingests, structures, retrieves, and
+synthesizes mailbox evidence, but the product surface should converge on an
+**audited handoff package** created by the covered employee for a specific
+coverage recipient. The covered employee initiates the handoff, chooses a date /
+project / people scope, reviews what the system proposes to reveal, excludes
+unneeded or sensitive material, and then publishes a scoped handoff package for
+the next employee. The package contains only necessary continuity context:
+projects, key people, open loops, decisions, risks, blockers, cited evidence,
+and safe source links. The recipient receives the package, not raw mailbox
+access. Managers approve or request changes; HR/legal/IT govern policy rather
+than acting as the default daily user.
+
+**Why.** This is the strongest trust model for coverage. It changes the product
+from "the company reads an employee inbox" into "the employee creates a scoped,
+audited continuity artifact." That framing is better for adoption, compliance,
+and product clarity. It also matches the engine already built: L0/L1/L2/L3 can
+produce the candidate package, while S11-S14 evidence and source navigation let
+the employee inspect and prune the package before sharing it.
+
+**Primary user and buyer split.**
+- Primary creator: the covered employee.
+- Primary recipient: the employee taking over the work.
+- Approver / buyer: the team manager or department lead.
+- Governance stakeholders: HR, Legal, IT/Security.
+
+**Compliance boundaries.** The product must not become employee surveillance or
+performance evaluation. Do not ship scoring, productivity ranking, sentiment
+judgment, effort inference, responsiveness metrics, performance conclusions, or
+compensation / promotion / termination recommendations. Sensitive, HR, legal,
+privileged, medical, immigration, protected-leave, and personal content is
+excluded by default. Legal/privileged content should remain hard-blocked unless
+an explicit higher-permission workflow is later designed. Sensitive-only and
+unknown queries must keep the same no-evidence behavior so the app does not
+become an existence oracle.
+
+**Access model.** Normal path is employee-initiated. Manager-initiated handoff is
+a separate future path with reason code, narrower defaults, stronger audit, and
+optional HR/legal approval. Emergency or unavailable-employee access is a
+break-glass path, not MVP. Every package event must be auditable: created,
+scoped, generated, reviewed, exclusions made, approved, published, accessed,
+expired, revoked.
+
+**Product language.** Preferred language: "coverage handoff", "handoff package",
+"continuity", "project state", "open loops", "decisions", "risks", "blockers",
+"cited evidence", "scope review", "recipient access". Avoid language that
+sounds like monitoring: "employee productivity", "performance", "rank",
+"responsiveness", "effort", "what they did all day", or "surveillance."
+
+**Scope.** S17+ product direction, with S16 demo work allowed to preview the flow
+in narrative form. **Affects.** `README.md`, `docs/implementation-plan.md`,
+`docs/s16-demo-readiness-plan.md`, new
+`docs/s17-handoff-package-mvp-plan.md`, future schema/API/UI work for
+`HandoffPackage`, `HandoffScope`, `HandoffRecipient`, `HandoffEvidence`,
+`HandoffExclusion`, and `HandoffAuditEvent`.

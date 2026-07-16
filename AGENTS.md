@@ -28,6 +28,9 @@ exist; your job is to realize them faithfully, not to redesign them. **Read befo
   Project, Edge, Event) → **L2 retrieve** → **L3 synthesize** → UI surfaces.
 - The differentiated value is **L1 structuring**, not retrieval. L0 makes the data clean; L1 makes
   it structured; L3 turns it into cited answers; L2 is plumbing.
+- The MVP product direction is **employee-initiated audited handoff packages** (D14), not generic
+  mailbox search. The covered employee scopes/reviews/publishes a package; the recipient receives
+  package-scoped evidence, not raw mailbox access.
 - A "project" is *constructed*, not given — there is no `project_id` in email (the reason spec 03 exists).
 
 ## 3. Invariants you cannot break
@@ -48,7 +51,9 @@ exist; your job is to realize them faithfully, not to redesign them. **Read befo
    resolution (spec 01 §3) is the bridge — do not build the relationship graph before it runs.
 8. **Volume is not accomplishment.** Never let email count imply impact; this is the core product
    failure mode the grounding discipline (proposed/did/outcome) exists to prevent.
-9. **Operational:** the LLM appears only in L3; sensitivity tags gate data (default `exclude`);
+9. **Do not build surveillance.** No productivity scores, performance summaries, responsiveness
+   metrics, effort inference, ranking, or employment-decision support.
+10. **Operational:** the LLM appears only in L3; sensitivity tags gate data (default `exclude`);
    OAuth tokens never touch the app DB or logs.
 
 ## 4. How to execute a spec
@@ -164,6 +169,17 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   local, DB-gated, demo-mailbox, and live-integration "green" states. Use it
   before quoting test counts; counts differ by environment and by whether
   `DATABASE_URL` / live API keys are configured.
+- **S16.0 ✓** — Date-range ingest. Adds customizable Gmail date-window preview /
+  ingest for large mailboxes and scoped snapshots; date-windowed runs bypass
+  stored sync tokens and do not save new ones; replace-snapshot requires an
+  explicit date bound and confirmation. See `docs/s16-date-range-ingest-plan.md`.
+- **S16 planned / next** — Canonical demo readiness. Purpose-built coverage
+  handoff fixture (D13), evidence-trust demo spine, and demo green validation.
+  With D14, the demo should preview the employee-reviewed handoff package flow.
+  See `docs/s16-demo-readiness-plan.md`.
+- **S17 planned** — Audited handoff package MVP (D14). Employee-initiated scope
+  review, package publish, recipient view, lifecycle/audit controls. See
+  `docs/s17-handoff-package-mvp-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 

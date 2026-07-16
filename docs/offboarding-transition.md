@@ -9,6 +9,11 @@
 
 ## TL;DR
 
+> **D14 update:** The MVP direction is now employee-initiated audited handoff
+> packages. This doc remains a v2 transition guide for admin-side offboarding,
+> not the primary MVP path. Build the D14 handoff package first; return here when
+> adding manager/HR/IT initiated offboarding workflows.
+
 The **engine transitions cleanly**. Coverage and offboarding run the *same* L0→L1→L2→L3 pipeline
 over the same `ekc_schemas` contracts (this is the "two products, one engine" premise in
 `README.md` and `implementation-plan.md` §2). Offboarding is **not a second build** — it is:

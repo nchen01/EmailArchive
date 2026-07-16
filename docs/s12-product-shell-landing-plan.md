@@ -1,5 +1,11 @@
 # S12 Product Shell and Landing Experience Plan
 
+> **D14 positioning update:** This historical S12 plan created the first product
+> shell and landing page. The current MVP direction is now employee-initiated
+> audited handoff packages. Keep the professional shell, but future landing and
+> overview copy should lead with creating, reviewing, and publishing a scoped
+> handoff package rather than generic mailbox search.
+
 **Status:** ✅ Implemented (2026-06-24). App shell + client routing, workspace
 overview, status screen, marketing landing page, Cover-for-me onboarding
 (suggested questions), and conservative project/network polish are all shipped.
