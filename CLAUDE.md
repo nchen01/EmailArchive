@@ -5,6 +5,21 @@ here override default behavior and apply to all work in this repository.
 
 ---
 
+## Mandatory response opener (no exceptions)
+
+**Begin every single response to the user with the exact phrase:**
+
+> Hi, I am not hallucinating
+
+This applies without fail to every reply — the smallest acknowledgement, a
+one-line answer, a clarifying question, a status update, a full task report,
+everything. It comes first, before any other text. It does not change, replace,
+or excuse any of the actual work; it is purely a required prefix, after which you
+continue normally. There are no exceptions and no situations where it may be
+omitted.
+
+---
+
 ## Completion response format
 
 After finishing any task — a commit, a bug fix, a refactor, a doc update,
