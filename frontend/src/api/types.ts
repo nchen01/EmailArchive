@@ -314,3 +314,61 @@ export interface GmailWindowResponse {
   replaced: boolean;
   sync_token_disposition: string;
 }
+
+// ── Handoff package — creator draft/scope/generate (S17.3 backend, S17.4 UI) ──
+
+export interface HandoffScopeData {
+  date_from: string | null;
+  date_to: string | null;
+  included_project_ids: string[];
+  included_person_ids: string[];
+  included_thread_ids: string[];
+  excluded_thread_ids: string[];
+  excluded_message_id_headers: string[];
+  allowed_domains: string[];
+  keyword_filters: string[];
+}
+
+/**
+ * Scope PATCH body. The backend scope PATCH is REPLACE-LIKE: any omitted array
+ * field resets to empty (the request model defaults them to []), so a caller
+ * MUST send the COMPLETE current scope, not a sparse patch. Typed as the full
+ * shape (not Partial) to prevent accidental wipes of included/excluded sets.
+ */
+export type ScopeRequestBody = HandoffScopeData;
+
+export interface HandoffClaim {
+  id: string;
+  kind: string; // open_loop | decision | ... (see spec)
+  text: string;
+  project_id: string | null;
+  source_message_id_headers: string[];
+  confidence: number;
+}
+
+export interface HandoffEvidence {
+  message_id_header: string;
+  subject: string;
+  sender_display: string;
+  sender_domain: string;
+  date: string; // ISO 8601 ("" if unknown)
+  body_snapshot: string;
+  source_type: string | null;
+}
+
+export interface HandoffPackage {
+  id: string;
+  mailbox_id: string;
+  creator_email: string;
+  status: string; // draft | generated | ...
+  reason: string;
+  title: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  scope: HandoffScopeData;
+  claims: HandoffClaim[];
+  evidence: HandoffEvidence[];
+  /** Creator-only aggregate exclusion counts (never shown to a recipient). */
+  exclusion_counts: Record<string, number>;
+}
