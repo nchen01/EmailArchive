@@ -4,6 +4,7 @@ import { ContactPanel } from "../components/ContactPanel";
 import { CoverForMe } from "../components/CoverForMe";
 import { DemoReadinessStrip } from "../components/DemoReadinessStrip";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { HandoffReview } from "../components/HandoffReview";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { NetworkMap } from "../components/NetworkMap";
 import { Overview } from "../components/Overview";
@@ -32,6 +33,7 @@ type Screen =
   | "relationships"
   | "projects"
   | "cover"
+  | "handoff"
   | "status";
 
 const NAV: { screen: Screen; label: string; path: string }[] = [
@@ -40,6 +42,7 @@ const NAV: { screen: Screen; label: string; path: string }[] = [
   { screen: "relationships", label: "Relationship Map", path: "/app/relationships" },
   { screen: "projects", label: "Projects", path: "/app/projects" },
   { screen: "cover", label: "Cover for Me", path: "/app/cover" },
+  { screen: "handoff", label: "Handoff", path: "/app/handoff" },
   { screen: "status", label: "Status", path: "/app/status" },
 ];
 
@@ -50,6 +53,7 @@ function screenForPath(pathname: string): Screen {
   if (pathname === "/app/relationships") return "relationships";
   if (pathname.startsWith("/app/projects")) return "projects";
   if (pathname === "/app/cover") return "cover";
+  if (pathname === "/app/handoff") return "handoff";
   if (pathname === "/app/status") return "status";
   return "overview"; // /app, /app/, or any unknown /app/* path
 }
@@ -350,6 +354,10 @@ export function Workspace() {
               seed={coverSeed}
               suggestions={buildSuggestions(projects)}
             />
+          </div>
+        ) : screen === "handoff" ? (
+          <div className="w-full overflow-y-auto bg-slate-50">
+            <HandoffReview mailboxId={mailboxId} />
           </div>
         ) : null}
       </main>

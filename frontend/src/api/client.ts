@@ -4,8 +4,10 @@ import type {
   GmailIngestRequest,
   GmailWindowRequest,
   GmailWindowResponse,
+  HandoffPackage,
   NetworkMapData,
   PreflightResponse,
+  ScopeRequestBody,
   ProjectDetailData,
   ProjectListData,
   RelationshipMapMode,
@@ -186,6 +188,18 @@ async function postJsonBody<T>(url: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function sendJsonBody<T>(method: string, url: string, body: unknown): Promise<T> {
+  const res = await fetchWithTimeout(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await toHttpError(res);
+  }
+  return (await res.json()) as T;
+}
+
 export async function fetchNetworkMap(
   mailboxId: string,
   roles?: string[],
@@ -321,6 +335,46 @@ export async function fetchPreflight(
 ): Promise<PreflightResponse> {
   const qs = mailboxId ? `?mailbox_id=${encodeURIComponent(mailboxId)}` : "";
   return getJson<PreflightResponse>(`${API_BASE}/api/preflight${qs}`);
+}
+
+// ── Handoff package (creator draft/scope/generate; S17.3 backend, S17.4 UI) ───
+
+/** Create a draft handoff package for the covered employee's own mailbox. */
+export async function createHandoff(
+  mailboxId: string,
+  body: { reason: string; title?: string },
+): Promise<HandoffPackage> {
+  return postJsonBody<HandoffPackage>(
+    `${API_BASE}/api/handoff/${encodeURIComponent(mailboxId)}`,
+    body,
+  );
+}
+
+/** Update package scope (PATCH replaces the given fields). Draft/generated only. */
+export async function updateHandoffScope(
+  packageId: string,
+  scope: ScopeRequestBody,
+): Promise<HandoffPackage> {
+  return sendJsonBody<HandoffPackage>(
+    "PATCH",
+    `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}/scope`,
+    scope,
+  );
+}
+
+/** (Re)generate the candidate package from the current scope. */
+export async function generateHandoff(packageId: string): Promise<HandoffPackage> {
+  return postJsonBody<HandoffPackage>(
+    `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}/generate`,
+    {},
+  );
+}
+
+/** Fetch the creator review view of a package. */
+export async function getHandoff(packageId: string): Promise<HandoffPackage> {
+  return getJson<HandoffPackage>(
+    `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}`,
+  );
 }
 
 /**
