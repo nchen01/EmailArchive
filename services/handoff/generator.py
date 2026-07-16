@@ -50,8 +50,10 @@ def _in_scope(session, mailbox_id: str, scope: orm.HandoffScope, eligible: set[s
     (sender/recipient identity match). Creator exclusions and the whole-thread
     sensitivity gate remove messages before they can become evidence.
     """
+    # Noise (newsletters/automation residue) is never package evidence.
     q = select(orm.Message.message_id_header, orm.Message.thread_id).where(
-        orm.Message.mailbox_id == mailbox_id
+        orm.Message.mailbox_id == mailbox_id,
+        orm.Message.noise == False,  # noqa: E712
     )
 
     if scope.date_from is not None:

@@ -48,7 +48,7 @@ def _seed_thread(session, mailbox_id, thread_id, messages):
             mailbox_id=mailbox_id, message_id_header=m["header"], provider_id=m["header"],
             thread_id=thread_id, sender_email=m.get("sender", "alice@ext.com"), ts=_TS,
             subject=m.get("subject", "subj"), clean_text=m.get("body", "body text here"),
-            sensitivity=m.get("sensitivity", ["none"]), noise=False,
+            sensitivity=m.get("sensitivity", ["none"]), noise=m.get("noise", False),
         ))
     session.commit()
 
@@ -65,6 +65,7 @@ def _seed_event(session, mailbox_id, actor_pid, headers, *, type_="did", summary
 @pytest.fixture()
 def env():
     from fastapi.testclient import TestClient
+    from sqlalchemy import select
 
     from services.api.main import app
     from services.db import models as orm
@@ -86,6 +87,14 @@ def env():
         yield SimpleNamespace(client=client, session=session, mid=mid, owner_pid=str(owner.id))
     finally:
         session.rollback()
+        # handoff_audit_event has no FK cascade (retained by design), so the
+        # mailbox delete below won't remove it — clean it up explicitly for this
+        # test's packages so ekc_test/dev runs don't accumulate rows. Production
+        # retention behavior is unchanged.
+        pkg_ids = select(orm.HandoffPackage.id).where(orm.HandoffPackage.mailbox_id == mid)
+        session.execute(orm.HandoffAuditEvent.__table__.delete().where(
+            orm.HandoffAuditEvent.package_id.in_(pkg_ids)
+        ))
         session.execute(orm.Identity.__table__.delete().where(orm.Identity.mailbox_id == mid))
         session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
         session.commit()
@@ -95,6 +104,28 @@ def env():
 def _fresh():
     from services.db.engine import SessionLocal
     return SessionLocal()
+
+
+# ── Audit sanitizer defends future callers (DB-free) ─────────────────────────
+
+def test_safe_metadata_drops_contentlike_and_secret_keys():
+    from services.handoff.audit import _safe_metadata
+
+    md = {
+        # content / secret / error-like keys — must be dropped even as scalars
+        "subject": "s", "body": "b", "snippet": "sn", "clean_text": "c", "raw": "r",
+        "mime": "m", "token": "t", "secret": "x", "credential": "cr", "password": "pw",
+        "api_key": "k", "apikey": "k2", "exception": "e", "traceback": "tb",
+        "prompt": "p", "response": "r2", "content": "c2",
+        # safe scalar/count keys — must be kept
+        "claims": 3, "evidence": 5, "excluded_sensitivity": 1, "reason": "vacation",
+        "has_date_window": True,
+    }
+    out = _safe_metadata(md)
+    assert out == {
+        "claims": 3, "evidence": 5, "excluded_sensitivity": 1,
+        "reason": "vacation", "has_date_window": True,
+    }
 
 
 # ── Migration presence + a representative constraint ─────────────────────────
@@ -213,6 +244,21 @@ def test_sensitive_whole_thread_excluded_from_evidence(env):
         assert leaked == 0
     finally:
         s.close()
+
+
+@requires_db
+def test_noise_message_excluded_from_evidence(env):
+    tid = str(uuid.uuid4())
+    _seed_thread(env.session, env.mid, tid, [
+        {"header": "news-1@acme.corp", "subject": "Weekly digest", "body": "newsletter", "noise": True},
+    ])
+    _seed_event(env.session, env.mid, env.owner_pid, ["news-1@acme.corp"], summary="from a newsletter")
+
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    body = env.client.post(f"/api/handoff/{pid}/generate").json()
+
+    assert body["evidence"] == []       # noise never becomes evidence
+    assert body["claims"] == []          # its only citation was noise → claim dropped
 
 
 @requires_db
