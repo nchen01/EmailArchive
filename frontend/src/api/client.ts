@@ -350,7 +350,10 @@ export async function createHandoff(
   );
 }
 
-/** Update package scope (PATCH replaces the given fields). Draft/generated only. */
+/**
+ * Replace the package scope (draft/generated only). The scope PATCH is
+ * REPLACE-LIKE: pass the COMPLETE current scope — omitted arrays reset to empty.
+ */
 export async function updateHandoffScope(
   packageId: string,
   scope: ScopeRequestBody,

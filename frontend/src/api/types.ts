@@ -329,8 +329,13 @@ export interface HandoffScopeData {
   keyword_filters: string[];
 }
 
-/** Partial scope update body (PATCH replaces the fields it is given). */
-export type ScopeRequestBody = Partial<HandoffScopeData>;
+/**
+ * Scope PATCH body. The backend scope PATCH is REPLACE-LIKE: any omitted array
+ * field resets to empty (the request model defaults them to []), so a caller
+ * MUST send the COMPLETE current scope, not a sparse patch. Typed as the full
+ * shape (not Partial) to prevent accidental wipes of included/excluded sets.
+ */
+export type ScopeRequestBody = HandoffScopeData;
 
 export interface HandoffClaim {
   id: string;

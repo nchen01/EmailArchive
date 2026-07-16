@@ -3,9 +3,13 @@ import {
   createHandoff,
   describeError,
   generateHandoff,
+  getHandoff,
   updateHandoffScope,
 } from "../api/client";
-import type { HandoffEvidence, HandoffPackage } from "../api/types";
+import type { HandoffEvidence, HandoffPackage, HandoffScopeData } from "../api/types";
+import { navigate, usePathname } from "../router";
+
+const HANDOFF_BASE = "/app/handoff";
 
 /**
  * Creator scope-review surface (S17.4).
@@ -46,8 +50,8 @@ function fmtDate(iso: string): string {
     : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-/** Full current scope as a PATCH body (PATCH replaces the fields it is given). */
-function scopeBody(pkg: HandoffPackage) {
+/** The COMPLETE current scope as a replace-like PATCH body (see ScopeRequestBody). */
+function scopeBody(pkg: HandoffPackage): HandoffScopeData {
   return {
     date_from: pkg.scope.date_from,
     date_to: pkg.scope.date_to,
@@ -62,6 +66,13 @@ function scopeBody(pkg: HandoffPackage) {
 }
 
 export function HandoffReview({ mailboxId }: { mailboxId: string }) {
+  const pathname = usePathname();
+  // The URL is the source of truth for which package is open, so a package
+  // survives tab switches and refreshes (Finding 1): /app/handoff/<id>.
+  const routeId = pathname.startsWith(`${HANDOFF_BASE}/`)
+    ? decodeURIComponent(pathname.slice(HANDOFF_BASE.length + 1))
+    : null;
+
   const [pkg, setPkg] = useState<HandoffPackage | null>(null);
   const [reason, setReason] = useState("vacation");
   const [title, setTitle] = useState("");
@@ -69,21 +80,54 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState<null | "create" | "scope" | "generate" | "remove">(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // A package belongs to one mailbox — reset when the mailbox changes.
+  // Load / validate the package named in the URL for the current mailbox.
+  // Runs on route or mailbox change; self-heals a route that points at a
+  // missing package or another mailbox's package by returning to the base route.
   useEffect(() => {
-    setPkg(null);
+    let cancelled = false;
+    if (!routeId) {
+      setPkg(null);
+      return;
+    }
+    if (pkg && pkg.id === routeId && pkg.mailbox_id === mailboxId) return; // already loaded
     setError(null);
-    setTitle("");
-    setFrom("");
-    setTo("");
-  }, [mailboxId]);
+    setLoading(true);
+    getHandoff(routeId)
+      .then((data) => {
+        if (cancelled) return;
+        if (data.mailbox_id !== mailboxId) {
+          setPkg(null);
+          navigate(HANDOFF_BASE); // belongs to a different mailbox — drop safely
+        } else {
+          setPkg(data);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPkg(null);
+        navigate(HANDOFF_BASE); // gone/invalid — back to the create surface
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, mailboxId, pkg?.id]);
 
-  // Sync date inputs when a new package loads (not on every regenerate edit).
+  // Sync inputs to the loaded package, or reset the create form when none.
   useEffect(() => {
     if (pkg) {
       setFrom(pkg.scope.date_from ?? "");
       setTo(pkg.scope.date_to ?? "");
+    } else {
+      setReason("vacation");
+      setTitle("");
+      setFrom("");
+      setTo("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg?.id]);
@@ -100,7 +144,12 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
     }
   };
 
-  const create = () => run("create", () => createHandoff(mailboxId, { reason, title }));
+  const create = () =>
+    run("create", async () => {
+      const p = await createHandoff(mailboxId, { reason, title });
+      navigate(`${HANDOFF_BASE}/${p.id}`); // deep-linkable + survives refresh
+      return p;
+    });
   const saveScope = () =>
     pkg &&
     run("scope", () =>
@@ -139,8 +188,10 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
         </div>
       ) : null}
 
-      {/* ── Create ─────────────────────────────────────────────────────────── */}
-      {!pkg ? (
+      {/* ── Create (or loading a deep-linked package) ─────────────────────── */}
+      {loading && !pkg ? (
+        <p className="mt-6 text-sm text-slate-500">Loading handoff package…</p>
+      ) : !pkg ? (
         <section className="mt-6 rounded-md border border-slate-200 bg-white p-4">
           <h3 className="text-sm font-semibold text-slate-700">Start a handoff</h3>
           <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -195,7 +246,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               <button
                 type="button"
                 className="text-xs text-slate-400 hover:text-slate-600"
-                onClick={() => setPkg(null)}
+                onClick={() => navigate(HANDOFF_BASE)}
               >
                 Start over
               </button>
@@ -259,7 +310,8 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                 </h3>
                 {pkg.claims.length === 0 ? (
                   <p className="mt-1 text-sm text-slate-400">
-                    No claims in scope yet. Widen the date range or generate again.
+                    No package claims were generated from the current scope. Try a
+                    wider scope, or run against a mailbox with extracted events.
                   </p>
                 ) : (
                   KIND_ORDER.filter((k) => claimsByKind(k).length > 0).map((kind) => (

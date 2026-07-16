@@ -53,7 +53,7 @@ function screenForPath(pathname: string): Screen {
   if (pathname === "/app/relationships") return "relationships";
   if (pathname.startsWith("/app/projects")) return "projects";
   if (pathname === "/app/cover") return "cover";
-  if (pathname === "/app/handoff") return "handoff";
+  if (pathname === "/app/handoff" || pathname.startsWith("/app/handoff/")) return "handoff";
   if (pathname === "/app/status") return "status";
   return "overview"; // /app, /app/, or any unknown /app/* path
 }
