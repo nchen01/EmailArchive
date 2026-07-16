@@ -14,6 +14,7 @@ load_local_env()
 from .routers import (
     cover_for_me,
     gmail_ingest,
+    handoff,
     network_map,
     preflight,
     project_view,
@@ -31,6 +32,7 @@ app.include_router(preflight.router, prefix="/api")
 app.include_router(relationship_map.router, prefix="/api")
 app.include_router(source_message.router, prefix="/api")
 app.include_router(gmail_ingest.router, prefix="/api")
+app.include_router(handoff.router, prefix="/api")
 
 
 @app.get("/healthz")

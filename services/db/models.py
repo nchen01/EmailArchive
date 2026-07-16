@@ -13,7 +13,7 @@ Notes
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -21,6 +21,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -425,3 +426,149 @@ class Event(Base):
             "cardinality(source_message_ids) >= 1", name="ck_event_has_source"
         ),
     )
+
+
+# ── S17 — handoff package (product/API layer, NOT ekc_schemas; migration 0007) ─
+#
+# Draft/generate slice only: publish, recipient, and session-token tables are
+# deferred to the publish/recipient-view work. See docs/s17.2-handoff-package-
+# domain-spec.md.
+
+class HandoffPackage(Base):
+    __tablename__ = "handoff_package"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    mailbox_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("mailbox.id", ondelete="CASCADE"), nullable=False
+    )
+    creator_email: Mapped[str] = mapped_column(Text, nullable=False)
+    creator_person_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("person.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    policy_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="standard")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    supersedes_package_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="SET NULL")
+    )
+    lineage_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class HandoffScope(Base):
+    __tablename__ = "handoff_scope"
+
+    package_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    date_from: Mapped[date | None] = mapped_column(Date)
+    date_to: Mapped[date | None] = mapped_column(Date)
+    included_project_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(UUID(as_uuid=False)), nullable=False, server_default="{}"
+    )
+    included_person_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(UUID(as_uuid=False)), nullable=False, server_default="{}"
+    )
+    included_thread_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(UUID(as_uuid=False)), nullable=False, server_default="{}"
+    )
+    excluded_thread_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(UUID(as_uuid=False)), nullable=False, server_default="{}"
+    )
+    excluded_message_id_headers: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    allowed_domains: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    keyword_filters: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+
+
+class HandoffClaim(Base):
+    __tablename__ = "handoff_claim"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    package_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    project_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    source_message_id_headers: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    confidence: Mapped[float] = mapped_column(Numeric, nullable=False, server_default="0")
+
+
+class HandoffEvidence(Base):
+    __tablename__ = "handoff_evidence"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    package_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id_header: Mapped[str] = mapped_column(Text, nullable=False)
+    subject: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    sender_display: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    sender_domain: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    body_snapshot: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    source_type: Mapped[str | None] = mapped_column(Text)
+    snapshotted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("package_id", "message_id_header", name="uq_handoff_evidence_pkg_header"),
+    )
+
+
+class HandoffExclusion(Base):
+    __tablename__ = "handoff_exclusion"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    package_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="CASCADE"), nullable=False
+    )
+    exclusion_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_ref: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    aggregate_label: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    audit_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class HandoffAuditEvent(Base):
+    __tablename__ = "handoff_audit_event"
+
+    # No FK to handoff_package: audit rows are retained after package deletion.
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    package_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    lineage_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    actor: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
