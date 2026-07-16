@@ -337,6 +337,46 @@ This can be deferred if S17 needs to stay small.
 7. What is the first real-life use case to optimize: vacation coverage, parental
    leave, internal transfer, or planned offboarding?
 
+## 8a. Resolved (2026-07-16)
+
+Confirmed with the product owner. Coding of schema/API may proceed from these.
+Items marked **changeable** may be revisited as the model matures.
+
+1. **Approval — direct publish.** The employee self-publishes in the MVP. Manager
+   approval (S17.8) is deferred, but `submitted`/`approved` statuses are reserved
+   in the status enum now so adding approval later needs no migration.
+2. **Recipients — one per package.** Single coverage recipient for MVP;
+   multi-recipient is a fast-follow once single-recipient grant/expiry/revocation
+   is proven.
+3. **Expiration — 30 days default, per-package override.** `expires_at` defaults
+   to `published_at + 30 days` and is adjustable per package.
+4. **Post-publish edits — immutable + versioning.** A published package is frozen;
+   editing scope/evidence creates a new version that supersedes it (the prior
+   version stays revocable). Evidence is snapshotted at publish.
+5. **Exclusion display — global posture for the recipient.** The recipient sees
+   only a global privacy statement ("sensitive categories are excluded by
+   default"), never counts. The **creator** sees aggregate exclusion counts during
+   scope review (their own mailbox). No sensitive-volume leak to the recipient.
+6. **Recipient evidence — self-contained package, no live-mailbox link.** The
+   package includes the actual **safe, included** message content (normalized,
+   sensitivity-gated subject / sender / date / body snippet), **snapshotted at
+   publish**, so the recipient reads evidence *inside* the package with no
+   dependency on the live mailbox and no reach beyond approved scope.
+   Sensitive/excluded content never enters `HandoffEvidence`. The existing S11–S14
+   evidence drawer and S14 "Search in Gmail" affordance stay live (for the
+   **creator's own-mailbox** review and future flexibility) — **do not delete**.
+   **Changeable:** recipient-side live links could return later under stricter
+   permissioning.
+7. **First use case — vacation coverage.** Employee-present, cleanest consent,
+   most frequent, lowest sensitivity; the S16 demo fixture + narrative optimize
+   for this. Internal transfer is the intended secondary.
+
+**Carried into the S17.2 spec:** `HandoffPackage.status` reserves approval states;
+`HandoffRecipient` is 1:1 with a package in MVP; `expires_at` default =
+`published_at + 30d`; publish freezes evidence and supports supersede/versioning;
+`HandoffEvidence` stores snapshotted **safe** content (no raw MIME, no sensitive,
+no live-mailbox dependency); the recipient view shows global privacy posture only.
+
 ## 9. Relationship To Existing Sprints
 
 - S11-S14 evidence/source navigation becomes the package inspection system.
