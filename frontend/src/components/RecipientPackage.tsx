@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { getRecipientPackage, startRecipientSession } from "../api/client";
-import type { RecipientClaim, RecipientPackage as RecipientPackageData } from "../api/types";
+import type {
+  RecipientClaim,
+  RecipientPackage as RecipientPackageData,
+  RecipientSession,
+} from "../api/types";
 
 /**
  * Recipient handoff-package view (S17.6).
@@ -13,8 +17,9 @@ import type { RecipientClaim, RecipientPackage as RecipientPackageData } from ".
  *   1. reads the one-time code from the URL *fragment* (never a path/query),
  *   2. immediately strips the fragment from the address bar + history so the raw
  *      code is not preserved in visible navigation,
- *   3. POSTs it to /api/handoff/recipient/session for a short-lived session token
- *      held in memory only (never localStorage/sessionStorage, never logged),
+ *   3. POSTs it to /api/handoff/recipient/session for a short-lived session token,
+ *      which it persists in sessionStorage (token + expiry + package_id only —
+ *      NEVER the capability code, NEVER localStorage, and neither token is logged),
  *   4. reads the package via GET /api/handoff/recipient/package with that token,
  *   5. renders package-local claims + evidence + a constant privacy posture.
  *
@@ -24,17 +29,72 @@ import type { RecipientClaim, RecipientPackage as RecipientPackageData } from ".
  * expired / revoked / already-consumed code, dead session, transport error)
  * collapses to ONE neutral "unavailable" state — no oracle about the cause.
  *
- * Refresh behavior: the session token lives only in React memory and the code is
- * one-time and already stripped from the URL, so a browser refresh drops the
- * session and lands on the neutral "open your link" state. The recipient must
- * re-open the original share link (which re-exchanges a fresh session) — this is
- * the intended MVP trade-off, documented in the S17.6 handoff.
+ * Refresh behavior: because the capability code is one-time and already stripped
+ * from the URL, a refresh has no code to re-exchange — and reopening the original
+ * link would replay a consumed code and fail. So the SHORT-LIVED session token is
+ * persisted in sessionStorage (tab-scoped, cleared when the tab closes): on a
+ * refresh with no fragment we resume from that stored token and re-render the
+ * package. If the stored session is expired/revoked (GET 403) or its expiry has
+ * passed, we clear sessionStorage and fall back to the neutral state. A brand-new
+ * tab/browser (empty sessionStorage) reopening a consumed link correctly shows
+ * the neutral unavailable state.
  *
  * No frontend test runner exists in this repo (docs/s15-verification-matrix.md);
  * verified via `npm run build` + the manual demo in the S17.6 request.
  */
 
 type Phase = "opening" | "loading" | "ready" | "unavailable" | "nolink";
+
+// Narrowly named, tab-scoped key. Holds ONLY the short-lived session token and
+// its metadata — never the capability code, never mailbox/content data.
+const SESSION_KEY = "ekc_recipient_handoff_session";
+
+interface StoredSession {
+  session_token: string;
+  expires_at: string;
+  package_id: string;
+}
+
+function storeSession(s: RecipientSession): void {
+  try {
+    const payload: StoredSession = {
+      session_token: s.session_token,
+      expires_at: s.expires_at,
+      package_id: s.package_id,
+    };
+    window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+  } catch {
+    // Storage unavailable (private mode / quota): the session simply won't
+    // survive a refresh. Non-fatal — the current render still works.
+  }
+}
+
+function readStoredSession(): StoredSession | null {
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<StoredSession>;
+    if (typeof p?.session_token === "string" && typeof p?.expires_at === "string") {
+      return { session_token: p.session_token, expires_at: p.expires_at, package_id: p.package_id ?? "" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredSession(): void {
+  try {
+    window.sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function isFuture(iso: string): boolean {
+  const t = new Date(iso).getTime();
+  return !Number.isNaN(t) && t > Date.now();
+}
 
 const KIND_LABEL: Record<string, string> = {
   briefing: "Briefing",
@@ -57,8 +117,6 @@ function fmtDate(iso: string | null): string {
 export function RecipientPackage() {
   const [phase, setPhase] = useState<Phase>("opening");
   const [pkg, setPkg] = useState<RecipientPackageData | null>(null);
-  // Session token is intentionally NOT state and NOT storage — memory only.
-  const sessionRef = useRef<string | null>(null);
   // Guard so the one-time code is exchanged exactly once, even under React
   // StrictMode's dev double-invoke of effects (a second exchange of a spent code
   // would 403 and wrongly clobber a good render).
@@ -70,34 +128,59 @@ export function RecipientPackage() {
 
     // Read the one-time code from the fragment, then strip it. replaceState (not
     // pushState) means Back does not resurface the code, and the address bar no
-    // longer shows it. The code is never written to state or logged.
+    // longer shows it. The code is never written to state, storage, or logged.
     const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
     const code = new URLSearchParams(hash).get("c");
     if (window.location.hash) {
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
     }
 
-    if (!code) {
-      setPhase("nolink");
-      return;
-    }
+    // Fetch the package for a token and render it; on any failure clear the
+    // stored session and collapse to the neutral state (no oracle about why).
+    const renderWithToken = async (token: string): Promise<void> => {
+      try {
+        setPhase("loading");
+        const data = await getRecipientPackage(token);
+        setPkg(data);
+        setPhase("ready");
+      } catch {
+        clearStoredSession();
+        setPhase("unavailable");
+      }
+    };
 
     // The one-time exchange must run to completion once; we deliberately do NOT
     // cancel it on unmount (StrictMode simulates an unmount/remount on the same
     // instance, and cancelling would drop the only valid exchange).
     void (async () => {
-      try {
-        const session = await startRecipientSession(code);
-        sessionRef.current = session.session_token;
-        setPhase("loading");
-        const data = await getRecipientPackage(session.session_token);
-        setPkg(data);
-        setPhase("ready");
-      } catch {
-        // Neutral collapse: invalid/expired/revoked/consumed/transport all look
-        // identical to the recipient — no reason is ever surfaced.
-        setPhase("unavailable");
+      if (code) {
+        // First open from a share link: exchange the one-time code, persist the
+        // short-lived session so a later refresh can resume, then load.
+        try {
+          const session = await startRecipientSession(code);
+          storeSession(session);
+          await renderWithToken(session.session_token);
+        } catch {
+          // Invalid/expired/revoked/consumed/transport all look identical.
+          clearStoredSession();
+          setPhase("unavailable");
+        }
+        return;
       }
+
+      // No fragment (e.g. a refresh): resume from the persisted short-lived
+      // session if one is still within its lifetime.
+      const stored = readStoredSession();
+      if (!stored) {
+        setPhase("nolink");
+        return;
+      }
+      if (!isFuture(stored.expires_at)) {
+        clearStoredSession();
+        setPhase("unavailable");
+        return;
+      }
+      await renderWithToken(stored.session_token);
     })();
   }, []);
 
