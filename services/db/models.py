@@ -596,6 +596,12 @@ class HandoffRecipient(Base):
         UUID(as_uuid=False), ForeignKey("person.id", ondelete="SET NULL")
     )
     capability_code_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    # One-time code: set once, atomically, on the first successful session exchange
+    # (S17.2 §7.1). NULL means not yet consumed; once set the code is spent and any
+    # replay returns the neutral "unavailable" response.
+    capability_code_consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     granted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

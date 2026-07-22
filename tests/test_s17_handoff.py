@@ -454,6 +454,50 @@ def test_session_exchange_valid_and_invalid(env):
 
 
 @requires_db
+def test_capability_code_is_one_time(env):
+    # S17.2 §7.1: the capability code is consumed on exchange. The first exchange
+    # succeeds; replaying the same raw code returns the neutral unavailable
+    # response and issues no second session.
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+
+    first = _exchange(env, code)
+    assert first.status_code == 200
+    first_token = first.json()["session_token"]
+
+    # Same code again → neutral 403, byte-identical to an invalid code (no oracle
+    # that this code once existed / was already spent).
+    second = _exchange(env, code)
+    assert second.status_code == 403
+    assert second.json() == _exchange(env, "not-a-real-code").json()
+
+    s = _fresh()
+    try:
+        from sqlalchemy import func as sqlfunc, select
+
+        from services.db import models as orm
+        from services.handoff.tokens import hash_token
+        rec = s.execute(select(orm.HandoffRecipient).where(
+            orm.HandoffRecipient.package_id == pid)).scalar_one()
+        # DB records the code as consumed after the first exchange.
+        assert rec.capability_code_consumed_at is not None
+        # Still only the code HASH is stored — never the raw code.
+        assert rec.capability_code_hash == hash_token(code)
+        # Exactly ONE session was ever issued; the blocked replay created none.
+        n_sessions = s.execute(select(sqlfunc.count()).select_from(
+            orm.HandoffRecipientSession).where(
+            orm.HandoffRecipientSession.package_id == pid)).scalar_one()
+        assert n_sessions == 1
+    finally:
+        s.close()
+
+    # The one session issued on the first exchange still works — consuming the
+    # code does not invalidate an already-granted session.
+    assert env.client.get("/api/handoff/recipient/package",
+                          headers={"Authorization": f"Bearer {first_token}"}).status_code == 200
+
+
+@requires_db
 def test_session_exchange_blocked_when_expired(env):
     from datetime import datetime as dt, timedelta, timezone as tz
 

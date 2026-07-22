@@ -26,7 +26,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from services.db import models as orm
@@ -96,6 +96,24 @@ async def start_session(
     pkg = db.get(orm.HandoffPackage, recipient.package_id)
     now = datetime.now(timezone.utc)
     if pkg is None or not _package_live(pkg, recipient, now):
+        raise _unavailable()
+
+    # One-time code (S17.2 §7.1: "consumed/rotated on exchange"). Atomically claim
+    # it with a conditional UPDATE guarded on consumed_at IS NULL: exactly one
+    # caller wins even under a concurrent double-exchange, and a replay of an
+    # already-spent code matches zero rows. A spent/racing code returns the SAME
+    # neutral response as an invalid/expired/revoked one — no oracle, no second
+    # session issued.
+    claimed = db.execute(
+        update(orm.HandoffRecipient)
+        .where(
+            orm.HandoffRecipient.id == recipient.id,
+            orm.HandoffRecipient.capability_code_consumed_at.is_(None),
+        )
+        .values(capability_code_consumed_at=now)
+    )
+    if claimed.rowcount != 1:
+        db.rollback()
         raise _unavailable()
 
     raw_token = new_session_token()
