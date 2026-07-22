@@ -1,7 +1,7 @@
-"""Handoff package DTOs — creator draft/scope/generate slice (S17.3).
+"""Handoff package DTOs — creator draft/scope/generate slice (S17.3) plus the
+publish + recipient-view foundation (S17.5).
 
-Product/API-layer only (not ekc_schemas). Publish/recipient/session DTOs are
-deferred to the publish/recipient sprint.
+Product/API-layer only (not ekc_schemas).
 """
 from __future__ import annotations
 
@@ -67,8 +67,92 @@ class HandoffPackageOut(BaseModel):
     version: int
     created_at: str
     updated_at: str
+    published_at: str | None = None
+    expires_at: str | None = None
+    revoked_at: str | None = None
     scope: HandoffScopeOut
     claims: list[HandoffClaimOut]
     evidence: list[HandoffEvidenceOut]
     # Creator-only aggregate exclusion counts (never shown to a recipient).
     exclusion_counts: dict[str, int]
+
+
+# ── Publish (creator) — S17.5 ────────────────────────────────────────────────
+
+class PublishRequest(BaseModel):
+    recipient_email: str = Field(..., description="the single coverage recipient")
+    # Override the default 30-day validity (published_at + expires_in_days).
+    expires_in_days: int | None = Field(default=None, ge=1, le=365)
+
+
+class PublishResponse(BaseModel):
+    """Returned ONCE to the creator on publish. `capability_code` is the only time
+    the raw code is exposed; the server stores only its hash. Place it in the
+    share-link URL *fragment* (`share_fragment`), never a path/query."""
+    package: HandoffPackageOut
+    recipient_email: str
+    expires_at: str
+    capability_code: str
+    share_fragment: str
+
+
+# ── Recipient view — S17.5 ───────────────────────────────────────────────────
+
+class RecipientSessionRequest(BaseModel):
+    # The one-time capability code, read by the SPA from the share-link fragment
+    # and sent in the POST body (never a URL path/query).
+    code: str = Field(..., min_length=1)
+
+
+class RecipientSessionResponse(BaseModel):
+    session_token: str  # short-lived bearer; send as Authorization: Bearer <token>
+    expires_at: str     # session expiry (ISO 8601)
+    package_id: str
+
+
+class RecipientClaimOut(BaseModel):
+    id: str
+    kind: str
+    text: str
+    project_id: str | None
+    source_message_id_headers: list[str]
+    confidence: float
+
+
+class RecipientEvidenceOut(BaseModel):
+    """Package-local evidence. Deliberately has NO Gmail/open_url or source-mailbox
+    link — the recipient reads snapshotted content only."""
+    message_id_header: str
+    subject: str
+    sender_display: str
+    sender_domain: str
+    date: str
+    body_snapshot: str
+    source_type: str | None
+
+
+class PrivacyPosture(BaseModel):
+    """Global, package-invariant posture. Carries NO counts and NO per-topic
+    signal — a constant statement, so it can never act as an existence oracle for
+    whether sensitive/excluded content existed in THIS package."""
+    scope_limited: bool = True
+    sensitive_excluded: bool = True
+    note: str = (
+        "This package contains only the messages the sender chose to include. "
+        "Sensitive and out-of-scope content has been excluded, and the underlying "
+        "mailbox is not accessible from here."
+    )
+
+
+class RecipientPackageOut(BaseModel):
+    """Post-publish recipient view: package-local, read-only, snapshotted. No
+    exclusion counts, no Gmail/source link, no live mailbox — see PrivacyPosture."""
+    package_id: str
+    title: str
+    reason: str
+    creator_email: str
+    published_at: str | None
+    expires_at: str | None
+    claims: list[RecipientClaimOut]
+    evidence: list[RecipientEvidenceOut]
+    privacy_posture: PrivacyPosture
