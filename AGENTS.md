@@ -177,7 +177,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17.2–S17.9 ✓** — Audited handoff package MVP (D14), shipped and
+- **S17.2–S17.10 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
   + recipient session/package endpoints; S17.6 read-only recipient view at
@@ -187,10 +187,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   (`test_full_creator_to_recipient_journey`, `docs/s17-live-validation.md`);
   S17.9 recipient package-local ask (`POST /api/handoff/recipient/ask`,
   `services/handoff/ask.py`) — **deterministic and LLM-free**, grounded only in
-  the package's own evidence, no existence oracle. Deferred to S17.10+: optional
-  LLM synthesis for the package ask, static export, manager approval,
-  multi-recipient, new-version re-share, recipient trees/maps, and a stronger
-  production auth boundary. See `docs/s17-handoff-package-mvp-plan.md`.
+  the package's own evidence, no existence oracle; S17.10 package versioning /
+  new-version re-share (`POST /api/handoff/{id}/new-version`) — forks a frozen
+  package into a fresh draft in the same lineage (copied scope, no claims/
+  evidence/recipient/code); publishing supersedes the prior published version and
+  blocks its recipient. Deferred to S17.11+: optional LLM synthesis for the
+  package ask, static export, manager approval, multi-recipient, recipient
+  trees/maps, and a stronger production auth boundary. See
+  `docs/s17-handoff-package-mvp-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 

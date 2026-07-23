@@ -1,12 +1,17 @@
-"""Creator-side handoff package endpoints — draft/scope/generate slice (S17.3).
+"""Creator-side handoff package endpoints — draft/scope/generate/publish/version.
 
-  POST  /api/handoff/{mailbox_id}            create a draft package
-  PATCH /api/handoff/{package_id}/scope      set/update scope (draft|generated)
-  POST  /api/handoff/{package_id}/generate   (re)generate the candidate
-  GET   /api/handoff/{package_id}            creator review view
+  POST  /api/handoff/{mailbox_id}              create a draft package
+  PATCH /api/handoff/{package_id}/scope        set/update scope (draft|generated)
+  POST  /api/handoff/{package_id}/generate     (re)generate the candidate
+  GET   /api/handoff/{package_id}              creator review view
+  POST  /api/handoff/{package_id}/publish      freeze + grant one recipient (S17.5)
+  POST  /api/handoff/{package_id}/revoke       block recipient access (S17.5)
+  POST  /api/handoff/{package_id}/new-version  new draft in the same lineage (S17.10)
 
-Publish, recipient access, session/capability-code exchange, the package "ask"
-endpoint, and manager approval are intentionally NOT implemented here.
+Published packages are immutable: to change scope/evidence or re-share, the
+creator forks a NEW version in the same lineage (POST /new-version) and publishes
+it; publishing supersedes the prior published version and blocks its recipient.
+Manager approval and multi-recipient are intentionally NOT implemented here.
 
 Creator auth boundary: these endpoints require mailbox-owner authorization. In
 local/demo mode this uses the existing operator / mailbox-id context; production
@@ -45,6 +50,9 @@ router = APIRouter(tags=["handoff"])
 _VALID_REASONS = {"vacation", "leave", "transfer", "delegation", "other"}
 # Scope/generate are only legal while the package is still being drafted.
 _MUTABLE_STATES = {"draft", "generated"}
+# A new version can only fork a package that is already frozen (a still-editable
+# draft/generated package should be edited in place, not forked).
+_VERSIONABLE_STATES = {"published", "revoked", "superseded"}
 # Publish is only legal from a generated candidate (draft must generate first).
 _DEFAULT_EXPIRY_DAYS = 30
 
@@ -261,6 +269,13 @@ async def publish_handoff(
     pkg.published_at = now
     pkg.expires_at = expires_at
     pkg.updated_at = now
+
+    # New-version re-share (S17.10): publishing supersedes any package in the same
+    # lineage that is still 'published'. The old package flips to 'superseded'
+    # (blocked by the recipient access check), its recipient grant is revoked, and
+    # its live sessions are killed — so old access stops the moment the successor
+    # goes live. Old rows + audit are retained.
+    superseded = _supersede_prior_published(db, pkg, now)
     db.commit()
 
     write_handoff_audit(
@@ -271,8 +286,19 @@ async def publish_handoff(
             "expires_at": expires_at.isoformat(),
             "evidence": int(evidence_count),
             "recipient_hash_prefix": actor_hash_prefix(code_hash),
+            "version": pkg.version,
         },
     )
+    for old_id, old_version in superseded:
+        write_handoff_audit(
+            db, package_id=old_id, lineage_id=pkg.lineage_id,
+            actor=f"owner:{pkg.creator_email}", action="package_superseded",
+            metadata={
+                "old_package_id": old_id, "new_package_id": pkg.id,
+                "lineage_id": pkg.lineage_id,
+                "old_version": old_version, "new_version": pkg.version,
+            },
+        )
     return PublishResponse(
         package=_package_out(db, pkg),
         recipient_email=recipient_email,
@@ -325,3 +351,109 @@ async def revoke_handoff(
         metadata={"revoked_at": now.isoformat()},
     )
     return _package_out(db, pkg)
+
+
+def _supersede_prior_published(
+    db: Session, new_pkg: orm.HandoffPackage, now: datetime
+) -> list[tuple[str, int]]:
+    """Mark any still-'published' package in the lineage (other than ``new_pkg``)
+    as superseded, revoke its recipient grant, and kill its live sessions.
+
+    Returns ``[(old_package_id, old_version), …]`` for audit. No raw code/token is
+    read or written; only status/timestamps change. Old rows are retained.
+    """
+    prior = db.execute(
+        select(orm.HandoffPackage).where(
+            orm.HandoffPackage.lineage_id == new_pkg.lineage_id,
+            orm.HandoffPackage.id != new_pkg.id,
+            orm.HandoffPackage.status == "published",
+        )
+    ).scalars().all()
+    result: list[tuple[str, int]] = []
+    for old in prior:
+        old.status = "superseded"
+        old.updated_at = now
+        old_recipient = db.execute(
+            select(orm.HandoffRecipient).where(orm.HandoffRecipient.package_id == old.id)
+        ).scalar_one_or_none()
+        if old_recipient is not None and old_recipient.revoked_at is None:
+            old_recipient.revoked_at = now
+        db.execute(
+            orm.HandoffRecipientSession.__table__.update()
+            .where(
+                orm.HandoffRecipientSession.package_id == old.id,
+                orm.HandoffRecipientSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+        result.append((old.id, old.version))
+    return result
+
+
+@router.post("/handoff/{package_id}/new-version", response_model=HandoffPackageOut)
+async def new_version_handoff(
+    package_id: str, db: Session = Depends(get_db)
+) -> HandoffPackageOut:
+    """Fork a frozen package into a fresh DRAFT in the same lineage (S17.10).
+
+    The recovery path for a lost link, a wrong recipient, a needed scope revision,
+    or a revoked package: published packages are immutable, so instead of mutating
+    one, the creator creates ``version = max(lineage version) + 1`` — a new draft
+    that copies the previous scope but NOT its claims/evidence, recipient,
+    sessions, capability code, or published/expiry/revoked timestamps. Evidence is
+    re-snapshotted under current rules on the next Generate; publishing then
+    supersedes the prior published version.
+
+    Only a frozen package (published/revoked/superseded) can be forked — a
+    draft/generated package is still editable in place.
+    """
+    old = _get_package(db, package_id)
+    if old.status not in _VERSIONABLE_STATES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"a new version can only fork a published/revoked/superseded "
+            f"package (status '{old.status}')",
+        )
+
+    max_version = db.execute(
+        select(func.max(orm.HandoffPackage.version))
+        .where(orm.HandoffPackage.lineage_id == old.lineage_id)
+    ).scalar_one()
+
+    new_pkg = orm.HandoffPackage(
+        mailbox_id=old.mailbox_id, creator_email=old.creator_email,
+        creator_person_id=old.creator_person_id, status="draft",
+        reason=old.reason, title=old.title, policy_mode=old.policy_mode,
+        version=(max_version or old.version) + 1,
+        supersedes_package_id=old.id, lineage_id=old.lineage_id,
+    )
+    db.add(new_pkg)
+    db.flush()
+
+    # Copy the previous scope verbatim into the new draft; claims/evidence are NOT
+    # copied — they are re-snapshotted freshly on Generate under current rules.
+    old_scope = db.get(orm.HandoffScope, old.id)
+    db.add(orm.HandoffScope(
+        package_id=new_pkg.id,
+        date_from=old_scope.date_from if old_scope else None,
+        date_to=old_scope.date_to if old_scope else None,
+        included_project_ids=list(old_scope.included_project_ids) if old_scope else [],
+        included_person_ids=list(old_scope.included_person_ids) if old_scope else [],
+        included_thread_ids=list(old_scope.included_thread_ids) if old_scope else [],
+        excluded_thread_ids=list(old_scope.excluded_thread_ids) if old_scope else [],
+        excluded_message_id_headers=list(old_scope.excluded_message_id_headers) if old_scope else [],
+        allowed_domains=list(old_scope.allowed_domains) if old_scope else [],
+        keyword_filters=list(old_scope.keyword_filters) if old_scope else [],
+    ))
+    db.commit()
+
+    write_handoff_audit(
+        db, package_id=new_pkg.id, lineage_id=new_pkg.lineage_id,
+        actor=f"owner:{new_pkg.creator_email}", action="package_version_created",
+        metadata={
+            "old_package_id": old.id, "new_package_id": new_pkg.id,
+            "lineage_id": new_pkg.lineage_id,
+            "old_version": old.version, "new_version": new_pkg.version,
+        },
+    )
+    return _package_out(db, new_pkg)

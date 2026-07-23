@@ -30,7 +30,9 @@ failure all collapse to one neutral "no longer available" state.
 
 Lifecycle — the creator can revoke a published package; revocation immediately
 blocks the recipient (even a previously-live session) with the same neutral
-state.
+state. For a lost link, wrong recipient, or scope revision, the creator forks a
+new version in the same lineage (S17.10); publishing it supersedes the prior
+published version, blocks its recipient, and mints a fresh one-time link.
 
 ---
 
@@ -101,7 +103,7 @@ Documentation drift was corrected: `README.md`, `AGENTS.md`,
 
 ---
 
-## 5. Deferred to S17.10+
+## 5. Deferred to S17.11+
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the
@@ -112,8 +114,6 @@ Documentation drift was corrected: `README.md`, `AGENTS.md`,
 - **Static export** of a package.
 - **Manager approval** (states `submitted`/`approved`/`rejected` reserved since 0007).
 - **Multi-recipient** (currently exactly one recipient per package).
-- **Package versioning / new-version re-share** — a revoked package cannot be
-  re-shared from the UI today.
 - Recipient **relationship/project/owner trees** inside the package.
 - **Stronger production auth boundary** — the recipient session is a short-lived
   bearer suitable for the MVP, not a hardened production identity boundary.

@@ -35,11 +35,21 @@ Decision source: **D14** in `docs/decisions.md`.
   evidence, no answer; every citation is an in-package HandoffEvidence header;
   the no-evidence response is a single neutral constant (no existence oracle);
   `package_asked` audit carries only `query_len` + `matched_evidence`.
+- **S17.10 ✓** — Package versioning + new-version re-share
+  (`POST /api/handoff/{id}/new-version`, "Create revised version" in
+  `HandoffReview`). Forks a frozen package (published/revoked/superseded) into a
+  fresh **draft** in the same `lineage_id` with `version = max(lineage)+1` and
+  `supersedes_package_id` set; copies the previous scope but NOT claims/evidence/
+  recipient/sessions/capability code/published-expiry-revoked timestamps
+  (evidence is re-snapshotted on Generate). Publishing the new version supersedes
+  any still-published package in the lineage — flips it to `superseded`, revokes
+  its recipient grant, kills its sessions, and mints a fresh one-time code.
+  Audit: `package_version_created` + `package_superseded`, both with safe id/
+  version metadata only. No migration (columns already existed).
 
-Deferred to S17.10+: **optional LLM synthesis** for the package ask (S17.9 is
-deterministic-only), static export, manager approval, multi-recipient, package
-versioning / new-version re-share, recipient relationship/project/owner trees,
-and a stronger production auth boundary.
+Deferred to S17.11+: **optional LLM synthesis** for the package ask (S17.9 is
+deterministic-only), static export, manager approval, multi-recipient, recipient
+relationship/project/owner trees, and a stronger production auth boundary.
 
 ## 1. Product Thesis
 
