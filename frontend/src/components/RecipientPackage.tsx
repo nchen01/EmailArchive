@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { getRecipientPackage, startRecipientSession } from "../api/client";
+import {
+  askRecipientPackage,
+  getRecipientPackage,
+  startRecipientSession,
+} from "../api/client";
 import type {
+  RecipientAskResponse,
   RecipientClaim,
+  RecipientEvidence,
   RecipientPackage as RecipientPackageData,
   RecipientSession,
 } from "../api/types";
@@ -117,6 +123,10 @@ function fmtDate(iso: string | null): string {
 export function RecipientPackage() {
   const [phase, setPhase] = useState<Phase>("opening");
   const [pkg, setPkg] = useState<RecipientPackageData | null>(null);
+  // The live session token, held in memory for package-local "ask" calls. This
+  // is the same short-lived token already persisted in sessionStorage; keeping a
+  // ref avoids re-reading storage and never adds a new persistence site.
+  const sessionTokenRef = useRef<string | null>(null);
   // Guard so the one-time code is exchanged exactly once, even under React
   // StrictMode's dev double-invoke of effects (a second exchange of a spent code
   // would 403 and wrongly clobber a good render).
@@ -141,6 +151,7 @@ export function RecipientPackage() {
       try {
         setPhase("loading");
         const data = await getRecipientPackage(token);
+        sessionTokenRef.current = token; // enable package-local ask for this session
         setPkg(data);
         setPhase("ready");
       } catch {
@@ -218,7 +229,7 @@ export function RecipientPackage() {
 
   return (
     <Shell>
-      <PackageDocument pkg={pkg} />
+      <PackageDocument pkg={pkg} sessionToken={sessionTokenRef.current} />
     </Shell>
   );
 }
@@ -242,7 +253,13 @@ function NeutralCard({ heading, body }: { heading: string; body: string }) {
   );
 }
 
-function PackageDocument({ pkg }: { pkg: RecipientPackageData }) {
+function PackageDocument({
+  pkg,
+  sessionToken,
+}: {
+  pkg: RecipientPackageData;
+  sessionToken: string | null;
+}) {
   const claimsByKind = (kind: string) => pkg.claims.filter((c) => c.kind === kind);
   const groupedKinds = KIND_ORDER.filter((k) => claimsByKind(k).length > 0);
   // Any claim kinds outside the known order still render, so nothing is dropped.
@@ -276,6 +293,9 @@ function PackageDocument({ pkg }: { pkg: RecipientPackageData }) {
           <div className="font-medium">Scope-limited · Sensitive content excluded</div>
           <p className="mt-1 leading-relaxed text-emerald-800">{pkg.privacy_posture.note}</p>
         </aside>
+
+        {/* Package-local ask — answers only from this package's evidence. */}
+        {sessionToken ? <AskBox sessionToken={sessionToken} /> : null}
 
         {/* Claims, grouped by kind. */}
         <section className="mt-8">
@@ -312,24 +332,7 @@ function PackageDocument({ pkg }: { pkg: RecipientPackageData }) {
           ) : (
             <ul className="mt-3 space-y-3">
               {pkg.evidence.map((e) => (
-                <li
-                  key={e.message_id_header}
-                  className="rounded-md border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="text-sm font-medium text-slate-800">
-                    {e.subject || "(no subject)"}
-                  </div>
-                  <div className="mt-0.5 text-xs text-slate-500">
-                    {e.sender_display || "Unknown sender"}
-                    {e.sender_domain ? <> · {e.sender_domain}</> : null}
-                    {e.date ? <> · {fmtDate(e.date)}</> : null}
-                  </div>
-                  {e.body_snapshot ? (
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                      {e.body_snapshot}
-                    </p>
-                  ) : null}
-                </li>
+                <EvidenceItem key={e.message_id_header} ev={e} />
               ))}
             </ul>
           )}
@@ -356,5 +359,122 @@ function ClaimRow({ claim }: { claim: RecipientClaim }) {
         </div>
       ) : null}
     </li>
+  );
+}
+
+/** One snapshotted evidence card. No message-id link, no Gmail/source affordance —
+ * the recipient reads the snapshot only. Reused by the evidence list and the ask
+ * answer's citations. */
+function EvidenceItem({ ev }: { ev: RecipientEvidence }) {
+  return (
+    <li className="rounded-md border border-slate-200 bg-slate-50 p-4">
+      <div className="text-sm font-medium text-slate-800">{ev.subject || "(no subject)"}</div>
+      <div className="mt-0.5 text-xs text-slate-500">
+        {ev.sender_display || "Unknown sender"}
+        {ev.sender_domain ? <> · {ev.sender_domain}</> : null}
+        {ev.date ? <> · {fmtDate(ev.date)}</> : null}
+      </div>
+      {ev.body_snapshot ? (
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+          {ev.body_snapshot}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
+type AskState =
+  | { kind: "idle" }
+  | { kind: "asking" }
+  | { kind: "answered"; resp: RecipientAskResponse }
+  | { kind: "error" };
+
+/**
+ * Package-local ask (S17.9). Sends the question to the recipient ask endpoint and
+ * renders the deterministic answer entirely from this package's own claims +
+ * evidence. Citations are package evidence cards only — no message-id link, no
+ * Gmail/source affordance, no mailbox id. A no-evidence answer and an error both
+ * render neutral copy that never hints whether excluded content exists.
+ */
+function AskBox({ sessionToken }: { sessionToken: string }) {
+  const [query, setQuery] = useState("");
+  const [state, setState] = useState<AskState>({ kind: "idle" });
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q || state.kind === "asking") return;
+    setState({ kind: "asking" });
+    try {
+      const resp = await askRecipientPackage(sessionToken, q);
+      setState({ kind: "answered", resp });
+    } catch {
+      setState({ kind: "error" });
+    }
+  };
+
+  return (
+    <section className="mt-8 rounded-md border border-indigo-200 bg-indigo-50 p-4">
+      <h2 className="text-sm font-semibold text-indigo-900">Ask about this handoff</h2>
+      <p className="mt-0.5 text-xs text-indigo-700">
+        Answers come only from this package — the sender's mailbox is not searched.
+      </p>
+      <form className="mt-3 flex gap-2" onSubmit={submit}>
+        <input
+          type="text"
+          className="min-w-0 flex-1 rounded border border-indigo-300 bg-white px-3 py-1.5 text-sm text-slate-800"
+          placeholder="e.g. What's the status of the Atlas cutover?"
+          value={query}
+          onChange={(ev) => setQuery(ev.target.value)}
+        />
+        <button
+          type="submit"
+          className="shrink-0 rounded-md bg-indigo-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-600 disabled:bg-indigo-300"
+          disabled={state.kind === "asking" || !query.trim()}
+        >
+          {state.kind === "asking" ? "Asking…" : "Ask"}
+        </button>
+      </form>
+
+      {state.kind === "error" ? (
+        <p className="mt-3 text-sm text-slate-600">
+          This handoff package isn't available to answer right now.
+        </p>
+      ) : null}
+
+      {state.kind === "answered" ? (
+        <div className="mt-3">
+          <p className="text-sm text-slate-700">{state.resp.message}</p>
+          {state.resp.answered ? (
+            <>
+              {state.resp.claims.length > 0 ? (
+                <ul className="mt-2 space-y-2">
+                  {state.resp.claims.map((c) => (
+                    <li
+                      key={c.id}
+                      className="rounded-md border border-indigo-100 bg-white px-3 py-2 text-sm text-slate-800"
+                    >
+                      {c.text}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {state.resp.evidence.length > 0 ? (
+                <div className="mt-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+                    From these messages
+                  </div>
+                  <ul className="mt-2 space-y-3">
+                    {state.resp.evidence.map((e) => (
+                      <EvidenceItem key={e.message_id_header} ev={e} />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }

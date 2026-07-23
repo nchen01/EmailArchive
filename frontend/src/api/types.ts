@@ -450,3 +450,23 @@ export interface RecipientPackage {
   evidence: RecipientEvidence[];
   privacy_posture: RecipientPrivacyPosture;
 }
+
+// ── Recipient package-local ask (S17.9) ──────────────────────────────────────
+// Mirrors services/api/schemas/handoff.py RecipientAskResponse. The answer is
+// deterministic and package-local: every cited evidence row is an in-package
+// HandoffEvidence, and `answered: false` is the SAME neutral result for
+// no-match / sensitive / unknown / insufficient — never an existence oracle.
+
+export interface RecipientAnswerClaim {
+  id: string;
+  kind: string;
+  text: string;
+  source_message_id_headers: string[];
+}
+
+export interface RecipientAskResponse {
+  answered: boolean;
+  message: string;
+  claims: RecipientAnswerClaim[];
+  evidence: RecipientEvidence[];
+}

@@ -742,3 +742,183 @@ def test_full_creator_to_recipient_journey(env):
 
     # (16) the previously-live recipient session is now blocked (neutral 403)
     assert env.client.get("/api/handoff/recipient/package", headers=auth).status_code == 403
+
+
+# ── S17.9 — recipient package-local ask ──────────────────────────────────────
+
+def _ask(env, token, query):
+    return env.client.post(
+        "/api/handoff/recipient/ask",
+        json={"query": query},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def _published_session(env, **seed):
+    """Publish _generated_package and return (pid, session_token)."""
+    pid = _generated_package(env, **seed)
+    code = _publish(env, pid).json()["capability_code"]
+    token = _exchange(env, code).json()["session_token"]
+    return pid, token
+
+
+def test_answer_from_package_grounding_is_pure_and_evidence_gated():
+    """DB-free: no package evidence -> no answer; empty query -> no answer."""
+    from types import SimpleNamespace
+
+    from services.handoff.ask import answer_from_package
+
+    ev = SimpleNamespace(
+        message_id_header="atlas-1@acme.corp", subject="Atlas cutover",
+        body_snapshot="Cutover is Friday.", sender_display="Al", sender_domain="acme.corp",
+        ts=None,
+    )
+    claim = SimpleNamespace(kind="decision", text="Atlas cutover completed",
+                            source_message_id_headers=["atlas-1@acme.corp"])
+
+    hit = answer_from_package("atlas cutover", [claim], [ev])
+    assert hit.answered is True
+    assert [e.message_id_header for e in hit.evidence] == ["atlas-1@acme.corp"]
+
+    # No overlap -> not answered, nothing cited.
+    miss = answer_from_package("payroll vacation policy", [claim], [ev])
+    assert miss.answered is False and miss.evidence == [] and miss.claims == []
+
+    # Empty/stopword-only query -> not answered.
+    assert answer_from_package("what is the", [claim], [ev]).answered is False
+    # Evidence present but claims empty still answers from evidence overlap.
+    assert answer_from_package("atlas", [], [ev]).answered is True
+
+
+@requires_db
+def test_recipient_ask_answers_and_cites_only_in_package_evidence(env):
+    _pid, token = _published_session(env)
+    r = _ask(env, token, "What is the status of the Atlas cutover?")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["answered"] is True
+    # Every cited evidence header is an in-package header.
+    ev_headers = {e["message_id_header"] for e in body["evidence"]}
+    assert ev_headers == {"atlas-1@acme.corp"}
+    # Every claim cites only in-package headers, and no source/Gmail link leaks.
+    for c in body["claims"]:
+        assert set(c["source_message_id_headers"]) <= ev_headers
+    blob = json_dumps(body).lower()
+    for banned in ("mailbox_id", "exclusion_counts", "open_url", "gmail"):
+        assert banned not in blob
+
+
+@requires_db
+def test_recipient_ask_no_match_is_neutral_no_evidence(env):
+    _pid, token = _published_session(env)
+    r = _ask(env, token, "quarterly payroll reimbursement policy")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["answered"] is False
+    assert body["claims"] == [] and body["evidence"] == []
+    assert "doesn't include anything" in body["message"]
+
+
+@requires_db
+def test_recipient_ask_excluded_topic_is_identical_neutral_no_oracle(env):
+    """A query about content that was sensitivity-excluded from the package must
+    return a response byte-identical to a query about content that never existed
+    — so the ask cannot reveal that sensitive content was withheld."""
+    # Clean event (in package) + a sensitive thread (excluded whole).
+    clean_tid, sens_tid = str(uuid.uuid4()), str(uuid.uuid4())
+    _seed_thread(env.session, env.mid, clean_tid, [
+        {"header": "clean-1@acme.corp", "subject": "Atlas cutover", "body": "Cutover Friday."},
+    ])
+    _seed_thread(env.session, env.mid, sens_tid, [
+        {"header": "horizon-hr@acme.corp", "sensitivity": ["hr"],
+         "subject": "Horizon layoffs", "body": "Confidential Horizon layoff plan."},
+    ])
+    _seed_event(env.session, env.mid, env.owner_pid, ["clean-1@acme.corp"], summary="Atlas cutover done")
+    _seed_event(env.session, env.mid, env.owner_pid, ["horizon-hr@acme.corp"], summary="Horizon layoff plan")
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    env.client.post(f"/api/handoff/{pid}/generate")
+    code = _publish(env, pid).json()["capability_code"]
+    token = _exchange(env, code).json()["session_token"]
+
+    # Ask about the EXCLUDED sensitive topic vs a topic that never existed.
+    excluded = _ask(env, token, "What is the Horizon layoff plan?").json()
+    unknown = _ask(env, token, "What is the Zephyr merger plan?").json()
+    assert excluded["answered"] is False
+    assert excluded == unknown  # byte-identical: no existence oracle
+
+
+@requires_db
+def test_recipient_ask_blocked_when_revoked_or_expired(env):
+    from datetime import datetime as dt, timedelta, timezone as tz
+
+    pid, token = _published_session(env)
+    assert _ask(env, token, "atlas").status_code == 200  # live now
+
+    assert env.client.post(f"/api/handoff/{pid}/revoke").status_code == 200
+    assert _ask(env, token, "atlas").status_code == 403  # revoked → cannot ask
+
+    # Fresh package, force expiry into the past → ask blocked at request time.
+    pid2, token2 = _published_session(env, header="b-1@acme.corp", summary="Billing handed to Dana")
+    s = _fresh()
+    try:
+        from services.db import models as orm
+        pkg = s.get(orm.HandoffPackage, pid2)
+        pkg.expires_at = dt.now(tz.utc) - timedelta(days=1)
+        s.commit()
+    finally:
+        s.close()
+    assert _ask(env, token2, "billing").status_code == 403
+
+
+@requires_db
+def test_recipient_ask_is_package_local_after_live_tables_wiped(env):
+    """Proves the ask path reads only the package snapshot: delete every
+    Message/Thread/Event row for the mailbox after publish, then ask — it still
+    answers from handoff_evidence alone."""
+    _pid, token = _published_session(env)
+    s = _fresh()
+    try:
+        from services.db import models as orm
+        for model in (orm.Event, orm.Message, orm.Thread):
+            s.execute(model.__table__.delete().where(model.mailbox_id == env.mid))
+        s.commit()
+    finally:
+        s.close()
+    r = _ask(env, token, "Atlas cutover")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["answered"] is True
+    assert {e["message_id_header"] for e in body["evidence"]} == {"atlas-1@acme.corp"}
+
+
+@requires_db
+def test_recipient_ask_audit_is_safe(env):
+    _pid, token = _published_session(env)
+    secret_query = "SECRET horizon layoff CONFIDENTIAL atlas"
+    assert _ask(env, token, secret_query).status_code == 200
+
+    s = _fresh()
+    try:
+        from sqlalchemy import select
+
+        from services.db import models as orm
+        rows = s.execute(select(orm.HandoffAuditEvent).where(
+            orm.HandoffAuditEvent.package_id == _pid,
+            orm.HandoffAuditEvent.action == "package_asked",
+        )).scalars().all()
+        assert rows, "expected a package_asked audit row"
+        meta_keys = set()
+        blob = ""
+        for r in rows:
+            meta_keys |= set((r.metadata_ or {}).keys())
+            blob += " " + str(r.metadata_)
+        # Only safe, non-content keys; the raw query text never appears.
+        assert meta_keys <= {"query_len", "matched_evidence"}
+        assert "SECRET" not in blob and "horizon" not in blob and "CONFIDENTIAL" not in blob
+        assert secret_query not in blob
+        # Actor is a hash prefix, never the raw token.
+        actors = [r.actor for r in rows]
+        assert all(a.startswith("recipient:") for a in actors)
+        assert all(token not in a for a in actors)
+    finally:
+        s.close()

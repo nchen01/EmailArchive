@@ -101,9 +101,14 @@ Documentation drift was corrected: `README.md`, `AGENTS.md`,
 
 ---
 
-## 5. Deferred to S17.9+
+## 5. Deferred to S17.10+
 
-- Recipient package-local **ask / Cover-for-me** (package-scoped, no existence oracle).
+- **Optional LLM synthesis** for the package ask. The recipient package-local
+  **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the
+  package's own claims + evidence (`POST /api/handoff/recipient/ask`): no package
+  evidence → no answer; every citation is an in-package HandoffEvidence header;
+  the no-evidence response is a single neutral constant (no existence oracle).
+  LLM synthesis over that same package-local evidence is the optional next step.
 - **Static export** of a package.
 - **Manager approval** (states `submitted`/`approved`/`rejected` reserved since 0007).
 - **Multi-recipient** (currently exactly one recipient per package).

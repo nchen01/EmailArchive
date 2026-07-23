@@ -12,6 +12,7 @@ import type {
   ProjectListData,
   PublishRequest,
   PublishResponse,
+  RecipientAskResponse,
   RecipientPackage,
   RecipientSession,
   RelationshipMapMode,
@@ -452,6 +453,30 @@ export async function getRecipientPackage(sessionToken: string): Promise<Recipie
     throw await toHttpError(res);
   }
   return (await res.json()) as RecipientPackage;
+}
+
+/**
+ * Ask a question against ONLY the recipient's package (S17.9). The query is sent
+ * in the POST body and the session token as a Bearer header (never the URL). The
+ * answer is deterministic and package-local: cited evidence is in-package only,
+ * and `answered: false` is the neutral no-evidence result (no existence oracle).
+ */
+export async function askRecipientPackage(
+  sessionToken: string,
+  query: string,
+): Promise<RecipientAskResponse> {
+  const res = await fetchWithTimeout(`${API_BASE}/api/handoff/recipient/ask`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    throw await toHttpError(res);
+  }
+  return (await res.json()) as RecipientAskResponse;
 }
 
 /**
