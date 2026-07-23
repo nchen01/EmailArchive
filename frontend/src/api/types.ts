@@ -372,3 +372,56 @@ export interface HandoffPackage {
   /** Creator-only aggregate exclusion counts (never shown to a recipient). */
   exclusion_counts: Record<string, number>;
 }
+
+// ── Handoff package — recipient view (S17.5 backend, S17.6 UI) ────────────────
+//
+// These types mirror services/api/schemas/handoff.py exactly (RecipientSession-
+// Response / RecipientPackageOut and friends). The recipient shape is a strict
+// subset of the creator package: it deliberately carries NO mailbox_id, NO
+// exclusion counts, and NO Gmail/source/open_url link — the recipient reads
+// snapshotted content only, never the live mailbox.
+
+export interface RecipientSession {
+  session_token: string; // short-lived bearer; memory-only, sent as Authorization
+  expires_at: string; // ISO 8601 session expiry
+  package_id: string;
+}
+
+export interface RecipientClaim {
+  id: string;
+  kind: string; // open_loop | decision | blocker | project_state | briefing | person_note
+  text: string;
+  project_id: string | null;
+  source_message_id_headers: string[];
+  confidence: number;
+}
+
+export interface RecipientEvidence {
+  message_id_header: string;
+  subject: string;
+  sender_display: string;
+  sender_domain: string;
+  date: string; // ISO 8601 ("" if unknown)
+  body_snapshot: string;
+  source_type: string | null;
+}
+
+/** Global, package-invariant posture — a constant statement carrying no counts
+ * and no per-topic signal (so it can never act as an existence oracle). */
+export interface RecipientPrivacyPosture {
+  scope_limited: boolean;
+  sensitive_excluded: boolean;
+  note: string;
+}
+
+export interface RecipientPackage {
+  package_id: string;
+  title: string;
+  reason: string;
+  creator_email: string;
+  published_at: string | null;
+  expires_at: string | null;
+  claims: RecipientClaim[];
+  evidence: RecipientEvidence[];
+  privacy_posture: RecipientPrivacyPosture;
+}

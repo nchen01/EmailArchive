@@ -10,6 +10,8 @@ import type {
   ScopeRequestBody,
   ProjectDetailData,
   ProjectListData,
+  RecipientPackage,
+  RecipientSession,
   RelationshipMapMode,
   RelationshipMapResponse,
   RelationshipType,
@@ -378,6 +380,50 @@ export async function getHandoff(packageId: string): Promise<HandoffPackage> {
   return getJson<HandoffPackage>(
     `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}`,
   );
+}
+
+// ── Handoff package — recipient view (S17.5 backend, S17.6 UI) ────────────────
+
+/**
+ * Exchange a one-time capability code (read from the share-link URL fragment) for
+ * a short-lived recipient session.
+ *
+ * The raw code travels ONLY in the POST body — never a URL path/query — and this
+ * function does not log it. The code is one-time (consumed on first exchange), so
+ * any invalid/expired/revoked/already-consumed code yields HTTP 403; the caller
+ * renders every such failure as the same neutral "unavailable" state (no oracle
+ * about why). The returned session token is short-lived and must be held in
+ * memory only, never persisted.
+ */
+export async function startRecipientSession(code: string): Promise<RecipientSession> {
+  const res = await fetchWithTimeout(`${API_BASE}/api/handoff/recipient/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) {
+    throw await toHttpError(res);
+  }
+  return (await res.json()) as RecipientSession;
+}
+
+/**
+ * Read the published, package-local recipient view for a live session. The
+ * session token is sent as an `Authorization: Bearer` header (never in the URL).
+ *
+ * The response is package-scoped by construction: claims + evidence + a constant
+ * privacy posture only — no mailbox id, no exclusion counts, no Gmail/source
+ * link. A 403 (session expired, or package revoked/expired/superseded) is again
+ * rendered as the neutral "unavailable" state.
+ */
+export async function getRecipientPackage(sessionToken: string): Promise<RecipientPackage> {
+  const res = await fetchWithTimeout(`${API_BASE}/api/handoff/recipient/package`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!res.ok) {
+    throw await toHttpError(res);
+  }
+  return (await res.json()) as RecipientPackage;
 }
 
 /**
