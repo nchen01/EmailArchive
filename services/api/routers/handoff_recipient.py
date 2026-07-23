@@ -1,12 +1,14 @@
-"""Recipient-side handoff endpoints — session exchange + package view (S17.5).
+"""Recipient-side handoff endpoints — session exchange + package view + ask.
 
   POST /api/handoff/recipient/session   exchange a one-time capability code for a
-                                        short-lived, package-scoped session
-  GET  /api/handoff/recipient/package   read the published package (session-auth)
+                                        short-lived, package-scoped session (S17.5)
+  GET  /api/handoff/recipient/package   read the published package (session-auth, S17.5)
+  POST /api/handoff/recipient/ask       ask a question against ONLY this package (S17.9)
 
 Hard invariants (S17.2 §8):
 - These endpoints read ONLY `handoff_*` rows. They never touch message/thread/
-  project/person live-mailbox tables — the recipient view is fully package-local.
+  project/person/event/retrieval live-mailbox tables — the recipient surface is
+  fully package-local. The ask path answers purely from the package snapshot.
 - No raw capability token or session token appears in a URL path/query, a log,
   or audit metadata. The code/token arrives in a POST body / Authorization
   header; only sha256 hashes are stored and looked up.
@@ -16,10 +18,12 @@ Hard invariants (S17.2 §8):
 - Blocked (expired/revoked/superseded/unknown) states return a single neutral
   "no longer available" response — never a reason that could leak package state.
 - The recipient sees claims + evidence + a global privacy posture only: no
-  exclusion counts, no Gmail/source link, no live mailbox.
+  exclusion counts, no Gmail/source link, no live mailbox. An ask with no
+  matching package evidence returns a single neutral no-evidence response,
+  identical for sensitive / excluded / unknown / insufficient queries.
 
-Deferred to S17.6+: recipient "ask" (package-scoped cover-for-me) and the
-new-version supersede rotation.
+Deferred to S17.10+: optional LLM synthesis for the ask, and the new-version
+supersede rotation.
 """
 from __future__ import annotations
 
@@ -30,6 +34,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from services.db import models as orm
+from services.handoff.ask import answer_from_package
 from services.handoff.audit import write_handoff_audit
 from services.handoff.tokens import (
     SESSION_TTL_MINUTES,
@@ -41,6 +46,9 @@ from services.handoff.tokens import (
 from ..deps import get_db
 from ..schemas.handoff import (
     PrivacyPosture,
+    RecipientAnswerClaimOut,
+    RecipientAskRequest,
+    RecipientAskResponse,
     RecipientClaimOut,
     RecipientEvidenceOut,
     RecipientPackageOut,
@@ -52,6 +60,25 @@ router = APIRouter(tags=["handoff-recipient"])
 
 # One neutral message for every block/unknown case — no oracle about why.
 _UNAVAILABLE = "This handoff is no longer available."
+
+# Constant ask messages. The no-evidence text is IDENTICAL for no-match /
+# sensitive / excluded / unknown / insufficient — so it can never act as an
+# existence oracle for content that is not in the package.
+_ASK_ANSWERED = "Here's what this handoff package covers on that:"
+_ASK_NO_EVIDENCE = (
+    "This handoff package doesn't include anything on that. It only covers the "
+    "topics the sender chose to share."
+)
+
+
+def _evidence_out(e: orm.HandoffEvidence) -> RecipientEvidenceOut:
+    """Package-local evidence DTO — snapshotted content only, no source/Gmail link."""
+    return RecipientEvidenceOut(
+        message_id_header=e.message_id_header, subject=e.subject,
+        sender_display=e.sender_display, sender_domain=e.sender_domain,
+        date=e.ts.isoformat() if e.ts else "", body_snapshot=e.body_snapshot,
+        source_type=e.source_type,
+    )
 
 
 def _unavailable() -> HTTPException:
@@ -211,11 +238,69 @@ async def get_recipient_package(
             source_message_id_headers=list(c.source_message_id_headers),
             confidence=float(c.confidence),
         ) for c in claims],
-        evidence=[RecipientEvidenceOut(
-            message_id_header=e.message_id_header, subject=e.subject,
-            sender_display=e.sender_display, sender_domain=e.sender_domain,
-            date=e.ts.isoformat() if e.ts else "", body_snapshot=e.body_snapshot,
-            source_type=e.source_type,
-        ) for e in evidence],
+        evidence=[_evidence_out(e) for e in evidence],
         privacy_posture=PrivacyPosture(),
+    )
+
+
+@router.post("/handoff/recipient/ask", response_model=RecipientAskResponse)
+async def recipient_ask(
+    body: RecipientAskRequest,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> RecipientAskResponse:
+    """Answer a recipient question against ONLY this package's snapshot (S17.9).
+
+    Deterministic, LLM-free term-overlap over the package's own HandoffClaim +
+    HandoffEvidence rows. Reads only `handoff_*` rows — never the live mailbox.
+    Every citation is an in-package HandoffEvidence header. No package evidence,
+    no answer; the no-evidence response is a single neutral, constant message so
+    it can never reveal whether sensitive/excluded content exists."""
+    resolved = _session_from_header(db, authorization)
+    if resolved is None:
+        raise _unavailable()  # expired/revoked/superseded/unknown → cannot ask
+    recipient, pkg, _sess = resolved
+
+    claims = list(db.execute(
+        select(orm.HandoffClaim).where(orm.HandoffClaim.package_id == pkg.id)
+        .order_by(orm.HandoffClaim.kind, orm.HandoffClaim.id)
+    ).scalars())
+    evidence = list(db.execute(
+        select(orm.HandoffEvidence).where(orm.HandoffEvidence.package_id == pkg.id)
+        .order_by(orm.HandoffEvidence.ts)
+    ).scalars())
+
+    result = answer_from_package(body.query, claims, evidence)
+
+    now = datetime.now(timezone.utc)
+    recipient.last_accessed_at = now
+    db.commit()
+
+    # Safe metadata only: query LENGTH (never the text) + matched evidence count.
+    write_handoff_audit(
+        db, package_id=pkg.id, lineage_id=pkg.lineage_id,
+        actor=f"recipient:{actor_hash_prefix(recipient.capability_code_hash)}",
+        action="package_asked",
+        metadata={"query_len": len(body.query), "matched_evidence": len(result.evidence)},
+    )
+
+    # Answer-local citation rule: a returned claim may cite ONLY evidence that is
+    # actually included in THIS response's evidence list. Filter each claim's
+    # headers to the returned set and drop any claim left with no visible citation
+    # — never emit a citation the recipient cannot see in the same answer.
+    returned_headers = {e.message_id_header for e in result.evidence}
+    answer_claims: list[RecipientAnswerClaimOut] = []
+    for c in result.claims:
+        cited = [h for h in c.source_message_id_headers if h in returned_headers]
+        if not cited:
+            continue
+        answer_claims.append(RecipientAnswerClaimOut(
+            id=c.id, kind=c.kind, text=c.text, source_message_id_headers=cited,
+        ))
+
+    return RecipientAskResponse(
+        answered=result.answered,
+        message=_ASK_ANSWERED if result.answered else _ASK_NO_EVIDENCE,
+        claims=answer_claims,
+        evidence=[_evidence_out(e) for e in result.evidence],
     )

@@ -156,3 +156,31 @@ class RecipientPackageOut(BaseModel):
     claims: list[RecipientClaimOut]
     evidence: list[RecipientEvidenceOut]
     privacy_posture: PrivacyPosture
+
+
+# ── Recipient package-local ask — S17.9 ──────────────────────────────────────
+
+class RecipientAskRequest(BaseModel):
+    # The recipient's question, asked against ONLY this package's snapshot. Sent
+    # in the POST body; the recipient session travels in the Authorization header.
+    query: str = Field(..., min_length=1, max_length=1000)
+
+
+class RecipientAnswerClaimOut(BaseModel):
+    """A package claim surfaced as part of an answer. Every header in
+    `source_message_id_headers` is an in-package HandoffEvidence header."""
+    id: str
+    kind: str
+    text: str
+    source_message_id_headers: list[str]
+
+
+class RecipientAskResponse(BaseModel):
+    """Deterministic, package-local answer. `answered` is False for no match /
+    sensitive / unknown / insufficient evidence — ALL identical, so the response
+    never reveals whether excluded content exists. Citations are package evidence
+    rows only (no Gmail/source link, no mailbox id, no exclusion counts)."""
+    answered: bool
+    message: str
+    claims: list[RecipientAnswerClaimOut]
+    evidence: list[RecipientEvidenceOut]

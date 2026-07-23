@@ -29,11 +29,17 @@ Decision source: **D14** in `docs/decisions.md`.
 - **S17.8 ✓** — End-to-end validation + docs alignment:
   `tests/test_s17_handoff.py::test_full_creator_to_recipient_journey` and
   `docs/s17-live-validation.md`.
+- **S17.9 ✓** — Recipient package-local ask (`POST /api/handoff/recipient/ask`,
+  `services/handoff/ask.py`, ask box on `/handoff/recipient`). **Deterministic,
+  LLM-free** term-overlap over the package's own claims + evidence: no package
+  evidence, no answer; every citation is an in-package HandoffEvidence header;
+  the no-evidence response is a single neutral constant (no existence oracle);
+  `package_asked` audit carries only `query_len` + `matched_evidence`.
 
-Deferred to S17.9+: recipient package-local ask / Cover-for-me, static export,
-manager approval, multi-recipient, package versioning / new-version re-share,
-recipient relationship/project/owner trees, and a stronger production auth
-boundary.
+Deferred to S17.10+: **optional LLM synthesis** for the package ask (S17.9 is
+deterministic-only), static export, manager approval, multi-recipient, package
+versioning / new-version re-share, recipient relationship/project/owner trees,
+and a stronger production auth boundary.
 
 ## 1. Product Thesis
 
