@@ -922,3 +922,56 @@ def test_recipient_ask_audit_is_safe(env):
         assert all(token not in a for a in actors)
     finally:
         s.close()
+
+
+def test_ask_claims_never_cite_evidence_outside_returned_set():
+    """P1 regression (DB-free): when more than _MAX_EVIDENCE direct matches fill
+    the evidence cap, a claim citing an in-package row that gets capped OUT must
+    not appear with a dangling citation. Every returned claim must cite only rows
+    present in the returned evidence."""
+    from types import SimpleNamespace
+
+    from services.handoff.ask import _MAX_EVIDENCE, answer_from_package
+
+    # More direct-match evidence rows than the cap — all match "atlas" directly.
+    evidence = [
+        SimpleNamespace(
+            message_id_header=f"atlas-{i}@x", subject="Atlas cutover",
+            body_snapshot="atlas rollout work", sender_display="", sender_domain="", ts=None,
+        )
+        for i in range(_MAX_EVIDENCE + 2)
+    ]
+    # A separate in-package row that does NOT match the query directly, but is
+    # cited by a claim whose TEXT does match — so it is appended after the direct
+    # matches and pushed out by the cap.
+    evidence.append(SimpleNamespace(
+        message_id_header="budget-1@x", subject="Quarterly budget",
+        body_snapshot="budget review", sender_display="", sender_domain="", ts=None,
+    ))
+    claim_capped = SimpleNamespace(
+        kind="decision", text="Atlas migration budget", source_message_id_headers=["budget-1@x"],
+    )
+    # A second claim that cites BOTH a returned row and the capped-out row.
+    claim_mixed = SimpleNamespace(
+        kind="decision", text="Atlas rollout owner",
+        source_message_id_headers=["atlas-0@x", "budget-1@x"],
+    )
+
+    res = answer_from_package("atlas", [claim_capped, claim_mixed], evidence)
+    assert res.answered is True
+    returned = {e.message_id_header for e in res.evidence}
+    assert len(returned) == _MAX_EVIDENCE and "budget-1@x" not in returned
+
+    # Module contract: every returned claim has >=1 citation in the returned set;
+    # the budget-only claim is dropped entirely.
+    assert all(any(h in returned for h in c.source_message_id_headers) for c in res.claims)
+    assert claim_capped not in res.claims
+
+    # Endpoint contract: RecipientAskResponse claims cite ONLY returned evidence.
+    # Reproduce the endpoint's per-claim header filter + drop-empty.
+    answer_claims = [
+        [h for h in c.source_message_id_headers if h in returned] for c in res.claims
+    ]
+    answer_claims = [hs for hs in answer_claims if hs]
+    for hs in answer_claims:
+        assert set(hs) <= returned  # no citation outside the returned evidence

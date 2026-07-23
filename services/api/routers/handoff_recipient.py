@@ -271,7 +271,6 @@ async def recipient_ask(
     ).scalars())
 
     result = answer_from_package(body.query, claims, evidence)
-    package_headers = {e.message_id_header for e in evidence}
 
     now = datetime.now(timezone.utc)
     recipient.last_accessed_at = now
@@ -285,15 +284,23 @@ async def recipient_ask(
         metadata={"query_len": len(body.query), "matched_evidence": len(result.evidence)},
     )
 
+    # Answer-local citation rule: a returned claim may cite ONLY evidence that is
+    # actually included in THIS response's evidence list. Filter each claim's
+    # headers to the returned set and drop any claim left with no visible citation
+    # — never emit a citation the recipient cannot see in the same answer.
+    returned_headers = {e.message_id_header for e in result.evidence}
+    answer_claims: list[RecipientAnswerClaimOut] = []
+    for c in result.claims:
+        cited = [h for h in c.source_message_id_headers if h in returned_headers]
+        if not cited:
+            continue
+        answer_claims.append(RecipientAnswerClaimOut(
+            id=c.id, kind=c.kind, text=c.text, source_message_id_headers=cited,
+        ))
+
     return RecipientAskResponse(
         answered=result.answered,
         message=_ASK_ANSWERED if result.answered else _ASK_NO_EVIDENCE,
-        claims=[RecipientAnswerClaimOut(
-            id=c.id, kind=c.kind, text=c.text,
-            # Belt-and-suspenders: only cite headers that exist in THIS package.
-            source_message_id_headers=[
-                h for h in c.source_message_id_headers if h in package_headers
-            ],
-        ) for c in result.claims],
+        claims=answer_claims,
         evidence=[_evidence_out(e) for e in result.evidence],
     )

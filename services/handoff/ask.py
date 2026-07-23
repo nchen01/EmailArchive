@@ -113,4 +113,15 @@ def answer_from_package(query: str, claims: list, evidence: list) -> AskResult:
     # Grounding rule: no package evidence -> no answer.
     if not selected_evidence:
         return AskResult(False, [], [])
-    return AskResult(True, selected_claims, selected_evidence)
+
+    # Answer-local citation rule: every returned claim must cite at least one row
+    # that is ACTUALLY in the returned evidence. A claim whose citations were all
+    # pushed out by the _MAX_EVIDENCE cap is dropped rather than shown with a
+    # dangling citation the recipient cannot see. (The endpoint additionally
+    # narrows each claim's displayed headers to this same returned set.)
+    returned = {e.message_id_header for e in selected_evidence}
+    grounded_claims = [
+        c for c in selected_claims
+        if any(h in returned for h in c.source_message_id_headers)
+    ]
+    return AskResult(True, grounded_claims, selected_evidence)
