@@ -19,15 +19,17 @@ import { navigate, usePathname } from "../router";
 const HANDOFF_BASE = "/app/handoff";
 
 /**
- * Creator scope-review surface (S17.4).
+ * Creator scope-review + publish surface (S17.4 review, S17.7 publish).
  *
  * The covered employee inspects and prunes a candidate handoff package built from
- * their OWN mailbox before publishing. This is deliberately closer to the old
- * mailbox-review UX (own data), and is NOT the recipient package view. Publish,
- * recipient access, and the scoped recipient artifact are separate later work.
+ * their OWN mailbox, then publishes it to a single recipient. This is deliberately
+ * closer to the old mailbox-review UX (own data), and is NOT the recipient package
+ * view (that read-only view lives at /handoff/recipient, S17.6). Publishing here
+ * (PublishPanel) freezes the package and mints the one-time recipient link; the
+ * raw capability code is held only in transient state and never persisted/logged.
  *
  * No frontend test runner exists in this repo (see docs/s15-verification-matrix.md);
- * verified by `npm run build` + the manual demo in the S17.4 request.
+ * verified by `npm run build` + the manual demo in the S17.7 request.
  */
 const REASONS = ["vacation", "leave", "transfer", "delegation", "other"];
 
@@ -541,14 +543,16 @@ function EvidenceCard({
  * Publish + share-link panel (S17.7). Three states driven by package status:
  *  - generated → the publish form (recipient email + expiry, default 30 days).
  *  - published → the success/share state. If `share` (the transient publish
- *    result) is present, the ONE-TIME recipient link is shown with copy/open
- *    and a "shown once" warning. On a refresh `share` is gone (never persisted),
+ *    result) is present, the ONE-TIME recipient link is shown as a copyable field
+ *    with a "shown once" warning. On a refresh `share` is gone (never persisted),
  *    so we honestly say the link cannot be recovered.
  *  - revoked  → a terminal notice.
  *
- * The raw capability code lives ONLY inside `share` (transient React state). It
- * is never written to storage, never logged, and only ever placed in the URL
- * *fragment* of the copyable link / "Open recipient view" href.
+ * The creator is deliberately given NO "open the link" affordance: the code is
+ * one-time, so opening it here would consume it before the recipient can. Copy is
+ * the only action. The raw capability code lives ONLY inside `share` (transient
+ * React state) — never written to storage, never logged, and only ever placed in
+ * the URL *fragment* of the copyable link.
  */
 function PublishPanel({
   pkg,
@@ -616,7 +620,9 @@ function PublishPanel({
             </label>
             <div className="mt-2 rounded bg-amber-100 px-2 py-1.5 text-xs text-amber-900">
               <strong>This link is shown once.</strong> Copy it now and store it
-              securely — the code cannot be recovered later, not even by you.
+              securely — the code cannot be recovered later, not even by you. The
+              code is one-time: it is consumed the first time it is opened, so do
+              not open it yourself before sending it to the recipient.
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
@@ -626,14 +632,6 @@ function PublishPanel({
               >
                 {copied ? "Copied!" : "Copy link"}
               </button>
-              <a
-                href={`/handoff/recipient${share.share_fragment}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
-              >
-                Open recipient view
-              </a>
             </div>
           </div>
         ) : (
