@@ -4,6 +4,7 @@ import {
   describeError,
   generateHandoff,
   getHandoff,
+  handoffExportUrl,
   newVersionHandoff,
   publishHandoff,
   revokeHandoff,
@@ -572,6 +573,28 @@ function ReviseButton({ busy, onClick }: { busy: string | null; onClick: () => v
   );
 }
 
+/** "Export HTML" — downloads a self-contained static snapshot of a frozen
+ * package (S17.11). A plain link the browser downloads; no code is touched. */
+function ExportButton({ pkg }: { pkg: HandoffPackage }) {
+  const download = () => {
+    const a = document.createElement("a");
+    a.href = handoffExportUrl(pkg.id);
+    a.download = `handoff-package-v${pkg.version}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+  return (
+    <button
+      type="button"
+      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      onClick={download}
+    >
+      Export HTML
+    </button>
+  );
+}
+
 /**
  * Publish + share-link panel (S17.7, versioning S17.10). States by package status:
  *  - generated  → the publish form (recipient email + expiry, default 30 days).
@@ -621,8 +644,9 @@ function PublishPanel({
           To share again, create a revised version — it starts a fresh draft with
           this package's scope; publishing it mints a new one-time link.
         </p>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <ReviseButton busy={busy} onClick={onNewVersion} />
+          <ExportButton pkg={pkg} />
         </div>
       </section>
     );
@@ -690,6 +714,7 @@ function PublishPanel({
 
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-emerald-200 pt-3">
           <ReviseButton busy={busy} onClick={onNewVersion} />
+          <ExportButton pkg={pkg} />
           <button
             type="button"
             className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"

@@ -46,10 +46,21 @@ Decision source: **D14** in `docs/decisions.md`.
   its recipient grant, kills its sessions, and mints a fresh one-time code.
   Audit: `package_version_created` + `package_superseded`, both with safe id/
   version metadata only. No migration (columns already existed).
+- **S17.11 ✓** — Static HTML export (`GET /api/handoff/{id}/export.html`,
+  `services/handoff/export_html.py`, "Export HTML" in `HandoffReview`). A
+  self-contained, read-only snapshot of a frozen package (published/revoked/
+  superseded; draft/generated → 409) for demo portability / offline handoff /
+  compliance archive. Recipient-view privacy parity: only package metadata, the
+  constant posture, claims, and snapshotted evidence — NO mailbox id, exclusion
+  counts, Gmail/source/open_url link, capability code, or session token. All text
+  is HTML-escaped (XSS-safe), served `text/html; charset=utf-8` as a
+  `Content-Disposition: attachment` (`handoff-package-v{version}.html`). Reads
+  only `handoff_*` rows; audits `package_exported` with safe counts only.
 
-Deferred to S17.11+: **optional LLM synthesis** for the package ask (S17.9 is
-deterministic-only), static export, manager approval, multi-recipient, recipient
-relationship/project/owner trees, and a stronger production auth boundary.
+Deferred to S17.12+: **optional LLM synthesis** for the package ask (S17.9 is
+deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
+approval, multi-recipient, recipient relationship/project/owner trees, and a
+stronger production auth boundary.
 
 ## 1. Product Thesis
 

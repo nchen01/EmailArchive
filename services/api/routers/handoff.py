@@ -24,11 +24,13 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from services.db import models as orm
 from services.handoff.audit import write_handoff_audit
+from services.handoff.export_html import render_package_html
 from services.handoff.generator import generate_candidate
 from services.handoff.tokens import actor_hash_prefix, hash_token, new_capability_code
 from services.ingest.list_options import DateWindowError, parse_date_window
@@ -53,6 +55,9 @@ _MUTABLE_STATES = {"draft", "generated"}
 # A new version can only fork a package that is already frozen (a still-editable
 # draft/generated package should be edited in place, not forked).
 _VERSIONABLE_STATES = {"published", "revoked", "superseded"}
+# Only a frozen package can be exported (a draft/generated package is not a
+# finished artifact — its evidence may still change on the next generate).
+_EXPORTABLE_STATES = {"published", "revoked", "superseded"}
 # Publish is only legal from a generated candidate (draft must generate first).
 _DEFAULT_EXPIRY_DAYS = 30
 
@@ -457,3 +462,59 @@ async def new_version_handoff(
         },
     )
     return _package_out(db, new_pkg)
+
+
+@router.get("/handoff/{package_id}/export.html", response_class=HTMLResponse)
+async def export_handoff_html(
+    package_id: str, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Creator-side static HTML export of a frozen package (S17.11).
+
+    A self-contained, read-only snapshot for demo portability / offline handoff /
+    compliance archive. Only a frozen package (published/revoked/superseded) can
+    be exported; a draft/generated one is not a finished artifact (409).
+
+    Reads only package-local `handoff_*` rows — never the live mailbox. The
+    document has the same privacy posture as the recipient view: no mailbox id, no
+    exclusion counts, no Gmail/source/open_url link, no capability code or session
+    token. All text is HTML-escaped by the renderer.
+    """
+    pkg = _get_package(db, package_id)
+    if pkg.status not in _EXPORTABLE_STATES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"only a frozen package (published/revoked/superseded) can be "
+            f"exported (status '{pkg.status}')",
+        )
+
+    claims = list(db.execute(
+        select(orm.HandoffClaim).where(orm.HandoffClaim.package_id == pkg.id)
+        .order_by(orm.HandoffClaim.kind, orm.HandoffClaim.id)
+    ).scalars())
+    evidence = list(db.execute(
+        select(orm.HandoffEvidence).where(orm.HandoffEvidence.package_id == pkg.id)
+        .order_by(orm.HandoffEvidence.ts)
+    ).scalars())
+    recipient = db.execute(
+        select(orm.HandoffRecipient).where(orm.HandoffRecipient.package_id == pkg.id)
+    ).scalar_one_or_none()
+
+    html_doc = render_package_html(
+        pkg, claims, evidence,
+        recipient_email=recipient.recipient_email if recipient else None,
+    )
+
+    write_handoff_audit(
+        db, package_id=pkg.id, lineage_id=pkg.lineage_id,
+        actor=f"owner:{pkg.creator_email}", action="package_exported",
+        metadata={
+            "version": pkg.version, "status": pkg.status,
+            "claims": len(claims), "evidence": len(evidence),
+        },
+    )
+
+    filename = f"handoff-package-v{int(pkg.version)}.html"
+    return HTMLResponse(
+        content=html_doc,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
