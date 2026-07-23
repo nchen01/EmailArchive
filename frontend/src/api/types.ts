@@ -360,17 +360,42 @@ export interface HandoffPackage {
   id: string;
   mailbox_id: string;
   creator_email: string;
-  status: string; // draft | generated | ...
+  status: string; // draft | generated | published | revoked | ...
   reason: string;
   title: string;
   version: number;
   created_at: string;
   updated_at: string;
+  /** Set once published (S17.5); null while draft/generated. */
+  published_at?: string | null;
+  expires_at?: string | null;
+  revoked_at?: string | null;
   scope: HandoffScopeData;
   claims: HandoffClaim[];
   evidence: HandoffEvidence[];
   /** Creator-only aggregate exclusion counts (never shown to a recipient). */
   exclusion_counts: Record<string, number>;
+}
+
+/** Publish request (creator). Mirrors services/api/schemas/handoff.py PublishRequest. */
+export interface PublishRequest {
+  recipient_email: string;
+  /** Override the 30-day default validity (1–365). Omit to keep the default. */
+  expires_in_days?: number | null;
+}
+
+/**
+ * Publish response (creator), returned ONCE. `capability_code` is the only time
+ * the raw code is exposed — the server keeps only its hash. Place it in the
+ * recipient URL *fragment* via `share_fragment` (`#c=<code>`), never a
+ * path/query, and never persist it. Mirrors PublishResponse.
+ */
+export interface PublishResponse {
+  package: HandoffPackage;
+  recipient_email: string;
+  expires_at: string;
+  capability_code: string;
+  share_fragment: string;
 }
 
 // ── Handoff package — recipient view (S17.5 backend, S17.6 UI) ────────────────

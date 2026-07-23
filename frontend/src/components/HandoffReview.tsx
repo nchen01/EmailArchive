@@ -4,9 +4,16 @@ import {
   describeError,
   generateHandoff,
   getHandoff,
+  publishHandoff,
+  revokeHandoff,
   updateHandoffScope,
 } from "../api/client";
-import type { HandoffEvidence, HandoffPackage, HandoffScopeData } from "../api/types";
+import type {
+  HandoffEvidence,
+  HandoffPackage,
+  HandoffScopeData,
+  PublishResponse,
+} from "../api/types";
 import { navigate, usePathname } from "../router";
 
 const HANDOFF_BASE = "/app/handoff";
@@ -78,9 +85,16 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   const [title, setTitle] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [busy, setBusy] = useState<null | "create" | "scope" | "generate" | "remove">(null);
+  const [busy, setBusy] = useState<
+    null | "create" | "scope" | "generate" | "remove" | "publish" | "revoke"
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Transient publish result: holds the ONE-TIME capability code / share fragment
+  // in React state ONLY, for the lifetime of this view. Never stored, never
+  // logged. Cleared when the open package changes (see the reset effect below),
+  // so a refresh cannot recover it.
+  const [share, setShare] = useState<PublishResponse | null>(null);
 
   // Load / validate the package named in the URL for the current mailbox.
   // Runs on route or mailbox change; self-heals a route that points at a
@@ -118,8 +132,13 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId, mailboxId, pkg?.id]);
 
-  // Sync inputs to the loaded package, or reset the create form when none.
+  // Sync inputs to the loaded package, or reset the create form when none. Keyed
+  // on pkg.id so it does NOT run on a same-package status change (e.g. publish),
+  // which lets the transient share result survive the publish render — but a
+  // different package / "start over" clears the one-time code, so it can never
+  // be recovered after navigating away or refreshing.
   useEffect(() => {
+    setShare(null);
     if (pkg) {
       setFrom(pkg.scope.date_from ?? "");
       setTo(pkg.scope.date_to ?? "");
@@ -165,12 +184,58 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       return generateHandoff(pkg.id); // prune + rebuild in one action
     });
 
+  // Publish freezes the package and returns the one-time code exactly once; we
+  // hold the result in transient state (setShare) and never persist/log it.
+  const publish = async (recipientEmail: string, expiresInDays: number | null) => {
+    if (!pkg) return;
+    setBusy("publish");
+    setError(null);
+    try {
+      const resp = await publishHandoff(pkg.id, {
+        recipient_email: recipientEmail,
+        ...(expiresInDays ? { expires_in_days: expiresInDays } : {}),
+      });
+      setPkg(resp.package); // same id, status now "published" → share survives
+      setShare(resp);
+    } catch (e) {
+      setError(describeError(e).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const revoke = async () => {
+    if (!pkg) return;
+    if (
+      !window.confirm(
+        "Revoke this handoff? The recipient's access is blocked immediately and " +
+          "cannot be restored from here.",
+      )
+    )
+      return;
+    setBusy("revoke");
+    setError(null);
+    try {
+      const updated = await revokeHandoff(pkg.id);
+      setPkg(updated);
+      setShare(null); // the link is dead now; stop showing it
+    } catch (e) {
+      setError(describeError(e).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const copyId = (value: string) => {
     navigator.clipboard?.writeText(value).catch(() => window.prompt("Copy this Message-ID:", value));
   };
 
   const claimsByKind = (kind: string) => (pkg?.claims ?? []).filter((c) => c.kind === kind);
   const excludedHeaders = new Set(pkg?.scope.excluded_message_id_headers ?? []);
+  // Only draft/generated packages are editable. Once published (or revoked) the
+  // package is immutable: scope edits, regenerate, and evidence removal are all
+  // disabled in the UI (§immutability). Backend also rejects these transitions.
+  const mutable = !pkg || pkg.status === "draft" || pkg.status === "generated";
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8">
@@ -179,7 +244,9 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
         Inspect and prune what a coverage handoff would reveal, from your own
         mailbox, <strong>before publishing</strong>. This is your review surface —
         not the recipient view. Sensitive and noise messages are excluded
-        automatically; you can remove anything else. Publishing is a later step.
+        automatically; you can remove anything else. When it looks right,{" "}
+        <strong>publish</strong> to freeze it and generate a one-time recipient
+        link.
       </p>
 
       {error ? (
@@ -252,42 +319,49 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               </button>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3">
-              <label className="flex flex-col text-xs text-slate-500">
-                From
-                <input
-                  type="date"
-                  className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col text-xs text-slate-500">
-                To
-                <input
-                  type="date"
-                  className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                onClick={saveScope}
-                disabled={busy !== null}
-              >
-                {busy === "scope" ? "Saving…" : "Save scope"}
-              </button>
-              <button
-                type="button"
-                className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:bg-slate-300"
-                onClick={generate}
-                disabled={busy !== null}
-              >
-                {busy === "generate" || busy === "remove" ? "Generating…" : "Generate package"}
-              </button>
-            </div>
+            {mutable ? (
+              <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3">
+                <label className="flex flex-col text-xs text-slate-500">
+                  From
+                  <input
+                    type="date"
+                    className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
+                </label>
+                <label className="flex flex-col text-xs text-slate-500">
+                  To
+                  <input
+                    type="date"
+                    className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                  onClick={saveScope}
+                  disabled={busy !== null}
+                >
+                  {busy === "scope" ? "Saving…" : "Save scope"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:bg-slate-300"
+                  onClick={generate}
+                  disabled={busy !== null}
+                >
+                  {busy === "generate" || busy === "remove" ? "Generating…" : "Generate package"}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-400">
+                This package is {pkg.status} and frozen — scope, regeneration, and
+                evidence are locked.
+              </div>
+            )}
             {(pkg.scope.included_project_ids.length > 0 ||
               pkg.scope.included_person_ids.length > 0 ||
               pkg.scope.included_thread_ids.length > 0) && (
@@ -299,8 +373,8 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
             )}
           </section>
 
-          {/* ── Generated content ────────────────────────────────────────── */}
-          {pkg.status === "generated" ? (
+          {/* ── Generated content (kept visible read-only after publish) ──── */}
+          {pkg.status !== "draft" ? (
             <>
               <ExclusionSummary counts={pkg.exclusion_counts} />
 
@@ -350,9 +424,9 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                   Evidence ({pkg.evidence.length})
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Snapshotted safe message content. Remove anything that should not
-                  travel with the handoff; a claim left without evidence disappears
-                  on regenerate.
+                  {mutable
+                    ? "Snapshotted safe message content. Remove anything that should not travel with the handoff; a claim left without evidence disappears on regenerate."
+                    : "Snapshotted safe message content, frozen at publish. This is exactly what the recipient can read."}
                 </p>
                 <ul className="mt-2 space-y-3">
                   {pkg.evidence.map((e) => (
@@ -363,6 +437,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                       onRemove={() => removeEvidence(e.message_id_header)}
                       onCopy={() => copyId(e.message_id_header)}
                       disabled={busy !== null}
+                      canRemove={mutable}
                     />
                   ))}
                   {pkg.evidence.length === 0 ? (
@@ -370,6 +445,14 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                   ) : null}
                 </ul>
               </section>
+
+              <PublishPanel
+                pkg={pkg}
+                share={share}
+                busy={busy}
+                onPublish={publish}
+                onRevoke={revoke}
+              />
             </>
           ) : (
             <p className="mt-4 text-sm text-slate-500">
@@ -402,12 +485,14 @@ function EvidenceCard({
   onRemove,
   onCopy,
   disabled,
+  canRemove,
 }: {
   ev: HandoffEvidence;
   removing: boolean;
   onRemove: () => void;
   onCopy: () => void;
   disabled: boolean;
+  canRemove: boolean;
 }) {
   const from = [ev.sender_display, ev.sender_domain].filter(Boolean).join(" · ");
   return (
@@ -419,15 +504,17 @@ function EvidenceCard({
             {from || "—"} · {fmtDate(ev.date)}
           </div>
         </div>
-        <button
-          type="button"
-          className="shrink-0 rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-          onClick={onRemove}
-          disabled={disabled}
-          title="Exclude this message and regenerate"
-        >
-          {removing ? "Removing…" : "Remove"}
-        </button>
+        {canRemove ? (
+          <button
+            type="button"
+            className="shrink-0 rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            onClick={onRemove}
+            disabled={disabled}
+            title="Exclude this message and regenerate"
+          >
+            {removing ? "Removing…" : "Remove"}
+          </button>
+        ) : null}
       </div>
       {ev.body_snapshot ? (
         <p className="mt-2 whitespace-pre-wrap rounded bg-slate-50 px-2 py-1.5 text-[13px] text-slate-700">
@@ -447,5 +534,182 @@ function EvidenceCard({
         </button>
       </div>
     </li>
+  );
+}
+
+/**
+ * Publish + share-link panel (S17.7). Three states driven by package status:
+ *  - generated → the publish form (recipient email + expiry, default 30 days).
+ *  - published → the success/share state. If `share` (the transient publish
+ *    result) is present, the ONE-TIME recipient link is shown with copy/open
+ *    and a "shown once" warning. On a refresh `share` is gone (never persisted),
+ *    so we honestly say the link cannot be recovered.
+ *  - revoked  → a terminal notice.
+ *
+ * The raw capability code lives ONLY inside `share` (transient React state). It
+ * is never written to storage, never logged, and only ever placed in the URL
+ * *fragment* of the copyable link / "Open recipient view" href.
+ */
+function PublishPanel({
+  pkg,
+  share,
+  busy,
+  onPublish,
+  onRevoke,
+}: {
+  pkg: HandoffPackage;
+  share: PublishResponse | null;
+  busy: string | null;
+  onPublish: (recipientEmail: string, expiresInDays: number | null) => void;
+  onRevoke: () => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [days, setDays] = useState("30");
+  const [copied, setCopied] = useState(false);
+
+  if (pkg.status === "revoked") {
+    return (
+      <section className="mt-6 rounded-md border border-red-200 bg-red-50 p-4">
+        <h3 className="text-sm font-semibold text-red-800">Access revoked</h3>
+        <p className="mt-1 text-sm text-red-700">
+          This handoff was revoked{pkg.revoked_at ? ` on ${fmtDate(pkg.revoked_at)}` : ""}. The
+          recipient can no longer open it, and a revoked package cannot be
+          re-shared from here.
+        </p>
+      </section>
+    );
+  }
+
+  if (pkg.status === "published") {
+    const shareUrl = share
+      ? `${window.location.origin}/handoff/recipient${share.share_fragment}`
+      : null;
+    const copy = () => {
+      if (!shareUrl) return;
+      navigator.clipboard
+        ?.writeText(shareUrl)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => window.prompt("Copy this recipient link:", shareUrl));
+    };
+    return (
+      <section className="mt-6 rounded-md border border-emerald-300 bg-emerald-50 p-4">
+        <h3 className="text-sm font-semibold text-emerald-900">Package published</h3>
+        <div className="mt-1 text-xs text-emerald-800">
+          {share ? <>Recipient: {share.recipient_email} · </> : null}
+          Access expires {fmtDate(pkg.expires_at ?? share?.expires_at ?? "")}
+        </div>
+
+        {share && shareUrl ? (
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-emerald-900">
+              Recipient share link
+              <input
+                type="text"
+                readOnly
+                value={shareUrl}
+                onFocus={(e) => e.currentTarget.select()}
+                className="mt-1 w-full rounded border border-emerald-300 bg-white px-2 py-1 font-mono text-xs text-slate-700"
+              />
+            </label>
+            <div className="mt-2 rounded bg-amber-100 px-2 py-1.5 text-xs text-amber-900">
+              <strong>This link is shown once.</strong> Copy it now and store it
+              securely — the code cannot be recovered later, not even by you.
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
+                onClick={copy}
+              >
+                {copied ? "Copied!" : "Copy link"}
+              </button>
+              <a
+                href={`/handoff/recipient${share.share_fragment}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+              >
+                Open recipient view
+              </a>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-emerald-800">
+            The share link was shown once, when this package was published, and
+            cannot be recovered from the server. If a new link is needed, revoke
+            this package (issuing a fresh version to re-share is a later step).
+          </p>
+        )}
+
+        <div className="mt-4 border-t border-emerald-200 pt-3">
+          <button
+            type="button"
+            className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+            onClick={onRevoke}
+            disabled={busy !== null}
+          >
+            {busy === "revoke" ? "Revoking…" : "Revoke access"}
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  // status === "generated": the publish form.
+  const noEvidence = pkg.evidence.length === 0;
+  const parsedDays = parseInt(days, 10);
+  const submit = () =>
+    onPublish(email.trim(), Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : null);
+
+  return (
+    <section className="mt-6 rounded-md border border-indigo-300 bg-indigo-50 p-4">
+      <h3 className="text-sm font-semibold text-indigo-900">Publish package</h3>
+      <p className="mt-1 text-xs text-indigo-800">
+        Publishing freezes this package and generates a one-time recipient link.
+        After publishing you can no longer edit scope, regenerate, or remove
+        evidence.
+      </p>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className="flex flex-1 flex-col text-xs text-indigo-900">
+          Recipient email
+          <input
+            type="email"
+            className="mt-1 rounded border border-indigo-300 bg-white px-2 py-1 text-sm text-slate-800"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="cover@company.com"
+          />
+        </label>
+        <label className="flex w-28 flex-col text-xs text-indigo-900">
+          Expires (days)
+          <input
+            type="number"
+            min={1}
+            max={365}
+            className="mt-1 rounded border border-indigo-300 bg-white px-2 py-1 text-sm text-slate-800"
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="rounded-md bg-indigo-700 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:bg-indigo-300"
+          onClick={submit}
+          disabled={busy !== null || !email.trim() || noEvidence}
+          title={noEvidence ? "Generate a package with evidence before publishing" : undefined}
+        >
+          {busy === "publish" ? "Publishing…" : "Publish package"}
+        </button>
+      </div>
+      {noEvidence ? (
+        <p className="mt-2 text-xs text-indigo-700">
+          This package has no evidence yet — widen the scope and regenerate before
+          publishing.
+        </p>
+      ) : null}
+    </section>
   );
 }

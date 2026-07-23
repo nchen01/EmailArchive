@@ -10,6 +10,8 @@ import type {
   ScopeRequestBody,
   ProjectDetailData,
   ProjectListData,
+  PublishRequest,
+  PublishResponse,
   RecipientPackage,
   RecipientSession,
   RelationshipMapMode,
@@ -379,6 +381,32 @@ export async function generateHandoff(packageId: string): Promise<HandoffPackage
 export async function getHandoff(packageId: string): Promise<HandoffPackage> {
   return getJson<HandoffPackage>(
     `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}`,
+  );
+}
+
+/**
+ * Publish a generated package to its single recipient (S17.5). Freezes the
+ * package and returns the ONE-TIME capability code + share fragment. The caller
+ * must treat `capability_code`/`share_fragment` as transient (show once, never
+ * store, never log) — the server keeps only a hash and cannot re-issue them.
+ */
+export async function publishHandoff(
+  packageId: string,
+  body: PublishRequest,
+): Promise<PublishResponse> {
+  return postJsonBody<PublishResponse>(
+    `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}/publish`,
+    body,
+  );
+}
+
+/**
+ * Revoke a published package (S17.5): blocks the recipient's access immediately
+ * and kills any live session. Returns the updated package (status "revoked").
+ */
+export async function revokeHandoff(packageId: string): Promise<HandoffPackage> {
+  return postJson<HandoffPackage>(
+    `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}/revoke`,
   );
 }
 
