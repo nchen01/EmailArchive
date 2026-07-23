@@ -4,6 +4,7 @@ import {
   describeError,
   generateHandoff,
   getHandoff,
+  newVersionHandoff,
   publishHandoff,
   revokeHandoff,
   updateHandoffScope,
@@ -88,7 +89,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState<
-    null | "create" | "scope" | "generate" | "remove" | "publish" | "revoke"
+    null | "create" | "scope" | "generate" | "remove" | "publish" | "revoke" | "version"
   >(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -221,6 +222,22 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       const updated = await revokeHandoff(pkg.id);
       setPkg(updated);
       setShare(null); // the link is dead now; stop showing it
+    } catch (e) {
+      setError(describeError(e).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Fork a frozen package into a fresh draft in the same lineage and open it —
+  // the honest recovery path for a lost link, wrong recipient, or scope revision.
+  const newVersion = async () => {
+    if (!pkg) return;
+    setBusy("version");
+    setError(null);
+    try {
+      const draft = await newVersionHandoff(pkg.id);
+      navigate(`${HANDOFF_BASE}/${draft.id}`); // load the new draft (clears share)
     } catch (e) {
       setError(describeError(e).message);
     } finally {
@@ -454,6 +471,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                 busy={busy}
                 onPublish={publish}
                 onRevoke={revoke}
+                onNewVersion={newVersion}
               />
             </>
           ) : (
@@ -539,20 +557,36 @@ function EvidenceCard({
   );
 }
 
+/** "Create revised version" — forks a frozen package into a new draft (S17.10).
+ * The honest recovery path for a lost link, wrong recipient, or scope revision. */
+function ReviseButton({ busy, onClick }: { busy: string | null; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+      onClick={onClick}
+      disabled={busy !== null}
+    >
+      {busy === "version" ? "Creating…" : "Create revised version"}
+    </button>
+  );
+}
+
 /**
- * Publish + share-link panel (S17.7). Three states driven by package status:
- *  - generated → the publish form (recipient email + expiry, default 30 days).
- *  - published → the success/share state. If `share` (the transient publish
+ * Publish + share-link panel (S17.7, versioning S17.10). States by package status:
+ *  - generated  → the publish form (recipient email + expiry, default 30 days).
+ *  - published  → the success/share state. If `share` (the transient publish
  *    result) is present, the ONE-TIME recipient link is shown as a copyable field
  *    with a "shown once" warning. On a refresh `share` is gone (never persisted),
- *    so we honestly say the link cannot be recovered.
- *  - revoked  → a terminal notice.
+ *    so we honestly say the link cannot be recovered — and offer "Create revised
+ *    version" as the recovery path.
+ *  - revoked / superseded → a terminal notice + "Create revised version".
  *
  * The creator is deliberately given NO "open the link" affordance: the code is
  * one-time, so opening it here would consume it before the recipient can. Copy is
- * the only action. The raw capability code lives ONLY inside `share` (transient
- * React state) — never written to storage, never logged, and only ever placed in
- * the URL *fragment* of the copyable link.
+ * the only share action. The raw capability code lives ONLY inside `share`
+ * (transient React state) — never written to storage, never logged, and only ever
+ * placed in the URL *fragment* of the copyable link.
  */
 function PublishPanel({
   pkg,
@@ -560,26 +594,36 @@ function PublishPanel({
   busy,
   onPublish,
   onRevoke,
+  onNewVersion,
 }: {
   pkg: HandoffPackage;
   share: PublishResponse | null;
   busy: string | null;
   onPublish: (recipientEmail: string, expiresInDays: number | null) => void;
   onRevoke: () => void;
+  onNewVersion: () => void;
 }) {
   const [email, setEmail] = useState("");
   const [days, setDays] = useState("30");
   const [copied, setCopied] = useState(false);
 
-  if (pkg.status === "revoked") {
+  if (pkg.status === "revoked" || pkg.status === "superseded") {
+    const revoked = pkg.status === "revoked";
     return (
-      <section className="mt-6 rounded-md border border-red-200 bg-red-50 p-4">
-        <h3 className="text-sm font-semibold text-red-800">Access revoked</h3>
-        <p className="mt-1 text-sm text-red-700">
-          This handoff was revoked{pkg.revoked_at ? ` on ${fmtDate(pkg.revoked_at)}` : ""}. The
-          recipient can no longer open it, and a revoked package cannot be
-          re-shared from here.
+      <section className="mt-6 rounded-md border border-slate-300 bg-slate-50 p-4">
+        <h3 className="text-sm font-semibold text-slate-800">
+          {revoked ? "Access revoked" : "Replaced by a newer version"}
+        </h3>
+        <p className="mt-1 text-sm text-slate-600">
+          {revoked
+            ? `This handoff was revoked${pkg.revoked_at ? ` on ${fmtDate(pkg.revoked_at)}` : ""}. The recipient can no longer open it.`
+            : "A newer version of this handoff has been published. The recipient's access to this version is blocked."}{" "}
+          To share again, create a revised version — it starts a fresh draft with
+          this package's scope; publishing it mints a new one-time link.
         </p>
+        <div className="mt-3">
+          <ReviseButton busy={busy} onClick={onNewVersion} />
+        </div>
       </section>
     );
   }
@@ -637,12 +681,15 @@ function PublishPanel({
         ) : (
           <p className="mt-3 text-xs text-emerald-800">
             The share link was shown once, when this package was published, and
-            cannot be recovered from the server. If a new link is needed, revoke
-            this package (issuing a fresh version to re-share is a later step).
+            cannot be recovered from the server. If you need the link again, create
+            a revised version below — it starts a fresh draft with this package's
+            scope, and publishing it mints a new one-time link (which supersedes
+            this version).
           </p>
         )}
 
-        <div className="mt-4 border-t border-emerald-200 pt-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-emerald-200 pt-3">
+          <ReviseButton busy={busy} onClick={onNewVersion} />
           <button
             type="button"
             className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"

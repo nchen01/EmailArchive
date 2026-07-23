@@ -411,6 +411,20 @@ export async function revokeHandoff(packageId: string): Promise<HandoffPackage> 
   );
 }
 
+/**
+ * Fork a frozen package (published/revoked/superseded) into a fresh DRAFT in the
+ * same lineage (S17.10). The recovery path when the share link was lost, the
+ * recipient was wrong, or the scope needs revising — published packages are
+ * immutable, so the creator makes a new version instead. Returns the new draft
+ * (copied scope, no claims/evidence/recipient/code); Generate + publish it to
+ * mint a fresh one-time link, which supersedes the prior published version.
+ */
+export async function newVersionHandoff(packageId: string): Promise<HandoffPackage> {
+  return postJson<HandoffPackage>(
+    `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}/new-version`,
+  );
+}
+
 // ── Handoff package — recipient view (S17.5 backend, S17.6 UI) ────────────────
 
 /**

@@ -975,3 +975,172 @@ def test_ask_claims_never_cite_evidence_outside_returned_set():
     answer_claims = [hs for hs in answer_claims if hs]
     for hs in answer_claims:
         assert set(hs) <= returned  # no citation outside the returned evidence
+
+
+# ── S17.10 — package versioning + new-version re-share ───────────────────────
+
+def _new_version(env, pid):
+    return env.client.post(f"/api/handoff/{pid}/new-version")
+
+
+@requires_db
+def test_new_version_from_published_creates_draft_bumped_version_same_lineage(env):
+    pid = _generated_package(env)
+    _publish(env, pid)
+    r = _new_version(env, pid)
+    assert r.status_code == 200
+    new = r.json()
+    assert new["status"] == "draft" and new["version"] == 2 and new["id"] != pid
+    # No recipient/session/code/published metadata carried over.
+    assert new["published_at"] is None and new["expires_at"] is None and new["revoked_at"] is None
+    assert new["claims"] == [] and new["evidence"] == []
+
+    s = _fresh()
+    try:
+        from sqlalchemy import select
+
+        from services.db import models as orm
+        old = s.get(orm.HandoffPackage, pid)
+        newp = s.get(orm.HandoffPackage, new["id"])
+        assert newp.lineage_id == old.lineage_id
+        assert newp.supersedes_package_id == pid
+        assert newp.version == old.version + 1
+        # No recipient row cloned onto the new draft.
+        assert s.execute(select(orm.HandoffRecipient).where(
+            orm.HandoffRecipient.package_id == newp.id)).scalar_one_or_none() is None
+    finally:
+        s.close()
+
+
+@requires_db
+def test_new_version_copies_previous_scope(env):
+    pid = _generated_package(env)
+    scope = {
+        "date_from": "2026-01-01", "date_to": "2026-12-31",
+        "included_project_ids": [], "included_person_ids": [], "included_thread_ids": [],
+        "excluded_thread_ids": [], "excluded_message_id_headers": ["ghost@acme.corp"],
+        "allowed_domains": ["acme.corp"], "keyword_filters": ["atlas"],
+    }
+    assert env.client.patch(f"/api/handoff/{pid}/scope", json=scope).status_code == 200
+    env.client.post(f"/api/handoff/{pid}/generate")
+    _publish(env, pid)
+
+    ns = _new_version(env, pid).json()["scope"]
+    assert ns["date_from"] == "2026-01-01" and ns["date_to"] == "2026-12-31"
+    assert ns["excluded_message_id_headers"] == ["ghost@acme.corp"]
+    assert ns["allowed_domains"] == ["acme.corp"]
+    assert ns["keyword_filters"] == ["atlas"]
+
+
+@requires_db
+def test_new_version_can_generate_and_publish_with_fresh_code(env):
+    pid = _generated_package(env)
+    code1 = _publish(env, pid).json()["capability_code"]
+    new = _new_version(env, pid).json()
+    # Fresh draft re-snapshots evidence on generate, then publishes normally.
+    assert env.client.post(f"/api/handoff/{new['id']}/generate").json()["status"] == "generated"
+    pub2 = _publish(env, new["id"])
+    assert pub2.status_code == 200
+    code2 = pub2.json()["capability_code"]
+    assert code2 and code2 != code1  # a fresh one-time code
+    # The new recipient can open the new version.
+    assert _exchange(env, code2).status_code == 200
+
+
+@requires_db
+def test_publishing_new_version_supersedes_prior_and_blocks_old_recipient(env):
+    pid = _generated_package(env)
+    code1 = _publish(env, pid).json()["capability_code"]
+    token1 = _exchange(env, code1).json()["session_token"]
+    auth1 = {"Authorization": f"Bearer {token1}"}
+    assert env.client.get("/api/handoff/recipient/package", headers=auth1).status_code == 200
+
+    new = _new_version(env, pid).json()
+    env.client.post(f"/api/handoff/{new['id']}/generate")
+    assert _publish(env, new["id"]).status_code == 200
+
+    # Prior package is now superseded, and the old session/package is blocked.
+    assert env.client.get(f"/api/handoff/{pid}").json()["status"] == "superseded"
+    assert env.client.get("/api/handoff/recipient/package", headers=auth1).status_code == 403
+
+
+@requires_db
+def test_old_unexchanged_code_cannot_open_after_supersede(env):
+    pid = _generated_package(env)
+    code1 = _publish(env, pid).json()["capability_code"]  # never exchanged
+    new = _new_version(env, pid).json()
+    env.client.post(f"/api/handoff/{new['id']}/generate")
+    assert _publish(env, new["id"]).status_code == 200
+    # v1 is superseded → its still-unused one-time code cannot mint a session.
+    assert _exchange(env, code1).status_code == 403
+
+
+@requires_db
+def test_revoked_package_can_create_new_version(env):
+    pid = _generated_package(env)
+    _publish(env, pid)
+    assert env.client.post(f"/api/handoff/{pid}/revoke").status_code == 200
+    r = _new_version(env, pid)
+    assert r.status_code == 200 and r.json()["version"] == 2
+
+
+@requires_db
+def test_draft_or_generated_cannot_create_new_version(env):
+    # Draft (never generated) cannot fork.
+    draft = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    assert _new_version(env, draft).status_code == 409
+    # Generated-but-unpublished cannot fork either.
+    gen = _generated_package(env)
+    assert _new_version(env, gen).status_code == 409
+
+
+@requires_db
+def test_published_original_remains_immutable_across_versioning(env):
+    pid = _generated_package(env)
+    _publish(env, pid)
+    _new_version(env, pid)  # forking must not mutate the original
+    assert env.client.patch(f"/api/handoff/{pid}/scope", json={}).status_code == 409
+    assert env.client.post(f"/api/handoff/{pid}/generate").status_code == 409
+    assert env.client.get(f"/api/handoff/{pid}").json()["status"] == "published"
+
+
+@requires_db
+def test_versioning_audit_is_safe(env):
+    pid = _generated_package(env)
+    _publish(env, pid)
+    new = _new_version(env, pid).json()
+    env.client.post(f"/api/handoff/{new['id']}/generate")
+    _publish(env, new["id"])  # triggers supersede of v1
+
+    s = _fresh()
+    try:
+        from sqlalchemy import select
+
+        from services.db import models as orm
+        lineage = s.get(orm.HandoffPackage, new["id"]).lineage_id
+        rows = s.execute(select(orm.HandoffAuditEvent).where(
+            orm.HandoffAuditEvent.lineage_id == lineage)).scalars().all()
+        by_action = {}
+        for r in rows:
+            by_action.setdefault(r.action, []).append(r)
+        assert "package_version_created" in by_action and "package_superseded" in by_action
+
+        # The versioning rows carry ONLY the specified safe id/version keys.
+        version_keys = {"old_package_id", "new_package_id", "lineage_id",
+                        "old_version", "new_version"}
+        for action in ("package_version_created", "package_superseded"):
+            for r in by_action[action]:
+                assert set((r.metadata_ or {}).keys()) == version_keys
+
+        # No audit row anywhere in the lineage leaks content or a secret: neither a
+        # content/secret-like KEY nor known message content ("Cutover" body /
+        # "Atlas cutover" subject) in any value.
+        _banned_frag = ("body", "subject", "snippet", "token", "secret",
+                        "capability", "code", "content", "clean_text")
+        for r in rows:
+            for k in (r.metadata_ or {}):
+                assert not any(f in k.lower() for f in _banned_frag)
+            blob = str(r.metadata_)
+            assert "Cutover" not in blob and "Atlas" not in blob
+    finally:
+        s.close()

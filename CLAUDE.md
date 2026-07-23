@@ -91,9 +91,10 @@ Key docs:
 - `docs/s7-implementation-plan.md` — S7 task breakdown and locked decisions
 - `docs/implementation-plan.md` — overall pipeline architecture
 
-Current status: **S0–S16.0 complete; S17.2–S17.9 (handoff package MVP, incl. the
-deterministic LLM-free recipient package-local ask) shipped and end-to-end
-validated; S16 canonical-demo readiness still planned.**
+Current status: **S0–S16.0 complete; S17.2–S17.10 (handoff package MVP, incl. the
+deterministic LLM-free recipient package-local ask and new-version re-share /
+supersede) shipped and end-to-end validated; S16 canonical-demo readiness still
+planned.**
 S7 L2 hybrid retrieval (Voyage AI voyage-4,
 pgvector HNSW, cover-for-me upgrade) shipped and live-validated. S8 real-mailbox
 demo readiness, S9 project-clustering materialization, and S10 local runtime
