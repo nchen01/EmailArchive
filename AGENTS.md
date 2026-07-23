@@ -177,9 +177,17 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17 planned** — Audited handoff package MVP (D14). Employee-initiated scope
-  review, package publish, recipient view, lifecycle/audit controls. See
-  `docs/s17-handoff-package-mvp-plan.md`.
+- **S17.2–S17.8 ✓** — Audited handoff package MVP (D14), shipped and
+  end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
+  S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
+  + recipient session/package endpoints; S17.6 read-only recipient view at
+  `/handoff/recipient` (fragment-stripped code, sessionStorage-resumed session);
+  S17.7 creator publish + one-time share-link UI (no creator "open" affordance
+  that would consume the code); S17.8 end-to-end validation + docs alignment
+  (`test_full_creator_to_recipient_journey`, `docs/s17-live-validation.md`).
+  Deferred to S17.9+: recipient package-local ask, static export, manager
+  approval, multi-recipient, new-version re-share, recipient trees/maps, and a
+  stronger production auth boundary. See `docs/s17-handoff-package-mvp-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 
