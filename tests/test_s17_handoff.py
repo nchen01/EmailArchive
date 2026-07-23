@@ -632,3 +632,113 @@ def test_recipient_audit_is_safe_and_actor_is_hashed(env):
 def json_dumps(obj) -> str:
     import json
     return json.dumps(obj)
+
+
+# ── S17.8 end-to-end journey ─────────────────────────────────────────────────
+
+@requires_db
+def test_full_creator_to_recipient_journey(env):
+    """One contiguous walk of the documented creator→recipient→revoke flow
+    (steps 2–16 of docs/s17-live-validation.md). Proves the state machine, the
+    evidence-removal → claim-drop behavior, publish + default expiry, creator
+    immutability, the one-time capability code, recipient session reuse, and
+    revoke — all in a single sequence. Raw code/token values are asserted on but
+    NEVER printed."""
+    from datetime import datetime as dt
+
+    # Two independent events, each citing its own message, so removing one
+    # evidence item can be shown to drop exactly the claim that depended on it.
+    tid = str(uuid.uuid4())
+    _seed_thread(env.session, env.mid, tid, [
+        {"header": "atlas-a@acme.corp", "subject": "Atlas cutover", "body": "Cutover Friday."},
+        {"header": "atlas-b@acme.corp", "subject": "Billing owner", "body": "Dana owns billing."},
+    ])
+    _seed_event(env.session, env.mid, env.owner_pid, ["atlas-a@acme.corp"],
+                summary="Completed the Atlas cutover")
+    _seed_event(env.session, env.mid, env.owner_pid, ["atlas-b@acme.corp"],
+                summary="Handed billing ownership to Dana")
+
+    # (2) create draft
+    pkg = env.client.post(f"/api/handoff/{env.mid}",
+                          json={"reason": "vacation", "title": "Cover Atlas"}).json()
+    pid = pkg["id"]
+    assert pkg["status"] == "draft"
+
+    # (3) optional date scope
+    scoped = env.client.patch(f"/api/handoff/{pid}/scope",
+                              json={"date_from": "2026-01-01", "date_to": "2026-12-31"})
+    assert scoped.status_code == 200 and scoped.json()["status"] == "draft"
+
+    # (4) generate → claims + evidence for both messages
+    gen = env.client.post(f"/api/handoff/{pid}/generate").json()
+    assert gen["status"] == "generated"
+    assert {e["message_id_header"] for e in gen["evidence"]} == {
+        "atlas-a@acme.corp", "atlas-b@acme.corp"}
+    claims_before = len(gen["claims"])
+    assert claims_before >= 2
+
+    # (5) creator-only exclusion summary present on the creator view
+    assert "exclusion_counts" in gen
+
+    # (6) remove one evidence item + regenerate → its unsupported claim disappears
+    full_scope = {
+        "date_from": "2026-01-01", "date_to": "2026-12-31",
+        "included_project_ids": [], "included_person_ids": [], "included_thread_ids": [],
+        "excluded_thread_ids": [], "excluded_message_id_headers": ["atlas-a@acme.corp"],
+        "allowed_domains": [], "keyword_filters": [],
+    }
+    assert env.client.patch(f"/api/handoff/{pid}/scope", json=full_scope).status_code == 200
+    regen = env.client.post(f"/api/handoff/{pid}/generate").json()
+    assert {e["message_id_header"] for e in regen["evidence"]} == {"atlas-b@acme.corp"}
+    for c in regen["claims"]:  # no dangling claim survives without in-package evidence
+        assert set(c["source_message_id_headers"]) <= {"atlas-b@acme.corp"}
+    assert len(regen["claims"]) < claims_before
+
+    # (7) publish with one recipient + default 30-day expiry
+    pub = env.client.post(f"/api/handoff/{pid}/publish",
+                          json={"recipient_email": "cover@acme.corp"})
+    assert pub.status_code == 200
+    pub = pub.json()
+    code = pub["capability_code"]  # asserted on below; never printed
+    assert pub["package"]["status"] == "published"
+    assert pub["share_fragment"] == f"#c={code}"
+    published = dt.fromisoformat(pub["package"]["published_at"])
+    expires = dt.fromisoformat(pub["expires_at"])
+    assert 29 <= (expires - published).days <= 30
+
+    # (9) creator refresh: raw code is NOT recoverable from the creator GET, and
+    # the package is immutable (scope + regenerate both rejected).
+    refetched = env.client.get(f"/api/handoff/{pid}").json()
+    assert refetched["status"] == "published"
+    assert "capability_code" not in refetched and "share_fragment" not in refetched
+    assert env.client.patch(f"/api/handoff/{pid}/scope", json=full_scope).status_code == 409
+    assert env.client.post(f"/api/handoff/{pid}/generate").status_code == 409
+
+    # (10–12) recipient exchanges the one-time code and reads the package-local
+    # view — no mailbox id, no exclusion counts, no source/Gmail link.
+    sess = env.client.post("/api/handoff/recipient/session", json={"code": code})
+    assert sess.status_code == 200
+    token = sess.json()["session_token"]  # asserted on below; never printed
+    auth = {"Authorization": f"Bearer {token}"}
+    view = env.client.get("/api/handoff/recipient/package", headers=auth)
+    assert view.status_code == 200
+    rv = view.json()
+    assert rv["title"] == "Cover Atlas" and rv["creator_email"] == OWNER
+    assert rv["reason"] == "vacation" and rv["published_at"] and rv["expires_at"]
+    assert rv["privacy_posture"]["sensitive_excluded"] is True
+    assert {e["message_id_header"] for e in rv["evidence"]} == {"atlas-b@acme.corp"}
+    blob = json_dumps(rv).lower()
+    for banned in ("mailbox_id", "exclusion_counts", "open_url", "gmail"):
+        assert banned not in blob
+
+    # (13) recipient refresh (same stored session token) still renders
+    assert env.client.get("/api/handoff/recipient/package", headers=auth).status_code == 200
+
+    # (14) the consumed one-time code cannot mint a second session
+    assert env.client.post("/api/handoff/recipient/session", json={"code": code}).status_code == 403
+
+    # (15) creator revokes
+    assert env.client.post(f"/api/handoff/{pid}/revoke").status_code == 200
+
+    # (16) the previously-live recipient session is now blocked (neutral 403)
+    assert env.client.get("/api/handoff/recipient/package", headers=auth).status_code == 403

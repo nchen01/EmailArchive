@@ -220,7 +220,7 @@ email-archive/
 | S15 | Verification hardening — S15.1 isolates S9 DB test state; S15.2 adds the canonical green-tier verification matrix | ✓ done | `docs/s15-verification-matrix.md` |
 | S16.0 | Date-range ingest — customizable Gmail date-window preview/ingest for large mailboxes and scoped snapshots | ✓ done | `docs/s16-date-range-ingest-plan.md` |
 | S16 | Canonical demo readiness — purpose-built coverage-handoff fixture and evidence-trust demo spine | planned / next | `docs/s16-demo-readiness-plan.md` |
-| S17 | Audited handoff package MVP — employee-initiated scope review, package publish, recipient view, audit lifecycle | planned | `docs/s17-handoff-package-mvp-plan.md` |
+| S17 | Audited handoff package MVP — employee-initiated scope review, package publish, one-time recipient link, read-only recipient view, revoke/audit lifecycle | ✓ done (S17.2–S17.8); e2e-validated | `docs/s17-handoff-package-mvp-plan.md`, `docs/s17-live-validation.md` |
 
 **Real Gmail smoke ingest (production-hardening-demo):**
 ```bash

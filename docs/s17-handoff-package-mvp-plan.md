@@ -1,9 +1,39 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** planning / product-direction lock. This is the next product shape
-after the S16 demo fixture work, not an implementation commit by itself.
+**Status:** SHIPPED (S17.2–S17.8) and end-to-end validated. This file remains
+the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
+describe what is actually built.
 
 Decision source: **D14** in `docs/decisions.md`.
+
+## 0. Sub-sprint status (as of S17.8)
+
+- **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
+  state machine, audit vocab + safe metadata, API surface, capability-token
+  handling, invariants, acceptance criteria.
+- **S17.3 ✓** — Draft/scope/generate backend: migration `0007`, ORM
+  (HandoffPackage/Scope/Claim/Evidence/Exclusion/AuditEvent), deterministic
+  generator (whole-thread sensitivity gate + creator exclusions before snapshot),
+  audit `_safe_metadata` key denylist.
+- **S17.4 ✓** — Creator scope-review UI (`frontend/src/components/HandoffReview.tsx`),
+  URL-driven and refresh-safe.
+- **S17.5 ✓** — Publish/revoke + one-time capability code (migrations `0008`,
+  `0009`), recipient session + package endpoints; only token **hashes** stored;
+  the code is consumed atomically on first exchange.
+- **S17.6 ✓** — Read-only recipient view at `/handoff/recipient`: reads the
+  `#c=<code>` fragment, strips it, exchanges it, and resumes across refresh from
+  a `sessionStorage` session token (never the raw code).
+- **S17.7 ✓** — Creator publish + one-time share-link UI. Copy is the only
+  share action; there is deliberately **no** creator "open" affordance (it would
+  consume the one-time code). Published/revoked packages are immutable in the UI.
+- **S17.8 ✓** — End-to-end validation + docs alignment:
+  `tests/test_s17_handoff.py::test_full_creator_to_recipient_journey` and
+  `docs/s17-live-validation.md`.
+
+Deferred to S17.9+: recipient package-local ask / Cover-for-me, static export,
+manager approval, multi-recipient, package versioning / new-version re-share,
+recipient relationship/project/owner trees, and a stronger production auth
+boundary.
 
 ## 1. Product Thesis
 
