@@ -177,7 +177,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17.2–S17.10 ✓** — Audited handoff package MVP (D14), shipped and
+- **S17.2–S17.11 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
   + recipient session/package endpoints; S17.6 read-only recipient view at
@@ -191,10 +191,13 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   new-version re-share (`POST /api/handoff/{id}/new-version`) — forks a frozen
   package into a fresh draft in the same lineage (copied scope, no claims/
   evidence/recipient/code); publishing supersedes the prior published version and
-  blocks its recipient. Deferred to S17.11+: optional LLM synthesis for the
-  package ask, static export, manager approval, multi-recipient, recipient
-  trees/maps, and a stronger production auth boundary. See
-  `docs/s17-handoff-package-mvp-plan.md`.
+  blocks its recipient; S17.11 static HTML export
+  (`GET /api/handoff/{id}/export.html`, `services/handoff/export_html.py`) — a
+  self-contained, escaped, read-only snapshot of a frozen package with recipient-
+  view privacy parity (no mailbox id / counts / links / tokens). Deferred to
+  S17.12+: optional LLM synthesis for the package ask, PDF/docx/zip export,
+  manager approval, multi-recipient, recipient trees/maps, and a stronger
+  production auth boundary. See `docs/s17-handoff-package-mvp-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 

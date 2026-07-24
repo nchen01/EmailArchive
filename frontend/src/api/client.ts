@@ -425,6 +425,15 @@ export async function newVersionHandoff(packageId: string): Promise<HandoffPacka
   );
 }
 
+/**
+ * URL of the creator-side static HTML export for a frozen package (S17.11). It is
+ * a plain GET the browser can download (the server sets Content-Disposition:
+ * attachment); the returned document is self-contained and read-only.
+ */
+export function handoffExportUrl(packageId: string): string {
+  return `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}/export.html`;
+}
+
 // ── Handoff package — recipient view (S17.5 backend, S17.6 UI) ────────────────
 
 /**

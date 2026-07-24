@@ -1144,3 +1144,127 @@ def test_versioning_audit_is_safe(env):
             assert "Cutover" not in blob and "Atlas" not in blob
     finally:
         s.close()
+
+
+# ── S17.11 — static HTML export ──────────────────────────────────────────────
+
+def _export(env, pid):
+    return env.client.get(f"/api/handoff/{pid}/export.html")
+
+
+@requires_db
+def test_export_published_returns_html_with_metadata_claims_evidence(env):
+    pid = _generated_package(env)
+    _publish(env, pid)
+    r = _export(env, pid)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "charset=utf-8" in r.headers["content-type"].lower()
+    assert 'attachment; filename="handoff-package-v1.html"' in r.headers.get("content-disposition", "")
+    body = r.text
+    # Package metadata + posture language shared with the recipient view.
+    assert "Atlas cutover" in body  # evidence subject
+    assert "Cutover Friday." in body  # evidence body snapshot
+    assert "Completed the Atlas cutover" in body  # claim text
+    assert OWNER in body  # creator email
+    assert "Sensitive and out-of-scope content has been excluded" in body
+
+
+@requires_db
+def test_export_draft_or_generated_rejected(env):
+    draft = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    assert _export(env, draft).status_code == 409
+    gen = _generated_package(env)
+    assert _export(env, gen).status_code == 409
+
+
+@requires_db
+def test_export_revoked_and_superseded_are_marked(env):
+    # Revoked
+    pid = _generated_package(env)
+    _publish(env, pid)
+    env.client.post(f"/api/handoff/{pid}/revoke")
+    rv = _export(env, pid)
+    assert rv.status_code == 200 and "Revoked" in rv.text
+
+    # Superseded: publish a new version over a prior published one.
+    pid2 = _generated_package(env, header="s-1@acme.corp", summary="Superseded work")
+    _publish(env, pid2)
+    new = env.client.post(f"/api/handoff/{pid2}/new-version").json()
+    env.client.post(f"/api/handoff/{new['id']}/generate")
+    _publish(env, new["id"])
+    sup = _export(env, pid2)
+    assert sup.status_code == 200
+    assert "Superseded" in sup.text and "replaced by a newer" in sup.text
+
+
+@requires_db
+def test_export_omits_secrets_and_recipient_only_fields(env):
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+    body = _export(env, pid).text
+    # No raw capability code, no mailbox id, no exclusion counts, no source links.
+    assert code not in body
+    assert env.mid not in body
+    for banned in ("exclusion_count", "open_url", "gmail", "mailbox_id", "capability_code", "session_token"):
+        assert banned not in body.lower()
+
+
+@requires_db
+def test_export_escapes_hostile_text(env):
+    # Seed a package whose subject/body/claim carry an injection attempt.
+    tid = str(uuid.uuid4())
+    xss = "<script>alert(1)</script>"
+    _seed_thread(env.session, env.mid, tid, [
+        {"header": "xss-1@acme.corp", "subject": f"Danger {xss}", "body": f"Body {xss}"},
+    ])
+    _seed_event(env.session, env.mid, env.owner_pid, ["xss-1@acme.corp"],
+                summary=f"Claim {xss}")
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    env.client.post(f"/api/handoff/{pid}/generate")
+    _publish(env, pid)
+
+    body = _export(env, pid).text
+    # The raw executable tag must NOT appear; the escaped form must.
+    assert "<script>alert(1)</script>" not in body
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in body
+
+
+@requires_db
+def test_export_is_package_local_after_live_tables_wiped(env):
+    pid = _generated_package(env)
+    _publish(env, pid)
+    s = _fresh()
+    try:
+        from services.db import models as orm
+        for model in (orm.Event, orm.Message, orm.Thread):
+            s.execute(model.__table__.delete().where(model.mailbox_id == env.mid))
+        s.commit()
+    finally:
+        s.close()
+    r = _export(env, pid)
+    assert r.status_code == 200
+    assert "Atlas cutover" in r.text  # served purely from the snapshot
+
+
+@requires_db
+def test_export_audit_is_safe(env):
+    pid = _generated_package(env)
+    _publish(env, pid)
+    _export(env, pid)
+    s = _fresh()
+    try:
+        from sqlalchemy import select
+
+        from services.db import models as orm
+        rows = s.execute(select(orm.HandoffAuditEvent).where(
+            orm.HandoffAuditEvent.package_id == pid,
+            orm.HandoffAuditEvent.action == "package_exported",
+        )).scalars().all()
+        assert rows, "expected a package_exported audit row"
+        for r in rows:
+            assert set((r.metadata_ or {}).keys()) == {"version", "status", "claims", "evidence"}
+            blob = str(r.metadata_)
+            assert "Cutover" not in blob and "Atlas" not in blob
+    finally:
+        s.close()

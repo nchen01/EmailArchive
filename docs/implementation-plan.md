@@ -167,8 +167,9 @@ components of the handoff-package experience.
 1. **Handoff package** — the primary product artifact. The covered employee
    selects date/project/person scope, reviews generated package content, removes
    unnecessary evidence, publishes to a recipient, and leaves an audit trail.
-   Shipped and end-to-end validated in S17.2–S17.10, including a deterministic
-   package-local ask and new-version re-share/supersede (`docs/s17-live-validation.md`).
+   Shipped and end-to-end validated in S17.2–S17.11, including a deterministic
+   package-local ask, new-version re-share/supersede, and static HTML export
+   (`docs/s17-live-validation.md`).
 2. **Network map** — the mailbox owner at center; contacts colored by role; edge
    weight = contact frequency; filterable by project. Click a node for the
    relationship detail and the threads behind it.
@@ -278,13 +279,13 @@ components of the handoff-package experience.
 - **S16.1+** Canonical demo readiness: purpose-built demo fixture for the
   coverage-handoff story; `puluo` remains messy real-mailbox validation only
   (D13).
-- **S17.2–S17.10 ✓** Audited handoff package MVP: employee-initiated package
+- **S17.2–S17.11 ✓** Audited handoff package MVP: employee-initiated package
   creation, scope review, package publish, one-time recipient link, read-only
   recipient view, deterministic LLM-free package-local ask (S17.9), revoke,
-  new-version re-share / supersede (S17.10), + audit lifecycle — shipped and
-  e2e-validated
+  new-version re-share / supersede (S17.10), static HTML export (S17.11), + audit
+  lifecycle — shipped and e2e-validated
   (D14; `docs/s17-handoff-package-mvp-plan.md`, `docs/s17-live-validation.md`).
-  Deferred to S17.11+: optional LLM synthesis for the package ask, static
+  Deferred to S17.12+: optional LLM synthesis for the package ask, PDF/docx/zip
   export, manager approval, multi-recipient, recipient relationship/project/owner
   trees, stronger production auth.
 
