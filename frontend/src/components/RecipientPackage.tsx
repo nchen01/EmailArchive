@@ -11,6 +11,15 @@ import type {
   RecipientPackage as RecipientPackageData,
   RecipientSession,
 } from "../api/types";
+import {
+  CLAIMS_ANCHOR,
+  EVIDENCE_ANCHOR,
+  KIND_LABEL,
+  KIND_ORDER,
+  evidenceAnchorId,
+  kindAnchorId,
+} from "../utils/packageTree";
+import { PackageNavigationTree } from "./PackageNavigationTree";
 
 /**
  * Recipient handoff-package view (S17.6).
@@ -102,15 +111,6 @@ function isFuture(iso: string): boolean {
   return !Number.isNaN(t) && t > Date.now();
 }
 
-const KIND_LABEL: Record<string, string> = {
-  briefing: "Briefing",
-  project_state: "Project state",
-  open_loop: "Open loops",
-  decision: "Decisions",
-  blocker: "Blockers",
-  person_note: "People notes",
-};
-const KIND_ORDER = ["briefing", "project_state", "open_loop", "decision", "blocker", "person_note"];
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -294,11 +294,15 @@ function PackageDocument({
           <p className="mt-1 leading-relaxed text-emerald-800">{pkg.privacy_posture.note}</p>
         </aside>
 
+        {/* Package-local contents outline (S17.12) — derived only from this
+            package's claims + evidence; jumps around the page, nothing more. */}
+        <PackageNavigationTree claims={pkg.claims} evidence={pkg.evidence} />
+
         {/* Package-local ask — answers only from this package's evidence. */}
         {sessionToken ? <AskBox sessionToken={sessionToken} /> : null}
 
         {/* Claims, grouped by kind. */}
-        <section className="mt-8">
+        <section id={CLAIMS_ANCHOR} className="mt-8 scroll-mt-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             What you need to know
           </h2>
@@ -308,7 +312,7 @@ function PackageDocument({
             </p>
           ) : (
             [...groupedKinds, ...extraKinds].map((kind) => (
-              <div key={kind} className="mt-5">
+              <div key={kind} id={kindAnchorId(kind)} className="mt-5 scroll-mt-4">
                 <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
                   {KIND_LABEL[kind] ?? kind}
                 </div>
@@ -323,7 +327,7 @@ function PackageDocument({
         </section>
 
         {/* Cited evidence — snapshotted content only, no source/Gmail links. */}
-        <section className="mt-9">
+        <section id={EVIDENCE_ANCHOR} className="mt-9 scroll-mt-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Supporting messages ({pkg.evidence.length})
           </h2>
@@ -331,8 +335,8 @@ function PackageDocument({
             <p className="mt-2 text-sm text-slate-400">No supporting messages were included.</p>
           ) : (
             <ul className="mt-3 space-y-3">
-              {pkg.evidence.map((e) => (
-                <EvidenceItem key={e.message_id_header} ev={e} />
+              {pkg.evidence.map((e, i) => (
+                <EvidenceItem key={e.message_id_header} ev={e} anchorId={evidenceAnchorId(i)} />
               ))}
             </ul>
           )}
@@ -363,11 +367,11 @@ function ClaimRow({ claim }: { claim: RecipientClaim }) {
 }
 
 /** One snapshotted evidence card. No message-id link, no Gmail/source affordance —
- * the recipient reads the snapshot only. Reused by the evidence list and the ask
- * answer's citations. */
-function EvidenceItem({ ev }: { ev: RecipientEvidence }) {
+ * the recipient reads the snapshot only. Reused by the evidence list (with an
+ * anchor id so the nav tree can scroll to it) and the ask answer's citations. */
+function EvidenceItem({ ev, anchorId }: { ev: RecipientEvidence; anchorId?: string }) {
   return (
-    <li className="rounded-md border border-slate-200 bg-slate-50 p-4">
+    <li id={anchorId} className="rounded-md border border-slate-200 bg-slate-50 p-4 scroll-mt-4">
       <div className="text-sm font-medium text-slate-800">{ev.subject || "(no subject)"}</div>
       <div className="mt-0.5 text-xs text-slate-500">
         {ev.sender_display || "Unknown sender"}

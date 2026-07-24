@@ -1,12 +1,12 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.8) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.12) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
 describe what is actually built.
 
 Decision source: **D14** in `docs/decisions.md`.
 
-## 0. Sub-sprint status (as of S17.8)
+## 0. Sub-sprint status (as of S17.12)
 
 - **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
   state machine, audit vocab + safe metadata, API surface, capability-token
@@ -56,11 +56,22 @@ Decision source: **D14** in `docs/decisions.md`.
   is HTML-escaped (XSS-safe), served `text/html; charset=utf-8` as a
   `Content-Disposition: attachment` (`handoff-package-v{version}.html`). Reads
   only `handoff_*` rows; audits `package_exported` with safe counts only.
+- **S17.12 ✓** — Package-local recipient navigation tree. **Frontend-only**
+  (`frontend/src/utils/packageTree.ts`, `frontend/src/components/
+  PackageNavigationTree.tsx`, wired into `RecipientPackage`). A compact
+  document-style outline — claim kinds ("What you need to know"), sender groups
+  ("People and domains"), and "Supporting messages" — derived PURELY from the
+  recipient payload's `claims` + `evidence`; clicking a leaf scrolls to that
+  claim group / evidence card and briefly flashes it. NOT the live Relationship
+  Map: no Message/Thread/Project/Person/Edge/Event, no relationship-map /
+  source-message / Gmail API, no Message-ID / mailbox id / counts / links in the
+  labels. Unknown claim kinds still appear; empty packages render nothing.
 
-Deferred to S17.12+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred to S17.13+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
-approval, multi-recipient, recipient relationship/project/owner trees, and a
-stronger production auth boundary.
+approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
+inside the package (S17.12 ships the lightweight package-local nav tree only),
+and a stronger production auth boundary.
 
 ## 1. Product Thesis
 

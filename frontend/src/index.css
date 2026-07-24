@@ -13,6 +13,17 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Brief highlight when the recipient package nav tree (S17.12) scrolls to a
+   claim group or evidence card. Purely visual; respects reduced-motion. */
+@keyframes navFlash {
+  0% { background-color: rgba(199, 210, 254, 0.7); }
+  100% { background-color: transparent; }
+}
+.nav-flash { animation: navFlash 1.2s ease-out; border-radius: 0.5rem; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-flash { animation: none; }
+}
+
 /* ── Project list (sidebar) ─────────────────────────────────────────── */
 .project-list { list-style: none; margin: 0; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .project-list-empty { padding: 1.5rem; color: #94a3b8; font-size: 0.875rem; text-align: center; line-height: 1.5; }
