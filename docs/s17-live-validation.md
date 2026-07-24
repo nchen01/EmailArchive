@@ -1,11 +1,14 @@
-# S17 Handoff Package — End-to-End Validation
+# S17 Handoff Package — Live Validation (current through S17.12)
 
-**Date:** 2026-07-23
-**Sprint:** S17.8 — end-to-end handoff package validation + docs/status alignment
+**Originally:** 2026-07-23, S17.8 — end-to-end handoff package validation +
+docs/status alignment. **Kept current** through later sub-sprints.
 
 This document records the validated state of the employee-initiated audited
-handoff package flow (D14) after S17.2–S17.7 shipped. It is validation and
-documentation only — no new package capability was added in S17.8.
+handoff package flow (D14). The end-to-end journey (§3) was first executed at
+S17.8 (covering the S17.2–S17.7 flow); S17.9 added the deterministic package-local
+ask, S17.10 new-version re-share / supersede, and S17.11 static HTML export, each
+with its own tests in `tests/test_s17_handoff.py`. S17.12 adds a frontend-only
+package-local recipient navigation tree (no backend, no new package facts).
 
 ---
 
@@ -103,7 +106,7 @@ Documentation drift was corrected: `README.md`, `AGENTS.md`,
 
 ---
 
-## 5. Deferred to S17.12+
+## 5. Deferred to S17.13+
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the
@@ -116,7 +119,11 @@ Documentation drift was corrected: `README.md`, `AGENTS.md`,
   snapshot with recipient-view privacy parity. Other formats are the next step.
 - **Manager approval** (states `submitted`/`approved`/`rejected` reserved since 0007).
 - **Multi-recipient** (currently exactly one recipient per package).
-- Recipient **relationship/project/owner trees** inside the package.
+- **Rich snapshotted relationship/project/owner trees** inside the package.
+  S17.12 shipped a *lightweight, frontend-only package-local navigation tree*
+  (`PackageNavigationTree`) derived purely from the recipient payload's claims +
+  evidence — claim-kind groups, sender groups, and supporting messages, scroll
+  navigation only. A richer graph-backed/snapshotted tree remains deferred.
 - **Stronger production auth boundary** — the recipient session is a short-lived
   bearer suitable for the MVP, not a hardened production identity boundary.
 
