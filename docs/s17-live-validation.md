@@ -1,4 +1,4 @@
-# S17 Handoff Package — Live Validation (current through S17.11)
+# S17 Handoff Package — Live Validation (current through S17.12)
 
 **Originally:** 2026-07-23, S17.8 — end-to-end handoff package validation +
 docs/status alignment. **Kept current** through later sub-sprints.
