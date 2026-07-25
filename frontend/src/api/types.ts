@@ -356,6 +356,17 @@ export interface HandoffEvidence {
   source_type: string | null;
 }
 
+/** Creator-only reason an empty generated candidate is empty (S17.13). */
+export type GenerationDiagnosticCode =
+  | "no_events_for_mailbox"
+  | "no_events_in_scope"
+  | "all_events_excluded_by_policy";
+
+export interface GenerationDiagnostic {
+  code: GenerationDiagnosticCode | string;
+  event_count: number;
+}
+
 export interface HandoffPackage {
   id: string;
   mailbox_id: string;
@@ -375,6 +386,8 @@ export interface HandoffPackage {
   evidence: HandoffEvidence[];
   /** Creator-only aggregate exclusion counts (never shown to a recipient). */
   exclusion_counts: Record<string, number>;
+  /** Creator-only: why an empty generated candidate is empty (S17.13); else null. */
+  generation?: GenerationDiagnostic | null;
 }
 
 /** Publish request (creator). Mirrors services/api/schemas/handoff.py PublishRequest. */

@@ -31,13 +31,14 @@ from sqlalchemy.orm import Session
 from services.db import models as orm
 from services.handoff.audit import write_handoff_audit
 from services.handoff.export_html import render_package_html
-from services.handoff.generator import generate_candidate
+from services.handoff.generator import generate_candidate, generation_diagnostic
 from services.handoff.tokens import actor_hash_prefix, hash_token, new_capability_code
 from services.ingest.list_options import DateWindowError, parse_date_window
 
 from ..deps import get_db
 from ..schemas.handoff import (
     CreateHandoffRequest,
+    GenerationDiagnostic,
     HandoffClaimOut,
     HandoffEvidenceOut,
     HandoffPackageOut,
@@ -110,6 +111,14 @@ def _package_out(db: Session, pkg: orm.HandoffPackage) -> HandoffPackageOut:
     ).all()
     exclusion_counts = {etype: int(n) for etype, n in excl_rows}
 
+    # Creator-only: explain an empty generated candidate (S17.13) so the UI can
+    # tell "no events for this mailbox" (widening won't help) apart from a
+    # scope/policy miss. Only computed for the empty-generated case.
+    generation = None
+    if pkg.status == "generated" and not claims and not evidence:
+        diag = generation_diagnostic(db, pkg, scope)
+        generation = GenerationDiagnostic(code=diag["code"], event_count=diag["event_count"])
+
     return HandoffPackageOut(
         id=pkg.id, mailbox_id=pkg.mailbox_id, creator_email=pkg.creator_email,
         status=pkg.status, reason=pkg.reason, title=pkg.title, version=pkg.version,
@@ -140,6 +149,7 @@ def _package_out(db: Session, pkg: orm.HandoffPackage) -> HandoffPackageOut:
             source_type=e.source_type,
         ) for e in evidence],
         exclusion_counts=exclusion_counts,
+        generation=generation,
     )
 
 

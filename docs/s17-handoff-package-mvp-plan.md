@@ -1,12 +1,12 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.12) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.13) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
 describe what is actually built.
 
 Decision source: **D14** in `docs/decisions.md`.
 
-## 0. Sub-sprint status (as of S17.12)
+## 0. Sub-sprint status (as of S17.13)
 
 - **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
   state machine, audit vocab + safe metadata, API surface, capability-token
@@ -66,8 +66,21 @@ Decision source: **D14** in `docs/decisions.md`.
   Map: no Message/Thread/Project/Person/Edge/Event, no relationship-map /
   source-message / Gmail API, no Message-ID / mailbox id / counts / links in the
   labels. Unknown claim kinds still appear; empty packages render nothing.
+- **S17.13 ✓** — Manual-demo readiness. Fixes the creator "Start over"
+  stuck-on-"Loading…" state (the route-load effect now resets `loading`/`error`
+  on the no-route branch), and adds a **creator-only** empty-generation
+  diagnostic: `HandoffPackageOut.generation` ({`code`, `event_count`}), computed
+  only for an empty generated candidate, distinguishing `no_events_for_mailbox` /
+  `no_events_in_scope` / `all_events_excluded_by_policy`. The creator UI shows
+  explicit copy (notably that widening the date range will not help when the
+  mailbox has no extracted events). No invariant weakened — still no uncited
+  claims, no retrieval hits in evidence, sensitivity/noise gates unchanged; the
+  recipient view never carries the field (no existence oracle). Real generation
+  needs a mailbox with L1 `Event` rows — the seeded test fixture or LLM event
+  extraction (`services/enrich/events_llm.py`); puluo has zero and cannot demo
+  generation until extraction runs (see `docs/s17-live-validation.md`).
 
-Deferred to S17.13+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred to S17.14+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
 approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
 inside the package (S17.12 ships the lightweight package-local nav tree only),

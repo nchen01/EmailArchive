@@ -53,6 +53,41 @@ const EXCLUSION_LABEL: Record<string, string> = {
   low_confidence: "low-confidence",
 };
 
+/**
+ * Explicit copy for an empty generated candidate (S17.13). Uses the creator-only
+ * `generation` diagnostic so the message is honest about the cause — critically,
+ * that widening the date range will NOT help when the mailbox has no extracted
+ * events at all. Falls back to the old generic copy if no diagnostic is present.
+ */
+function generationEmptyMessage(pkg: HandoffPackage): string {
+  switch (pkg.generation?.code) {
+    case "no_events_for_mailbox":
+      return (
+        "No handoff claims were generated because this mailbox has no extracted " +
+        "handoff events at all. Widening the date range will not help — event " +
+        "extraction (L1 enrichment) must run for this mailbox before a handoff " +
+        "package can be generated."
+      );
+    case "no_events_in_scope":
+      return (
+        "No handoff claims were generated because no extracted events fall in the " +
+        "selected scope. Try widening the date range or including more " +
+        "projects/people."
+      );
+    case "all_events_excluded_by_policy":
+      return (
+        "No handoff claims were generated: the events in this scope were all " +
+        "withheld by the sensitivity / noise / exclusion policy, so nothing here " +
+        "is safe to share. Try a different scope."
+      );
+    default:
+      return (
+        "No package claims were generated from the current scope. Try a wider " +
+        "scope, or run against a mailbox with extracted events."
+      );
+  }
+}
+
 function fmtDate(iso: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -106,7 +141,12 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   useEffect(() => {
     let cancelled = false;
     if (!routeId) {
+      // Back to the create surface (e.g. "Start over"). Reset ALL route-load
+      // state — critically `loading`, which if left true from a prior load keeps
+      // the "Loading handoff package…" branch (`loading && !pkg`) showing forever.
       setPkg(null);
+      setLoading(false);
+      setError(null);
       return;
     }
     if (pkg && pkg.id === routeId && pkg.mailbox_id === mailboxId) return; // already loaded
@@ -403,10 +443,9 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                   Claims ({pkg.claims.length})
                 </h3>
                 {pkg.claims.length === 0 ? (
-                  <p className="mt-1 text-sm text-slate-400">
-                    No package claims were generated from the current scope. Try a
-                    wider scope, or run against a mailbox with extracted events.
-                  </p>
+                  <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    {generationEmptyMessage(pkg)}
+                  </div>
                 ) : (
                   KIND_ORDER.filter((k) => claimsByKind(k).length > 0).map((kind) => (
                     <div key={kind} className="mt-3">

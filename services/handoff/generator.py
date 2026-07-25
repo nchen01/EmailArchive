@@ -128,6 +128,82 @@ def _claims_from_events(session, mailbox_id: str, scope: orm.HandoffScope, safe_
     return claims
 
 
+def _window_headers(session, mailbox_id: str, scope: orm.HandoffScope, restrict: set[str]) -> set[str]:
+    """Headers among ``restrict`` matching only the scope's date/project/person
+    window — noise, sensitivity, and creator exclusions are deliberately IGNORED.
+
+    Used solely by the empty-candidate diagnostic to tell 'out of scope' (window
+    misses everything) apart from 'excluded by policy' (in window but gated out).
+    """
+    if not restrict:
+        return set()
+    q = select(orm.Message.message_id_header).where(
+        orm.Message.mailbox_id == mailbox_id,
+        orm.Message.message_id_header.in_(restrict),
+    )
+    if scope.date_from is not None:
+        q = q.where(orm.Message.ts >= datetime.combine(scope.date_from, time.min, tzinfo=timezone.utc))
+    if scope.date_to is not None:
+        upper = datetime.combine(scope.date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        q = q.where(orm.Message.ts < upper)
+    if scope.included_thread_ids:
+        q = q.where(orm.Message.thread_id.in_(scope.included_thread_ids))
+    elif scope.included_project_ids:
+        thread_sub = select(orm.ThreadProjectAssignment.thread_id).where(
+            orm.ThreadProjectAssignment.project_id.in_(scope.included_project_ids)
+        )
+        q = q.where(orm.Message.thread_id.in_(thread_sub))
+    if scope.included_person_ids:
+        emails = list(session.execute(
+            select(orm.Identity.email).where(
+                orm.Identity.mailbox_id == mailbox_id,
+                orm.Identity.person_id.in_(scope.included_person_ids),
+            )
+        ).scalars())
+        if not emails:
+            return set()
+        q = q.where(or_(
+            orm.Message.sender_email.in_(emails),
+            orm.Message.to_emails.overlap(emails),
+            orm.Message.cc_emails.overlap(emails),
+        ))
+    return set(session.execute(q).scalars())
+
+
+def generation_diagnostic(session, package: orm.HandoffPackage, scope: orm.HandoffScope | None = None) -> dict:
+    """Explain why a *generated* candidate came out empty (creator-only, S17.13).
+
+    Returns ``{"code": <str>, "event_count": <int>}`` where code is one of:
+      - ``no_events_for_mailbox``        — the mailbox has zero extracted L1 events,
+        so NO date range can ever produce a handoff (event extraction must run).
+      - ``no_events_in_scope``           — events exist, but none of their cited
+        messages fall in the selected scope window (widening scope may help).
+      - ``all_events_excluded_by_policy``— in-window events were all removed by the
+        sensitivity / noise / creator-exclusion gates.
+
+    Creator-only: the recipient never sees this, so it is no existence oracle.
+    Only meaningful for an empty candidate; callers gate on claims/evidence == 0.
+    """
+    mailbox_id = package.mailbox_id
+    if scope is None:
+        scope = session.get(orm.HandoffScope, package.id)
+
+    event_rows = session.execute(
+        select(orm.Event.source_message_ids).where(orm.Event.mailbox_id == mailbox_id)
+    ).all()
+    event_count = len(event_rows)
+    if event_count == 0:
+        return {"code": "no_events_for_mailbox", "event_count": 0}
+
+    event_headers = {h for (arr,) in event_rows for h in (arr or [])}
+    in_window = _window_headers(session, mailbox_id, scope or orm.HandoffScope(package_id=package.id), event_headers)
+    if not in_window:
+        return {"code": "no_events_in_scope", "event_count": event_count}
+    # In-window event citations exist, yet nothing survived → the policy gates
+    # (whole-thread sensitivity, noise, creator exclusions) removed them all.
+    return {"code": "all_events_excluded_by_policy", "event_count": event_count}
+
+
 def _snapshot_evidence(session, mailbox_id: str, headers: list[str]):
     """Snapshot safe message content for the cited headers (no raw MIME, no sensitive)."""
     if not headers:
