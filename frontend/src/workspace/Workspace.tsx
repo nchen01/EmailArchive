@@ -48,6 +48,34 @@ const NAV: { screen: Screen; label: string; path: string }[] = [
 
 const ENV_MAILBOX_ID = import.meta.env.VITE_MAILBOX_ID ?? "";
 
+// Persist ONLY the workspace mailbox UUID so creator deep links
+// (/app/handoff/<id>) survive a refresh in the same browser session. Deliberately
+// sessionStorage (not localStorage) so it does not become a long-lived
+// cross-session auth substitute; and deliberately ONLY the mailbox id — never an
+// API key, recipient token, capability code, email content, or evidence. This is
+// separate from RecipientPackage's own session storage (untouched).
+const MAILBOX_STORAGE_KEY = "ekc_workspace_mailbox_id";
+
+function readStoredMailboxId(): string {
+  try {
+    return window.sessionStorage.getItem(MAILBOX_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredMailboxId(id: string): void {
+  try {
+    if (id) window.sessionStorage.setItem(MAILBOX_STORAGE_KEY, id);
+    else window.sessionStorage.removeItem(MAILBOX_STORAGE_KEY);
+  } catch {
+    // storage unavailable (private mode / quota) — refresh just won't persist
+  }
+}
+
+// VITE_MAILBOX_ID wins; else resume the last-loaded mailbox from this session.
+const INITIAL_MAILBOX_ID = ENV_MAILBOX_ID || readStoredMailboxId();
+
 function screenForPath(pathname: string): Screen {
   if (pathname === "/app/network") return "network";
   if (pathname === "/app/relationships") return "relationships";
@@ -67,9 +95,10 @@ export function Workspace() {
   const pathname = usePathname();
   const screen = screenForPath(pathname);
 
-  // Mailbox id comes from VITE_MAILBOX_ID, otherwise the user enters it.
-  const [mailboxId, setMailboxId] = useState<string>(ENV_MAILBOX_ID);
-  const [mailboxInput, setMailboxInput] = useState<string>(ENV_MAILBOX_ID);
+  // Mailbox id comes from VITE_MAILBOX_ID, else a sessionStorage-resumed value,
+  // else the user enters it — so a creator deep-link refresh keeps the mailbox.
+  const [mailboxId, setMailboxId] = useState<string>(INITIAL_MAILBOX_ID);
+  const [mailboxInput, setMailboxInput] = useState<string>(INITIAL_MAILBOX_ID);
 
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -171,9 +200,11 @@ export function Workspace() {
             className="mailbox-form"
             onSubmit={(e) => {
               e.preventDefault();
+              const next = mailboxInput.trim();
               setSelectedPersonId(null);
               setSelectedProjectId(null);
-              setMailboxId(mailboxInput.trim());
+              setMailboxId(next);
+              writeStoredMailboxId(next); // persist (or clear) for refresh-safety
             }}
           >
             <input

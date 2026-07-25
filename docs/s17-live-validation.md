@@ -1,4 +1,4 @@
-# S17 Handoff Package — Live Validation (current through S17.12)
+# S17 Handoff Package — Live Validation (current through S17.14)
 
 **Originally:** 2026-07-23, S17.8 — end-to-end handoff package validation +
 docs/status alignment. **Kept current** through later sub-sprints.
@@ -8,7 +8,10 @@ handoff package flow (D14). The end-to-end journey (§3) was first executed at
 S17.8 (covering the S17.2–S17.7 flow); S17.9 added the deterministic package-local
 ask, S17.10 new-version re-share / supersede, and S17.11 static HTML export, each
 with its own tests in `tests/test_s17_handoff.py`. S17.12 adds a frontend-only
-package-local recipient navigation tree (no backend, no new package facts).
+package-local recipient navigation tree (no backend, no new package facts);
+S17.13 the "Start over" fix + creator-only empty-generation diagnostic; and
+S17.14 a refresh-safe workspace mailbox + the deterministic handoff-demo seed
+(see §4 "Handoff demo readiness").
 
 ---
 
@@ -119,20 +122,36 @@ and the creator UI shows explicit copy — critically, that widening the date ra
 will not help when the mailbox has no events. The recipient view never carries
 this field (no existence oracle).
 
-**Handoff demo readiness.** To demo real generation you need a mailbox with L1
-`Event` rows. Two paths: (a) the deterministic seeded fixture used by
-`tests/test_s17_handoff.py` (the `env` fixture seeds threads + events, no LLM),
-which is the canonical way to exercise the full flow green; or (b) run L1 event
-extraction on a real mailbox — that is the Anthropic-LLM `extract_fn`
-(`services/enrich/events_llm.py`, requires `ANTHROPIC_API_KEY`) inside the
-enrichment pipeline, which must be run and persisted for the target mailbox
-before Handoff testing. Until event extraction has run for it, **puluo cannot
-demo Handoff generation** — the UI now says so via the `no_events_for_mailbox`
-diagnostic rather than looking like a failed Save/Generate.
+**Handoff demo readiness (S17.14).** The Handoff flow needs a mailbox with L1
+`Event` rows. **puluo (`e21c187a-…`) has zero Events, so it is not a full Handoff
+generation demo mailbox** — its `Event` rows would only exist if the Anthropic-LLM
+event extraction had been run for it; the UI now says so via the
+`no_events_for_mailbox` diagnostic rather than looking like a failed Save/Generate.
+
+Two supported paths:
+
+- **Preferred — seed the deterministic demo mailbox (no LLM, no Gmail):**
+  ```powershell
+  $env:DATABASE_URL='postgresql+psycopg2://ekc:<pw>@localhost:5432/ekc_dev'
+  .\.venv\Scripts\python.exe scripts\seed_handoff_demo.py
+  ```
+  Prints a `mailbox_id` for the isolated `handoff-demo@example.com` mailbox (3
+  threads / 4 messages / 4 events; 1 event cites a whole-thread-sensitive message
+  so the exclusion gate is exercised). Load that id in the workspace → Handoff →
+  Create draft → Generate → expect ~3 claims / 3 evidence across `acme.com` +
+  `contoso.com` → Publish → recipient → export → new-version all work. The script
+  only ever touches its own mailbox (idempotent; never puluo). Its data shape is
+  guarded by `test_handoff_demo_seed_data_is_coherent`.
+
+- **Real mailbox — run L1 event extraction:** the Anthropic-LLM `extract_fn`
+  (`services/enrich/events_llm.py`, requires `ANTHROPIC_API_KEY`) inside the
+  enrichment pipeline must run and persist Events for the target mailbox before
+  Handoff testing. This costs Anthropic tokens per thread and requires explicit
+  key authorization — not run here.
 
 ---
 
-## 5. Deferred to S17.14+
+## 5. Deferred to S17.15+
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the

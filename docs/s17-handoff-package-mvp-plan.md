@@ -1,12 +1,12 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.13) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.14) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
 describe what is actually built.
 
 Decision source: **D14** in `docs/decisions.md`.
 
-## 0. Sub-sprint status (as of S17.13)
+## 0. Sub-sprint status (as of S17.14)
 
 - **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
   state machine, audit vocab + safe metadata, API surface, capability-token
@@ -79,8 +79,19 @@ Decision source: **D14** in `docs/decisions.md`.
   needs a mailbox with L1 `Event` rows — the seeded test fixture or LLM event
   extraction (`services/enrich/events_llm.py`); puluo has zero and cannot demo
   generation until extraction runs (see `docs/s17-live-validation.md`).
+- **S17.14 ✓** — Manual-demo enablement. (1) The creator workspace mailbox is
+  now refresh-safe: `Workspace` persists ONLY the mailbox UUID in `sessionStorage`
+  (`ekc_workspace_mailbox_id`), so a `/app/handoff/<id>` deep-link reload keeps
+  the mailbox loaded instead of showing "Load a mailbox to begin"; nothing else
+  is stored (no key/token/content) and `RecipientPackage`'s own storage is
+  untouched. (2) `scripts/seed_handoff_demo.py` seeds a deterministic, LLM-free,
+  puluo-isolated demo mailbox (`handoff-demo@example.com`) with threads +
+  messages + L1 `Event` rows so the full flow (generate → publish → recipient →
+  export → new-version) can be exercised end to end; one seeded event cites a
+  whole-thread-sensitive message so the exclusion gate is exercised too. Its data
+  shape is guarded by `test_handoff_demo_seed_data_is_coherent`.
 
-Deferred to S17.14+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred to S17.15+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
 approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
 inside the package (S17.12 ships the lightweight package-local nav tree only),
