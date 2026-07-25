@@ -132,7 +132,7 @@ diagnostic rather than looking like a failed Save/Generate.
 
 ---
 
-## 5. Deferred to S17.13+
+## 5. Deferred to S17.14+
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the

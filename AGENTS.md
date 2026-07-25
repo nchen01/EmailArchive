@@ -177,7 +177,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17.2–S17.12 ✓** — Audited handoff package MVP (D14), shipped and
+- **S17.2–S17.13 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
   + recipient session/package endpoints; S17.6 read-only recipient view at
@@ -198,8 +198,13 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   package-local recipient nav tree (`frontend/src/components/
   PackageNavigationTree.tsx`, `frontend/src/utils/packageTree.ts`) — a
   **frontend-only** contents outline derived purely from the recipient payload's
-  claims + evidence (no live-mailbox / relationship-map / source-message calls).
-  Deferred to S17.13+: optional LLM synthesis for the package ask, PDF/docx/zip
+  claims + evidence (no live-mailbox / relationship-map / source-message calls);
+  S17.13 manual-demo readiness — creator "Start over" loading-state fix + a
+  creator-only empty-generation diagnostic (`generation` on the creator package
+  response: `no_events_for_mailbox` / `no_events_in_scope` /
+  `all_events_excluded_by_policy`) that explains an empty candidate without
+  weakening any invariant and is never shown to the recipient.
+  Deferred to S17.14+: optional LLM synthesis for the package ask, PDF/docx/zip
   export, manager approval, multi-recipient, **rich snapshotted relationship/
   project/owner trees** (S17.12 ships the lightweight nav tree only), and a
   stronger production auth boundary. See `docs/s17-handoff-package-mvp-plan.md`.
