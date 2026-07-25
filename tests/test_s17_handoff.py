@@ -1268,3 +1268,69 @@ def test_export_audit_is_safe(env):
             assert "Cutover" not in blob and "Atlas" not in blob
     finally:
         s.close()
+
+
+# ── S17.13 — empty-generation diagnostic (creator-only) ──────────────────────
+
+@requires_db
+def test_generation_diagnostic_no_events_for_mailbox(env):
+    # Mailbox has ZERO Event rows (the puluo situation): generate → empty package,
+    # diagnostic says widening the date range will not help.
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    body = env.client.post(f"/api/handoff/{pid}/generate").json()
+    assert body["status"] == "generated"
+    assert body["claims"] == [] and body["evidence"] == []
+    assert body["generation"] == {"code": "no_events_for_mailbox", "event_count": 0}
+    # It survives a reload — GET recomputes the diagnostic.
+    assert env.client.get(f"/api/handoff/{pid}").json()["generation"]["code"] == "no_events_for_mailbox"
+
+
+@requires_db
+def test_generation_diagnostic_no_events_in_scope(env):
+    tid = str(uuid.uuid4())
+    _seed_thread(env.session, env.mid, tid, [
+        {"header": "atlas-1@acme.corp", "subject": "Atlas cutover", "body": "Cutover Friday."},
+    ])
+    _seed_event(env.session, env.mid, env.owner_pid, ["atlas-1@acme.corp"], summary="Atlas cutover")
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    # Date window that excludes the 2026-04 event entirely.
+    env.client.patch(f"/api/handoff/{pid}/scope",
+                     json={"date_from": "2020-01-01", "date_to": "2020-12-31"})
+    body = env.client.post(f"/api/handoff/{pid}/generate").json()
+    assert body["claims"] == [] and body["evidence"] == []
+    assert body["generation"]["code"] == "no_events_in_scope"
+    assert body["generation"]["event_count"] >= 1
+
+
+@requires_db
+def test_generation_diagnostic_all_events_excluded_by_policy(env):
+    # Event cites a message in a whole-thread-sensitive thread → in the scope
+    # window but gated out by the sensitivity policy.
+    tid = str(uuid.uuid4())
+    _seed_thread(env.session, env.mid, tid, [
+        {"header": "hr-1@acme.corp", "sensitivity": ["hr"], "subject": "HR", "body": "confidential"},
+    ])
+    _seed_event(env.session, env.mid, env.owner_pid, ["hr-1@acme.corp"], summary="HR decision")
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation"}).json()["id"]
+    body = env.client.post(f"/api/handoff/{pid}/generate").json()
+    assert body["claims"] == [] and body["evidence"] == []
+    assert body["generation"]["code"] == "all_events_excluded_by_policy"
+    assert body["generation"]["event_count"] >= 1
+
+
+@requires_db
+def test_generation_diagnostic_absent_when_package_has_content(env):
+    pid = _generated_package(env)  # normal non-empty candidate
+    body = env.client.get(f"/api/handoff/{pid}").json()
+    assert body["claims"] and body["evidence"]
+    assert body.get("generation") is None
+
+
+@requires_db
+def test_recipient_package_never_exposes_generation_diagnostic(env):
+    pid = _generated_package(env)
+    code = _publish(env, pid).json()["capability_code"]
+    token = _exchange(env, code).json()["session_token"]
+    rv = env.client.get("/api/handoff/recipient/package",
+                        headers={"Authorization": f"Bearer {token}"}).json()
+    assert "generation" not in rv  # creator-only field, never on the recipient view

@@ -104,6 +104,32 @@ Documentation drift was corrected: `README.md`, `AGENTS.md`,
 `docs/implementation-plan.md`, `docs/s17-handoff-package-mvp-plan.md`, and the
 `CLAUDE.md` status line no longer describe S17.5–S17.7 as future work.
 
+**S17.13 (manual-demo fixes).** Two P1s from a live demo were fixed: (1) the
+creator "Start over" left the review surface stuck on "Loading handoff package…"
+because the route-load effect cleared `pkg` but not `loading`/`error` on the
+no-route branch — now all route-load state resets. (2) Generating a handoff on
+the **puluo** mailbox produced an empty package with no explanation. Root cause
+is by design: `services/handoff/generator.py` derives claims only from extracted
+L1 `Event` rows, and puluo (`e21c187a-956a-47ee-92aa-b21badd16f4d`) has **zero**
+Event rows, so no date range can produce claims. The invariants are untouched
+(no uncited claims, no retrieval hits pulled into evidence). Instead a
+creator-only `generation` diagnostic (`GET`/generate response) now distinguishes
+`no_events_for_mailbox` / `no_events_in_scope` / `all_events_excluded_by_policy`,
+and the creator UI shows explicit copy — critically, that widening the date range
+will not help when the mailbox has no events. The recipient view never carries
+this field (no existence oracle).
+
+**Handoff demo readiness.** To demo real generation you need a mailbox with L1
+`Event` rows. Two paths: (a) the deterministic seeded fixture used by
+`tests/test_s17_handoff.py` (the `env` fixture seeds threads + events, no LLM),
+which is the canonical way to exercise the full flow green; or (b) run L1 event
+extraction on a real mailbox — that is the Anthropic-LLM `extract_fn`
+(`services/enrich/events_llm.py`, requires `ANTHROPIC_API_KEY`) inside the
+enrichment pipeline, which must be run and persisted for the target mailbox
+before Handoff testing. Until event extraction has run for it, **puluo cannot
+demo Handoff generation** — the UI now says so via the `no_events_for_mailbox`
+diagnostic rather than looking like a failed Save/Generate.
+
 ---
 
 ## 5. Deferred to S17.13+

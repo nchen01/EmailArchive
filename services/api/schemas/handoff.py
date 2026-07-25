@@ -57,6 +57,15 @@ class HandoffEvidenceOut(BaseModel):
     source_type: str | None
 
 
+class GenerationDiagnostic(BaseModel):
+    """Creator-only explanation for an EMPTY generated candidate (S17.13). Present
+    only when a generated package has no claims and no evidence, so the creator UI
+    can say *why* (esp. `no_events_for_mailbox`, where widening the date range will
+    not help). Never returned to a recipient — no existence oracle."""
+    code: str  # no_events_for_mailbox | no_events_in_scope | all_events_excluded_by_policy
+    event_count: int
+
+
 class HandoffPackageOut(BaseModel):
     id: str
     mailbox_id: str
@@ -75,6 +84,8 @@ class HandoffPackageOut(BaseModel):
     evidence: list[HandoffEvidenceOut]
     # Creator-only aggregate exclusion counts (never shown to a recipient).
     exclusion_counts: dict[str, int]
+    # Creator-only: why an empty generated candidate is empty (S17.13); else null.
+    generation: GenerationDiagnostic | None = None
 
 
 # ── Publish (creator) — S17.5 ────────────────────────────────────────────────
