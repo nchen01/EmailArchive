@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   askRecipientPackage,
   getRecipientPackage,
@@ -12,14 +12,10 @@ import type {
   RecipientSession,
 } from "../api/types";
 import {
-  CLAIMS_ANCHOR,
-  EVIDENCE_ANCHOR,
-  KIND_LABEL,
-  KIND_ORDER,
-  evidenceAnchorId,
-  kindAnchorId,
-} from "../utils/packageTree";
-import { PackageNavigationTree } from "./PackageNavigationTree";
+  buildCoverageAreas,
+  peopleForEvidence,
+  type CoverageArea,
+} from "../utils/coverageAreas";
 
 /**
  * Recipient handoff-package view (S17.6).
@@ -253,6 +249,24 @@ function NeutralCard({ heading, body }: { heading: string; body: string }) {
   );
 }
 
+// Claim kinds shown within a coverage area, decisions + next actions first.
+const PANEL_KIND_ORDER = [
+  "decision",
+  "open_loop",
+  "briefing",
+  "project_state",
+  "blocker",
+  "person_note",
+];
+const PANEL_KIND_HEADING: Record<string, string> = {
+  decision: "Decisions",
+  open_loop: "Open loops / next actions",
+  briefing: "Briefing",
+  project_state: "Project state",
+  blocker: "Blockers",
+  person_note: "People notes",
+};
+
 function PackageDocument({
   pkg,
   sessionToken,
@@ -260,12 +274,13 @@ function PackageDocument({
   pkg: RecipientPackageData;
   sessionToken: string | null;
 }) {
-  const claimsByKind = (kind: string) => pkg.claims.filter((c) => c.kind === kind);
-  const groupedKinds = KIND_ORDER.filter((k) => claimsByKind(k).length > 0);
-  // Any claim kinds outside the known order still render, so nothing is dropped.
-  const extraKinds = Array.from(new Set(pkg.claims.map((c) => c.kind))).filter(
-    (k) => !KIND_ORDER.includes(k),
+  // Coverage areas are derived purely from this package's claims + evidence.
+  const areas = useMemo(
+    () => buildCoverageAreas(pkg.claims, pkg.evidence),
+    [pkg.claims, pkg.evidence],
   );
+  const [selectedId, setSelectedId] = useState<string | null>(areas[0]?.id ?? null);
+  const selected = areas.find((a) => a.id === selectedId) ?? areas[0] ?? null;
 
   return (
     <article className="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
@@ -294,53 +309,33 @@ function PackageDocument({
           <p className="mt-1 leading-relaxed text-emerald-800">{pkg.privacy_posture.note}</p>
         </aside>
 
-        {/* Package-local contents outline (S17.12) — derived only from this
-            package's claims + evidence; jumps around the page, nothing more. */}
-        <PackageNavigationTree claims={pkg.claims} evidence={pkg.evidence} />
-
         {/* Package-local ask — answers only from this package's evidence. */}
         {sessionToken ? <AskBox sessionToken={sessionToken} /> : null}
 
-        {/* Claims, grouped by kind. */}
-        <section id={CLAIMS_ANCHOR} className="mt-8 scroll-mt-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            What you need to know
-          </h2>
-          {pkg.claims.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-400">
-              This handoff has no summary points.
-            </p>
-          ) : (
-            [...groupedKinds, ...extraKinds].map((kind) => (
-              <div key={kind} id={kindAnchorId(kind)} className="mt-5 scroll-mt-4">
-                <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
-                  {KIND_LABEL[kind] ?? kind}
-                </div>
-                <ul className="mt-2 space-y-2">
-                  {claimsByKind(kind).map((c) => (
-                    <ClaimRow key={c.id} claim={c} />
-                  ))}
-                </ul>
-              </div>
-            ))
-          )}
-        </section>
-
-        {/* Cited evidence — snapshotted content only, no source/Gmail links. */}
-        <section id={EVIDENCE_ANCHOR} className="mt-9 scroll-mt-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Supporting messages ({pkg.evidence.length})
-          </h2>
-          {pkg.evidence.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-400">No supporting messages were included.</p>
-          ) : (
-            <ul className="mt-3 space-y-3">
-              {pkg.evidence.map((e, i) => (
-                <EvidenceItem key={e.message_id_header} ev={e} anchorId={evidenceAnchorId(i)} />
-              ))}
-            </ul>
-          )}
-        </section>
+        {/* Coverage-area brief: a compact topic selector, then a focused panel. */}
+        {areas.length === 0 ? (
+          <section className="mt-8">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              What you need to know
+            </h2>
+            <p className="mt-2 text-sm text-slate-400">This handoff has no summary points.</p>
+          </section>
+        ) : (
+          <section className="mt-8">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Coverage areas
+              </h2>
+              <span className="text-xs text-slate-400">{areas.length} in this handoff</span>
+            </div>
+            <CoverageAreaSelector
+              areas={areas}
+              selectedId={selected?.id ?? null}
+              onSelect={setSelectedId}
+            />
+            {selected ? <CoverageAreaPanel area={selected} /> : null}
+          </section>
+        )}
 
         <footer className="mt-9 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-400">
           This is a read-only handoff package. It shows only the messages the
@@ -349,6 +344,112 @@ function PackageDocument({
         </footer>
       </div>
     </article>
+  );
+}
+
+/** Compact, wrapping topic selector — one button per coverage area. */
+function CoverageAreaSelector({
+  areas,
+  selectedId,
+  onSelect,
+}: {
+  areas: CoverageArea[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {areas.map((a) => {
+        const active = a.id === selectedId;
+        const n = a.decisionCount + a.openLoopCount;
+        return (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => onSelect(a.id)}
+            className={
+              "max-w-full rounded-full border px-3 py-1 text-left text-xs " +
+              (active
+                ? "border-indigo-600 bg-indigo-600 text-white"
+                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50")
+            }
+            title={a.label}
+          >
+            <span className="truncate align-middle">{a.label}</span>
+            <span className={active ? "ml-1.5 text-indigo-100" : "ml-1.5 text-slate-400"}>
+              {n}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The focused panel for one coverage area: decisions + next actions first,
+ * people/domains, then evidence collapsed by default. */
+function CoverageAreaPanel({ area }: { area: CoverageArea }) {
+  const byKind = (kind: string) => area.claims.filter((c) => c.kind === kind);
+  const knownKinds = PANEL_KIND_ORDER.filter((k) => byKind(k).length > 0);
+  const extraKinds = Array.from(new Set(area.claims.map((c) => c.kind))).filter(
+    (k) => !PANEL_KIND_ORDER.includes(k),
+  );
+  const people = peopleForEvidence(area.evidence);
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-5">
+      <h3 className="text-base font-semibold text-slate-800">{area.label}</h3>
+      <div className="mt-1 text-xs text-slate-500">
+        {area.decisionCount} decision{area.decisionCount === 1 ? "" : "s"} ·{" "}
+        {area.openLoopCount} open loop{area.openLoopCount === 1 ? "" : "s"} ·{" "}
+        {area.peopleCount} {area.peopleCount === 1 ? "person/domain" : "people/domains"} ·{" "}
+        {area.evidenceCount} message{area.evidenceCount === 1 ? "" : "s"}
+      </div>
+
+      {[...knownKinds, ...extraKinds].map((kind) => (
+        <div key={kind} className="mt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+            {PANEL_KIND_HEADING[kind] ?? kind}
+          </div>
+          <ul className="mt-2 space-y-2">
+            {byKind(kind).map((c) => (
+              <ClaimRow key={c.id} claim={c} />
+            ))}
+          </ul>
+        </div>
+      ))}
+
+      {people.length > 0 ? (
+        <div className="mt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Appears in supporting evidence
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {people.map((p) => (
+              <span
+                key={p}
+                className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600"
+              >
+                {p}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {area.evidence.length > 0 ? (
+        <details className="mt-4 rounded-md border border-slate-200 bg-white">
+          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-700">
+            Supporting messages ({area.evidence.length})
+          </summary>
+          <ul className="space-y-3 px-3 pb-3">
+            {area.evidence.map((e) => (
+              <EvidenceItem key={e.message_id_header} ev={e} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -367,11 +468,11 @@ function ClaimRow({ claim }: { claim: RecipientClaim }) {
 }
 
 /** One snapshotted evidence card. No message-id link, no Gmail/source affordance —
- * the recipient reads the snapshot only. Reused by the evidence list (with an
- * anchor id so the nav tree can scroll to it) and the ask answer's citations. */
-function EvidenceItem({ ev, anchorId }: { ev: RecipientEvidence; anchorId?: string }) {
+ * the recipient reads the snapshot only. Reused by the coverage-area evidence
+ * list and the ask answer's citations. */
+function EvidenceItem({ ev }: { ev: RecipientEvidence }) {
   return (
-    <li id={anchorId} className="rounded-md border border-slate-200 bg-slate-50 p-4 scroll-mt-4">
+    <li className="rounded-md border border-slate-200 bg-white p-4">
       <div className="text-sm font-medium text-slate-800">{ev.subject || "(no subject)"}</div>
       <div className="mt-0.5 text-xs text-slate-500">
         {ev.sender_display || "Unknown sender"}
