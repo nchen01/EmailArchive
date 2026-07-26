@@ -1,4 +1,4 @@
-# S17 Handoff Package — Live Validation (current through S17.17)
+# S17 Handoff Package — Live Validation (current through S17.18)
 
 > For a step-by-step manual demo, see
 > **`docs/s17-handoff-manual-demo-runbook.md`**.
@@ -27,7 +27,10 @@ drives a focused panel (decisions/open-loops first, people/domains, evidence
 collapsed by default), superseding the S17.12 nav tree. The seeded demo package
 resolves to the 4 expected areas (Nexus Auth, Connection Pool, ML Engineer,
 Security Audit), validated by re-running the grouping over the live recipient
-payload; recipient privacy parity is unchanged.
+payload; recipient privacy parity is unchanged. S17.18 turns that into a
+three-part recipient workspace — left coverage-area rail · center brief · a
+separate Related people & domains section + the package-local Ask — with people
+derived only from evidence sender fields and honest context labels.
 
 ---
 
@@ -172,7 +175,7 @@ Two supported paths:
 
 ---
 
-## 5. Deferred to S17.18+
+## 5. Deferred to S17.19+
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the

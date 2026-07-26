@@ -1,13 +1,13 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.17) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.18) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
 describe what is actually built. Manual demo runbook:
 `docs/s17-handoff-manual-demo-runbook.md`.
 
 Decision source: **D14** in `docs/decisions.md`.
 
-## 0. Sub-sprint status (as of S17.17)
+## 0. Sub-sprint status (as of S17.18)
 
 - **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
   state machine, audit vocab + safe metadata, API surface, capability-token
@@ -132,8 +132,22 @@ Decision source: **D14** in `docs/decisions.md`.
   token / sensitive-noise content; people/domains derive only from evidence
   sender fields, labelled "Appears in supporting evidence" with no volume=
   importance). Creator review is unchanged this sprint.
+- **S17.18 ✓** — Recipient handoff **workspace layout**. The recipient view is
+  now a three-part cockpit: a left **coverage-area rail** (vertical on desktop,
+  a horizontal scroller on mobile; each item shows the area label + compact
+  dec/open/msg counts) drives a center **area brief** (Decisions & outcomes →
+  Open loops/next actions → Blockers & follow-ups → Key facts, with evidence
+  tucked under an expandable disclosure), and a separate **Related people &
+  domains** section plus the package-local Ask. People are derived only from the
+  selected area's evidence sender fields (`peopleDetailForEvidence`) with honest
+  context labels ("Sender" / "Domain contact") — never invented roles, never
+  ranked by message volume. Builds on the S17.17 `coverageAreas` helper; no
+  backend/API change (payload has no true project labels or roles, so honest
+  "Coverage areas" / evidence-derived contacts are used). Privacy parity
+  unchanged (no mailbox id / counts / Gmail/source links / source-message calls /
+  raw code / token / sensitive-noise content). Creator review unchanged.
 
-Deferred to S17.18+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred to S17.19+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
 approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
 inside the package (S17.17 ships a package-local topic brief, not a graph), a

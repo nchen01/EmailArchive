@@ -13,7 +13,7 @@ import type {
 } from "../api/types";
 import {
   buildCoverageAreas,
-  peopleForEvidence,
+  peopleDetailForEvidence,
   type CoverageArea,
 } from "../utils/coverageAreas";
 
@@ -249,15 +249,8 @@ function NeutralCard({ heading, body }: { heading: string; body: string }) {
   );
 }
 
-// Claim kinds shown within a coverage area, decisions + next actions first.
-const PANEL_KIND_ORDER = [
-  "decision",
-  "open_loop",
-  "briefing",
-  "project_state",
-  "blocker",
-  "person_note",
-];
+// Heading for any claim kind not covered by BRIEF_SECTIONS (rendered under
+// "key facts" fallbacks so no kind is ever dropped).
 const PANEL_KIND_HEADING: Record<string, string> = {
   decision: "Decisions",
   open_loop: "Open loops / next actions",
@@ -285,7 +278,7 @@ function PackageDocument({
   return (
     <article className="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       {/* Document header band — the delivered-package identity. */}
-      <header className="bg-indigo-900 px-8 py-7 text-indigo-50">
+      <header className="bg-indigo-900 px-6 py-6 text-indigo-50 sm:px-8 sm:py-7">
         <div className="text-xs font-semibold uppercase tracking-widest text-indigo-300">
           Handoff package · Read-only
         </div>
@@ -302,39 +295,35 @@ function PackageDocument({
         </div>
       </header>
 
-      <div className="px-8 py-6">
+      <div className="px-6 py-6 sm:px-8">
         {/* Privacy posture — reassurance, constant, no counts/oracle. */}
         <aside className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           <div className="font-medium">Scope-limited · Sensitive content excluded</div>
           <p className="mt-1 leading-relaxed text-emerald-800">{pkg.privacy_posture.note}</p>
         </aside>
 
-        {/* Package-local ask — answers only from this package's evidence. */}
-        {sessionToken ? <AskBox sessionToken={sessionToken} /> : null}
-
-        {/* Coverage-area brief: a compact topic selector, then a focused panel. */}
         {areas.length === 0 ? (
           <section className="mt-8">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               What you need to know
             </h2>
             <p className="mt-2 text-sm text-slate-400">This handoff has no summary points.</p>
+            {sessionToken ? <AskBox sessionToken={sessionToken} /> : null}
           </section>
         ) : (
-          <section className="mt-8">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Coverage areas
-              </h2>
-              <span className="text-xs text-slate-400">{areas.length} in this handoff</span>
-            </div>
-            <CoverageAreaSelector
+          // Three-part workspace: coverage-area rail · brief · people + ask.
+          <div className="mt-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
+            <CoverageAreaRail
               areas={areas}
               selectedId={selected?.id ?? null}
               onSelect={setSelectedId}
             />
-            {selected ? <CoverageAreaPanel area={selected} /> : null}
-          </section>
+            <div className="mt-6 min-w-0 lg:mt-0">
+              {selected ? <AreaBrief area={selected} /> : null}
+              {selected ? <PeopleSection area={selected} /> : null}
+              {sessionToken ? <AskBox sessionToken={sessionToken} /> : null}
+            </div>
+          </div>
         )}
 
         <footer className="mt-9 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-400">
@@ -347,8 +336,9 @@ function PackageDocument({
   );
 }
 
-/** Compact, wrapping topic selector — one button per coverage area. */
-function CoverageAreaSelector({
+/** Left navigation rail — a horizontal scroller on mobile, a vertical rail on
+ * desktop. One item per coverage area with compact per-area counts. */
+function CoverageAreaRail({
   areas,
   selectedId,
   onSelect,
@@ -358,87 +348,108 @@ function CoverageAreaSelector({
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      {areas.map((a) => {
-        const active = a.id === selectedId;
-        const n = a.decisionCount + a.openLoopCount;
-        return (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => onSelect(a.id)}
-            className={
-              "max-w-full rounded-full border px-3 py-1 text-left text-xs " +
-              (active
-                ? "border-indigo-600 bg-indigo-600 text-white"
-                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50")
-            }
-            title={a.label}
-          >
-            <span className="truncate align-middle">{a.label}</span>
-            <span className={active ? "ml-1.5 text-indigo-100" : "ml-1.5 text-slate-400"}>
-              {n}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <nav aria-label="Coverage areas" className="lg:sticky lg:top-4 lg:self-start">
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Coverage areas
+        </span>
+        <span className="text-xs text-slate-400">{areas.length}</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
+        {areas.map((a) => {
+          const active = a.id === selectedId;
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => onSelect(a.id)}
+              aria-current={active ? "true" : undefined}
+              className={
+                "w-56 shrink-0 rounded-md border px-3 py-2 text-left lg:w-full " +
+                (active
+                  ? "border-indigo-600 bg-indigo-50 ring-1 ring-indigo-200"
+                  : "border-slate-200 bg-white hover:bg-slate-50")
+              }
+              title={a.label}
+            >
+              <div className={"truncate text-sm font-medium " + (active ? "text-indigo-800" : "text-slate-700")}>
+                {a.label}
+              </div>
+              <div className="mt-0.5 truncate text-xs text-slate-400">
+                {a.decisionCount} dec · {a.openLoopCount} open · {a.evidenceCount} msg
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 
-/** The focused panel for one coverage area: decisions + next actions first,
- * people/domains, then evidence collapsed by default. */
-function CoverageAreaPanel({ area }: { area: CoverageArea }) {
-  const byKind = (kind: string) => area.claims.filter((c) => c.kind === kind);
-  const knownKinds = PANEL_KIND_ORDER.filter((k) => byKind(k).length > 0);
-  const extraKinds = Array.from(new Set(area.claims.map((c) => c.kind))).filter(
-    (k) => !PANEL_KIND_ORDER.includes(k),
-  );
-  const people = peopleForEvidence(area.evidence);
+// Middle-panel sections, in reading priority. Decisions/outcomes → next actions →
+// blockers → everything else as "key facts".
+const BRIEF_SECTIONS: { heading: string; kinds: string[] }[] = [
+  { heading: "Decisions & outcomes", kinds: ["decision"] },
+  { heading: "Open loops / next actions", kinds: ["open_loop"] },
+  { heading: "Blockers & follow-ups", kinds: ["blocker"] },
+  { heading: "Key facts", kinds: ["briefing", "project_state", "person_note"] },
+];
+
+/** Middle reading surface: a compact brief for the selected coverage area, with
+ * evidence tucked under an expandable disclosure (not the dominant view). */
+function AreaBrief({ area }: { area: CoverageArea }) {
+  const grouped = area.claims.reduce<Record<string, RecipientClaim[]>>((acc, c) => {
+    (acc[c.kind] ??= []).push(c);
+    return acc;
+  }, {});
+  const shownKinds = new Set(BRIEF_SECTIONS.flatMap((s) => s.kinds));
+  const extraKinds = Object.keys(grouped).filter((k) => !shownKinds.has(k));
 
   return (
-    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-5">
-      <h3 className="text-base font-semibold text-slate-800">{area.label}</h3>
+    <section className="rounded-lg border border-slate-200 bg-white p-5">
+      <h2 className="text-lg font-semibold text-slate-800">{area.label}</h2>
       <div className="mt-1 text-xs text-slate-500">
         {area.decisionCount} decision{area.decisionCount === 1 ? "" : "s"} ·{" "}
         {area.openLoopCount} open loop{area.openLoopCount === 1 ? "" : "s"} ·{" "}
-        {area.peopleCount} {area.peopleCount === 1 ? "person/domain" : "people/domains"} ·{" "}
         {area.evidenceCount} message{area.evidenceCount === 1 ? "" : "s"}
       </div>
 
-      {[...knownKinds, ...extraKinds].map((kind) => (
+      {BRIEF_SECTIONS.map((sec) => {
+        const claims = sec.kinds.flatMap((k) => grouped[k] ?? []);
+        if (claims.length === 0) return null;
+        return (
+          <div key={sec.heading} className="mt-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+              {sec.heading}
+            </div>
+            <ul className="mt-2 space-y-2">
+              {claims.map((c) => (
+                <ClaimRow key={c.id} claim={c} />
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+
+      {extraKinds.map((kind) => (
         <div key={kind} className="mt-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
             {PANEL_KIND_HEADING[kind] ?? kind}
           </div>
           <ul className="mt-2 space-y-2">
-            {byKind(kind).map((c) => (
+            {grouped[kind].map((c) => (
               <ClaimRow key={c.id} claim={c} />
             ))}
           </ul>
         </div>
       ))}
 
-      {people.length > 0 ? (
-        <div className="mt-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Appears in supporting evidence
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {people.map((p) => (
-              <span
-                key={p}
-                className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600"
-              >
-                {p}
-              </span>
-            ))}
-          </div>
-        </div>
+      {area.claims.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-400">No summary points in this area.</p>
       ) : null}
 
       {area.evidence.length > 0 ? (
-        <details className="mt-4 rounded-md border border-slate-200 bg-white">
+        <details className="mt-5 rounded-md border border-slate-200 bg-slate-50">
           <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-700">
             Supporting messages ({area.evidence.length})
           </summary>
@@ -449,7 +460,40 @@ function CoverageAreaPanel({ area }: { area: CoverageArea }) {
           </ul>
         </details>
       ) : null}
-    </div>
+    </section>
+  );
+}
+
+/** Related people/domains for the selected area, derived only from package-local
+ * evidence sender fields with honest, non-invented context labels. */
+function PeopleSection({ area }: { area: CoverageArea }) {
+  const people = peopleDetailForEvidence(area.evidence);
+  if (people.length === 0) return null;
+  return (
+    <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        Related people &amp; domains
+      </h2>
+      <p className="mt-0.5 text-xs text-slate-400">
+        Derived from this area's cited evidence.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {people.map((p) => (
+          <li
+            key={`${p.name}|${p.domain}`}
+            className="flex items-baseline justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2"
+          >
+            <div className="min-w-0">
+              <div className="truncate text-sm text-slate-800">{p.name}</div>
+              {p.domain ? <div className="truncate text-xs text-slate-500">{p.domain}</div> : null}
+            </div>
+            <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500">
+              {p.context}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
