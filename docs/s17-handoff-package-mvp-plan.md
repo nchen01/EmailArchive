@@ -1,13 +1,13 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.15) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.16) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
 describe what is actually built. Manual demo runbook:
 `docs/s17-handoff-manual-demo-runbook.md`.
 
 Decision source: **D14** in `docs/decisions.md`.
 
-## 0. Sub-sprint status (as of S17.15)
+## 0. Sub-sprint status (as of S17.16)
 
 - **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
   state machine, audit vocab + safe metadata, API surface, capability-token
@@ -105,8 +105,18 @@ Decision source: **D14** in `docs/decisions.md`.
   `test_handoff_demo_verify_reports_ok_without_side_effects`). The full flow was
   driven end to end via the API; no manual-demo blockers were found. No generator
   / recipient-security / one-time-code / access-model change.
+- **S17.16 ✓** — Handoff demo graph tolerance. The seeded Handoff mailbox has an
+  owner Person but no L1 identity/edge graph, so `GET /api/network-map/{id}` used
+  to 404 ("owner person not resolved") and made the workspace look broken while
+  testing Handoff. `get_network_map` now falls back to the mailbox's
+  `owner_person_id` link when identity resolution fails, returning an **empty
+  graph (200)** — the Network / Relationship tabs show the friendly "No contacts
+  yet" state instead of an error. A mailbox with no owner at all still 404s.
+  Confirmed the demo mailbox generates 7 claims / 7 evidence on the default scope
+  with the comp-review + newsletter still excluded (no generation bug). Guarded by
+  `test_owner_without_identity_graph_returns_empty_graph`; runbook updated.
 
-Deferred to S17.16+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred to S17.17+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
 approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
 inside the package (S17.12 ships the lightweight package-local nav tree only),
