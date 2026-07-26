@@ -1,4 +1,4 @@
-# S17 Handoff Package — Live Validation (current through S17.15)
+# S17 Handoff Package — Live Validation (current through S17.16)
 
 > For a step-by-step manual demo, see
 > **`docs/s17-handoff-manual-demo-runbook.md`**.
@@ -17,7 +17,10 @@ S17.14 a refresh-safe workspace mailbox + the deterministic handoff-demo seed
 (see §4 "Handoff demo readiness"); and S17.15 a canonical manual-demo runbook
 (`docs/s17-handoff-manual-demo-runbook.md`) + a `--verify` seed mode. The full
 creator → recipient → export → new-version flow was driven end to end via the API
-during S17.15 with no manual-demo blockers found.
+during S17.15 with no manual-demo blockers found. S17.16 makes the Handoff demo
+mailbox's Network/Relationship tabs degrade to an empty graph (200) instead of a
+404 (owner resolved via the mailbox `owner_person_id` link) — the demo mailbox
+seeds messages/events only, not the L1 identity/edge graph.
 
 ---
 
@@ -162,7 +165,7 @@ Two supported paths:
 
 ---
 
-## 5. Deferred to S17.16+
+## 5. Deferred to S17.17+
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the

@@ -69,7 +69,15 @@ async def get_network_map(
 ) -> NetworkMapOut:
     mbx = _get_mailbox(db, mailbox_id)
 
+    # Resolve the owner by identity first; fall back to the mailbox's own
+    # owner_person_id link. The fallback lets a mailbox that has an owner Person
+    # but not the full L1 identity/edge graph (e.g. the Handoff demo mailbox,
+    # which seeds messages/events only) return an EMPTY graph (200) instead of a
+    # 404 that makes the workspace look broken. A mailbox with no owner at all
+    # still 404s.
     owner_person = _resolve_person_by_email(db, mailbox_id, mbx.owner_email)
+    if owner_person is None and mbx.owner_person_id is not None:
+        owner_person = db.get(orm.Person, mbx.owner_person_id)
     if owner_person is None:
         raise HTTPException(status_code=404, detail="owner person not resolved")
 

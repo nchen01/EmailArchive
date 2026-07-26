@@ -15,6 +15,13 @@ recipient (ask, refresh, consumed-link) → export → new-version/supersede.**
   `no_events_for_mailbox` diagnostic ("this mailbox has no extracted handoff
   events … widening the date range will not help"). That is expected, not a bug.
 
+> **The two demos are complementary, not interchangeable.** The `handoff-demo`
+> mailbox seeds messages + events only, **not** the L1 identity/edge graph — so
+> its **Network** and **Relationship Map** tabs show an empty "No contacts yet"
+> state (the API returns an empty graph, not an error). That is expected. Use
+> `puluo` for a populated Network / Relationship Map / Cover-for-me demo, and the
+> `handoff-demo` mailbox for the Handoff package flow.
+
 All commands assume the repo root and the blessed venv (`.venv\Scripts`). Never
 use a bare `python`.
 

@@ -161,3 +161,42 @@ def test_unknown_mailbox_404(seeded):
     client, _ = seeded
     r = client.get("/api/network-map/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
+
+
+def test_owner_without_identity_graph_returns_empty_graph(seeded):
+    """S17.16: a mailbox with an owner Person but no L1 identity/edge graph (e.g.
+    the Handoff demo mailbox, which seeds messages/events only) returns an EMPTY
+    graph (200) via the owner_person_id fallback -- not a 404 that would make the
+    workspace look broken. A mailbox with NO owner at all still 404s."""
+    client, _ = seeded
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+
+    s = SessionLocal()
+    try:
+        mbx = orm.Mailbox(provider="gmail", owner_email="handoff-only@example.com",
+                          embed_model="test-none", embed_dim=0, config={})
+        s.add(mbx)
+        s.commit()
+        mid = str(mbx.id)
+
+        # No owner_person_id yet -> still 404 (nothing to center the graph on).
+        assert client.get(f"/api/network-map/{mid}").status_code == 404
+
+        # Give it an owner Person + link, but NO Identity / Edge rows.
+        owner = orm.Person(mailbox_id=mid, canonical_email="handoff-only@example.com",
+                           names=["Handoff Only"])
+        s.add(owner)
+        s.commit()
+        mbx.owner_person_id = owner.id
+        s.commit()
+
+        r = client.get(f"/api/network-map/{mid}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["owner"]["canonical_email"] == "handoff-only@example.com"
+        assert body["nodes"] == [] and body["edges"] == []
+    finally:
+        s.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.owner_email == "handoff-only@example.com"))
+        s.commit()
+        s.close()

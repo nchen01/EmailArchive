@@ -177,7 +177,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17.2–S17.15 ✓** — Audited handoff package MVP (D14), shipped and
+- **S17.2–S17.16 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
   + recipient session/package endpoints; S17.6 read-only recipient view at
@@ -212,8 +212,12 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   zero Events and cannot generate a package until LLM event extraction runs);
   S17.15 adds a canonical manual-demo runbook
   (`docs/s17-handoff-manual-demo-runbook.md`) + a `--verify` seed mode
-  (side-effect-free generate dry-run) and hardened operator output.
-  Deferred to S17.16+: optional LLM synthesis for the package ask, PDF/docx/zip
+  (side-effect-free generate dry-run) and hardened operator output; S17.16 makes
+  `GET /api/network-map/{id}` fall back to the mailbox `owner_person_id` and
+  return an empty graph (200) instead of 404 for a mailbox with an owner but no
+  L1 identity/edge graph (the Handoff demo mailbox), so its Network/Relationship
+  tabs degrade to "No contacts yet" rather than looking broken.
+  Deferred to S17.17+: optional LLM synthesis for the package ask, PDF/docx/zip
   export, manager approval, multi-recipient, **rich snapshotted relationship/
   project/owner trees** (S17.12 ships the lightweight nav tree only), and a
   stronger production auth boundary. See `docs/s17-handoff-package-mvp-plan.md`.
