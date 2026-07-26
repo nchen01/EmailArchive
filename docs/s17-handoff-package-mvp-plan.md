@@ -1,12 +1,13 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.14) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.15) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
-describe what is actually built.
+describe what is actually built. Manual demo runbook:
+`docs/s17-handoff-manual-demo-runbook.md`.
 
 Decision source: **D14** in `docs/decisions.md`.
 
-## 0. Sub-sprint status (as of S17.14)
+## 0. Sub-sprint status (as of S17.15)
 
 - **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
   state machine, audit vocab + safe metadata, API surface, capability-token
@@ -94,8 +95,18 @@ Decision source: **D14** in `docs/decisions.md`.
   and both excluded from evidence, so the sensitivity + noise gates are exercised.
   Guarded by `test_handoff_demo_seed_data_is_coherent` and end-to-end validated by
   `test_handoff_demo_seed_generates_publishes_and_excludes`.
+- **S17.15 ✓** — Manual demo hardening + runbook. Canonical
+  `docs/s17-handoff-manual-demo-runbook.md` (3 PowerShell windows: seed, backend,
+  frontend; full creator → recipient → export → new-version click-through;
+  states plainly that puluo is not the Handoff generation mailbox). The seed
+  script prints a clean copyable next-step block and gains a `--verify` mode that
+  dry-runs a generate to confirm non-empty, exclusion-clean claims/evidence with
+  NO publish/token side effects (`verify_seed`, guarded by
+  `test_handoff_demo_verify_reports_ok_without_side_effects`). The full flow was
+  driven end to end via the API; no manual-demo blockers were found. No generator
+  / recipient-security / one-time-code / access-model change.
 
-Deferred to S17.15+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred to S17.16+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
 approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
 inside the package (S17.12 ships the lightweight package-local nav tree only),
