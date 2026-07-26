@@ -28,7 +28,7 @@ cd C:\Users\PC\EmailArchive
 # 1. Seed the deterministic Handoff demo mailbox (no LLM, no Gmail, no key).
 #    --verify also dry-runs a generate to confirm the mailbox is demo-ready,
 #    with NO publish/token side effects.
-$env:DATABASE_URL='postgresql+psycopg2://ekc:<pw>@localhost:5432/ekc_dev'
+$env:DATABASE_URL='postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev'
 .\.venv\Scripts\python.exe scripts\seed_handoff_demo.py --verify
 ```
 

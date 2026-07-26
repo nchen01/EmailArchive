@@ -138,7 +138,7 @@ Two supported paths:
 
 - **Preferred — seed the deterministic demo mailbox (no LLM, no Gmail):**
   ```powershell
-  $env:DATABASE_URL='postgresql+psycopg2://ekc:<pw>@localhost:5432/ekc_dev'
+  $env:DATABASE_URL='postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev'
   .\.venv\Scripts\python.exe scripts\seed_handoff_demo.py
   ```
   Prints a `mailbox_id` for the isolated `handoff-demo@example.com` mailbox. The

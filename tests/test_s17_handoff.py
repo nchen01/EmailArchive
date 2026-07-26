@@ -1426,21 +1426,32 @@ def test_handoff_demo_seed_generates_publishes_and_excludes(env):
 @requires_db
 def test_handoff_demo_verify_reports_ok_without_side_effects(env):
     """The seed script's --verify helper (S17.15) confirms the mailbox would
-    generate a non-empty, exclusion-clean package and leaves NO package/audit
+    generate a non-empty, exclusion-clean package and leaves NO package OR audit
     rows behind (never publishes, never mints a code/session)."""
     from sqlalchemy import func, select
 
+    from services.db import models as orm
     from scripts.seed_handoff_demo import seed_into, verify_seed
 
     seed_into(env.session, env.mid, env.owner_pid)
+
+    def _audit_total() -> int:
+        s = _fresh()
+        try:
+            return s.execute(select(func.count()).select_from(orm.HandoffAuditEvent)).scalar_one()
+        finally:
+            s.close()
+
+    audit_before = _audit_total()
     result = verify_seed(env.session, env.mid)
     assert result["ok"] is True
     assert result["claims"] >= 6 and result["evidence"] >= 6 and result["excluded_ok"] is True
 
-    # No lasting side effects: verify left zero handoff packages for the mailbox.
+    # No lasting side effects: verify left zero handoff packages for the mailbox,
+    # and the candidate_generated audit row it wrote was cleaned up too (total
+    # audit-event count is unchanged).
     s = _fresh()
     try:
-        from services.db import models as orm
         n_pkg = s.execute(
             select(func.count()).select_from(orm.HandoffPackage)
             .where(orm.HandoffPackage.mailbox_id == env.mid)
@@ -1448,3 +1459,4 @@ def test_handoff_demo_verify_reports_ok_without_side_effects(env):
         assert n_pkg == 0
     finally:
         s.close()
+    assert _audit_total() == audit_before
