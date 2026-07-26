@@ -91,9 +91,9 @@ Key docs:
 - `docs/s7-implementation-plan.md` — S7 task breakdown and locked decisions
 - `docs/implementation-plan.md` — overall pipeline architecture
 
-Current status: **S0–S16.0 complete; S17.2–S17.17 (handoff package MVP, incl. the
+Current status: **S0–S16.0 complete; S17.2–S17.18 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
-supersede, static HTML export, a compact topic-centric recipient coverage brief,
+supersede, static HTML export, a compact three-part recipient coverage workspace,
 creator-only empty-generation diagnostic, refresh-safe workspace mailbox, a
 deterministic handoff-demo seed script, and a manual-demo runbook) shipped and
 end-to-end validated; S16 canonical-demo readiness still planned.** Manual demo:

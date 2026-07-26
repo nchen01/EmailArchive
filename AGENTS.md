@@ -177,7 +177,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17.2–S17.17 ✓** — Audited handoff package MVP (D14), shipped and
+- **S17.2–S17.18 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
   + recipient session/package endpoints; S17.6 read-only recipient view at
@@ -221,11 +221,17 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   coverage-area selector (`frontend/src/utils/coverageAreas.ts`) drives a focused
   panel (decisions/open-loops first, people/domains, evidence collapsed),
   grouped purely from the snapshot with honest evidence-subject labels (no
-  backend/API change); it supersedes + removes the S17.12 nav tree.
-  Deferred to S17.18+: optional LLM synthesis for the package ask, PDF/docx/zip
+  backend/API change); it supersedes + removes the S17.12 nav tree. S17.18 turns
+  that into a three-part recipient workspace — left coverage-area rail · center
+  brief (decisions/outcomes → next actions → blockers → key facts, evidence
+  tucked under a disclosure) · Related people & domains section
+  (`peopleDetailForEvidence`, honest "Sender"/"Domain contact" labels, no
+  invented roles, no volume=importance) + the package-local Ask.
+  Deferred to S17.19+: optional LLM synthesis for the package ask, PDF/docx/zip
   export, manager approval, multi-recipient, **rich snapshotted relationship/
-  project/owner trees** (S17.12 ships the lightweight nav tree only), and a
-  stronger production auth boundary. See `docs/s17-handoff-package-mvp-plan.md`.
+  project/owner trees** (S17.17–S17.18 ship a package-local topic workspace, not a
+  graph), and a stronger production auth boundary. See
+  `docs/s17-handoff-package-mvp-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 

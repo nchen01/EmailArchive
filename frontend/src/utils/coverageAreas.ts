@@ -81,6 +81,42 @@ export function peopleForEvidence(evidence: RecipientEvidence[]): string[] {
   return out;
 }
 
+export interface AreaPerson {
+  /** Display name if the package snapshotted one, else the address local-part. */
+  name: string;
+  /** Sender email domain (may be empty). */
+  domain: string;
+  /** HONEST, package-local context only — never an invented role and never a
+   * volume/importance signal. */
+  context: string;
+}
+
+/**
+ * People related to a set of evidence, derived ONLY from package-local sender
+ * fields. Distinct by (display, domain), first-appearance order (NOT ranked by
+ * message volume — that would imply importance). Context is honest: someone who
+ * authored a cited message is a "Sender"; a domain-only entry is a "Domain
+ * contact". No roles are invented.
+ */
+export function peopleDetailForEvidence(evidence: RecipientEvidence[]): AreaPerson[] {
+  const seen = new Set<string>();
+  const out: AreaPerson[] = [];
+  for (const e of evidence) {
+    const domain = (e.sender_domain || "").trim();
+    const display = (e.sender_display || "").trim();
+    const name = display || (domain ? "Domain contact" : "Unknown sender");
+    const key = `${display.toLowerCase()}|${domain.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      name,
+      domain,
+      context: display ? "Sender" : "Domain contact",
+    });
+  }
+  return out;
+}
+
 // ── Union-Find ───────────────────────────────────────────────────────────────
 class DSU {
   private parent: number[];
