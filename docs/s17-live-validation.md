@@ -1,4 +1,7 @@
-# S17 Handoff Package — Live Validation (current through S17.14)
+# S17 Handoff Package — Live Validation (current through S17.15)
+
+> For a step-by-step manual demo, see
+> **`docs/s17-handoff-manual-demo-runbook.md`**.
 
 **Originally:** 2026-07-23, S17.8 — end-to-end handoff package validation +
 docs/status alignment. **Kept current** through later sub-sprints.
@@ -11,7 +14,10 @@ with its own tests in `tests/test_s17_handoff.py`. S17.12 adds a frontend-only
 package-local recipient navigation tree (no backend, no new package facts);
 S17.13 the "Start over" fix + creator-only empty-generation diagnostic; and
 S17.14 a refresh-safe workspace mailbox + the deterministic handoff-demo seed
-(see §4 "Handoff demo readiness").
+(see §4 "Handoff demo readiness"); and S17.15 a canonical manual-demo runbook
+(`docs/s17-handoff-manual-demo-runbook.md`) + a `--verify` seed mode. The full
+creator → recipient → export → new-version flow was driven end to end via the API
+during S17.15 with no manual-demo blockers found.
 
 ---
 
@@ -156,7 +162,7 @@ Two supported paths:
 
 ---
 
-## 5. Deferred to S17.15+
+## 5. Deferred to S17.16+
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the

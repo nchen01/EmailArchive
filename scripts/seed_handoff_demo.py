@@ -193,30 +193,105 @@ def seed_into(session, mailbox_id: str, owner_person_id: str) -> dict:
     return {"threads": len(DEMO_THREADS), "messages": int(n_msgs), "events": int(n_events)}
 
 
-def seed() -> str:
+def verify_seed(session, mailbox_id: str) -> dict:
+    """Dry-run check that the seeded mailbox WOULD generate a good package, with NO
+    lasting side effects: generate a throwaway candidate, inspect it, then delete
+    the package + its audit rows. Never publishes, never mints a recipient/session/
+    capability code. Returns ``{ok, claims, evidence, excluded_ok}``.
+    """
+    import uuid
+
+    from services.handoff.generator import generate_candidate
+
+    pkg = orm.HandoffPackage(
+        mailbox_id=mailbox_id, creator_email=OWNER_EMAIL, reason="vacation",
+        lineage_id=str(uuid.uuid4()),
+    )
+    session.add(pkg)
+    session.flush()
+    session.add(orm.HandoffScope(package_id=pkg.id))
+    session.commit()
+    try:
+        counts = generate_candidate(session, pkg)
+        ev_headers = set(session.execute(
+            select(orm.HandoffEvidence.message_id_header)
+            .where(orm.HandoffEvidence.package_id == pkg.id)
+        ).scalars())
+        sensitive = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs if m.get("sensitivity")}
+        noise = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs if m.get("noise")}
+        excluded_ok = ev_headers.isdisjoint(sensitive | noise)
+        return {
+            "ok": counts["claims"] > 0 and counts["evidence"] > 0 and excluded_ok,
+            "claims": counts["claims"], "evidence": counts["evidence"],
+            "excluded_ok": excluded_ok,
+        }
+    finally:
+        # Leave zero trace: remove the throwaway package (cascades claims/evidence/
+        # scope/exclusions) and the candidate_generated audit row (no FK cascade).
+        session.execute(delete(orm.HandoffAuditEvent).where(orm.HandoffAuditEvent.package_id == pkg.id))
+        session.execute(delete(orm.HandoffPackage).where(orm.HandoffPackage.id == pkg.id))
+        session.commit()
+
+
+def _print_next_steps(mailbox_id: str, counts: dict) -> None:
+    print("=" * 68)
+    print("  HANDOFF DEMO MAILBOX SEEDED")
+    print("=" * 68)
+    print(f"  mailbox_id : {mailbox_id}")
+    print(f"  seeded     : {counts['threads']} threads / {counts['messages']} messages"
+          f" / {counts['events']} events")
+    print("  threads    : Nexus Auth, Connection Pool incident, ML Engineer")
+    print("               headcount, Security Audit remediation")
+    print("  expect     : ~7 claims / ~7 evidence on Generate")
+    print("  excluded   : 1 whole-thread-sensitive (comp review) + 1 noise (newsletter)")
+    print("-" * 68)
+    print("  1. Open   : http://localhost:5173/app")
+    print(f"  2. Load   : paste the mailbox_id above into the Mailbox ID box -> Load")
+    print("  3. Handoff tab -> Create draft -> Generate -> Publish -> copy link")
+    print("-" * 68)
+    print("  NOTE: puluo is NOT the full Handoff demo mailbox (it has 0 Event rows);")
+    print("        use it for Cover-for-me / Relationship Map only. Handoff generation")
+    print("        needs THIS seeded mailbox.")
+    print("=" * 68)
+
+
+def seed(verify: bool = False) -> str:
     from services.db.engine import SessionLocal  # delayed: engine reads DATABASE_URL at construction
 
     session = SessionLocal()
     try:
         mailbox_id, owner_pid = get_or_create_mailbox(session)
         counts = seed_into(session, mailbox_id, owner_pid)
-        print(f"Seeded handoff-demo mailbox_id={mailbox_id}")
-        print(f"  threads={counts['threads']} messages={counts['messages']} events={counts['events']}")
-        print("  safe smoke threads: Nexus Auth, Connection Pool incident, ML Engineer")
-        print("  headcount, Security Audit remediation")
-        print("  excluded: 1 whole-thread-sensitive (comp review) + 1 noise (newsletter)")
-        print()
-        print("Next: load this mailbox_id in the workspace -> Handoff -> Create draft ->")
-        print("      Generate -> expect ~7 claims / 7 evidence -> Publish -> copy link.")
+        _print_next_steps(mailbox_id, counts)
+        if verify:
+            result = verify_seed(session, mailbox_id)
+            status = "OK" if result["ok"] else "FAILED"
+            print(f"  verify     : {status} "
+                  f"(claims={result['claims']}, evidence={result['evidence']}, "
+                  f"sensitive/noise excluded={result['excluded_ok']}) "
+                  f"[no package/token side effects]")
+            print("=" * 68)
+            if not result["ok"]:
+                raise SystemExit("seed verification failed")
         return mailbox_id
     finally:
         session.close()
 
 
 def main() -> None:
+    import argparse
+
     from scripts._env import load_local_env
     load_local_env()  # load .env before DATABASE_URL is read by db/engine.py
-    seed()
+
+    parser = argparse.ArgumentParser(description="Seed the deterministic Handoff demo mailbox.")
+    parser.add_argument(
+        "--verify", action="store_true",
+        help="after seeding, dry-run a generate to confirm non-empty claims/evidence "
+             "and sensitive/noise exclusion (no publish/token side effects)",
+    )
+    args = parser.parse_args()
+    seed(verify=args.verify)
 
 
 if __name__ == "__main__":

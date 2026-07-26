@@ -1421,3 +1421,30 @@ def test_handoff_demo_seed_generates_publishes_and_excludes(env):
     assert "Nexus Auth SSO cutover" in html
     for marker in excluded_markers:
         assert marker not in html, f"export HTML leaked excluded marker: {marker}"
+
+
+@requires_db
+def test_handoff_demo_verify_reports_ok_without_side_effects(env):
+    """The seed script's --verify helper (S17.15) confirms the mailbox would
+    generate a non-empty, exclusion-clean package and leaves NO package/audit
+    rows behind (never publishes, never mints a code/session)."""
+    from sqlalchemy import func, select
+
+    from scripts.seed_handoff_demo import seed_into, verify_seed
+
+    seed_into(env.session, env.mid, env.owner_pid)
+    result = verify_seed(env.session, env.mid)
+    assert result["ok"] is True
+    assert result["claims"] >= 6 and result["evidence"] >= 6 and result["excluded_ok"] is True
+
+    # No lasting side effects: verify left zero handoff packages for the mailbox.
+    s = _fresh()
+    try:
+        from services.db import models as orm
+        n_pkg = s.execute(
+            select(func.count()).select_from(orm.HandoffPackage)
+            .where(orm.HandoffPackage.mailbox_id == env.mid)
+        ).scalar_one()
+        assert n_pkg == 0
+    finally:
+        s.close()

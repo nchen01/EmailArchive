@@ -177,7 +177,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17.2–S17.14 ✓** — Audited handoff package MVP (D14), shipped and
+- **S17.2–S17.15 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
   + recipient session/package endpoints; S17.6 read-only recipient view at
@@ -209,8 +209,11 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   a reload, and adds `scripts/seed_handoff_demo.py` — a deterministic, LLM-free,
   puluo-isolated demo mailbox with seeded L1 `Event` rows so the full Handoff flow
   (generate → publish → recipient → export → versioning) can be demoed (puluo has
-  zero Events and cannot generate a package until LLM event extraction runs).
-  Deferred to S17.15+: optional LLM synthesis for the package ask, PDF/docx/zip
+  zero Events and cannot generate a package until LLM event extraction runs);
+  S17.15 adds a canonical manual-demo runbook
+  (`docs/s17-handoff-manual-demo-runbook.md`) + a `--verify` seed mode
+  (side-effect-free generate dry-run) and hardened operator output.
+  Deferred to S17.16+: optional LLM synthesis for the package ask, PDF/docx/zip
   export, manager approval, multi-recipient, **rich snapshotted relationship/
   project/owner trees** (S17.12 ships the lightweight nav tree only), and a
   stronger production auth boundary. See `docs/s17-handoff-package-mvp-plan.md`.
