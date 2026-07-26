@@ -85,11 +85,15 @@ Decision source: **D14** in `docs/decisions.md`.
   the mailbox loaded instead of showing "Load a mailbox to begin"; nothing else
   is stored (no key/token/content) and `RecipientPackage`'s own storage is
   untouched. (2) `scripts/seed_handoff_demo.py` seeds a deterministic, LLM-free,
-  puluo-isolated demo mailbox (`handoff-demo@example.com`) with threads +
-  messages + L1 `Event` rows so the full flow (generate → publish → recipient →
-  export → new-version) can be exercised end to end; one seeded event cites a
-  whole-thread-sensitive message so the exclusion gate is exercised too. Its data
-  shape is guarded by `test_handoff_demo_seed_data_is_coherent`.
+  puluo-isolated demo mailbox (`handoff-demo@example.com`) with a coherent
+  engineering smoke dataset — Nexus Auth, a Connection Pool incident, ML Engineer
+  headcount, Security Audit remediation (6 threads / 9 messages / 9 events, ~7
+  claims / 7 evidence) — so the full flow (generate → publish → recipient →
+  export → new-version) can be exercised end to end. It also seeds one
+  whole-thread-sensitive thread and one noise newsletter, both cited by an event
+  and both excluded from evidence, so the sensitivity + noise gates are exercised.
+  Guarded by `test_handoff_demo_seed_data_is_coherent` and end-to-end validated by
+  `test_handoff_demo_seed_generates_publishes_and_excludes`.
 
 Deferred to S17.15+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager

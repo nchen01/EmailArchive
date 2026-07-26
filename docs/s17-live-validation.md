@@ -135,13 +135,18 @@ Two supported paths:
   $env:DATABASE_URL='postgresql+psycopg2://ekc:<pw>@localhost:5432/ekc_dev'
   .\.venv\Scripts\python.exe scripts\seed_handoff_demo.py
   ```
-  Prints a `mailbox_id` for the isolated `handoff-demo@example.com` mailbox (3
-  threads / 4 messages / 4 events; 1 event cites a whole-thread-sensitive message
-  so the exclusion gate is exercised). Load that id in the workspace → Handoff →
-  Create draft → Generate → expect ~3 claims / 3 evidence across `acme.com` +
-  `contoso.com` → Publish → recipient → export → new-version all work. The script
-  only ever touches its own mailbox (idempotent; never puluo). Its data shape is
-  guarded by `test_handoff_demo_seed_data_is_coherent`.
+  Prints a `mailbox_id` for the isolated `handoff-demo@example.com` mailbox. The
+  smoke dataset is a coherent engineering handoff — **Nexus Auth, Connection Pool
+  incident, ML Engineer headcount, Security Audit remediation** (6 threads / 9
+  messages / 9 events) — plus one whole-thread-sensitive thread (comp review) and
+  one noise newsletter, both cited by an event and both **excluded** from
+  evidence. Load that id in the workspace → Handoff → Create draft → Generate →
+  expect **~7 claims / 7 evidence** across `acme.dev` + `datadoghq.com` → Publish
+  → recipient → export → new-version all work. The script only ever touches its
+  own mailbox (idempotent; never puluo). Verified end to end by
+  `test_handoff_demo_seed_generates_publishes_and_excludes` (asserts the sensitive
+  + noise content is absent from evidence, the recipient view, and the HTML
+  export) and its data shape by `test_handoff_demo_seed_data_is_coherent`.
 
 - **Real mailbox — run L1 event extraction:** the Anthropic-LLM `extract_fn`
   (`services/enrich/events_llm.py`, requires `ANTHROPIC_API_KEY`) inside the
