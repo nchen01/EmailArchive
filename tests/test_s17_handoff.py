@@ -1334,3 +1334,27 @@ def test_recipient_package_never_exposes_generation_diagnostic(env):
     rv = env.client.get("/api/handoff/recipient/package",
                         headers={"Authorization": f"Bearer {token}"}).json()
     assert "generation" not in rv  # creator-only field, never on the recipient view
+
+
+# ── S17.14 — handoff demo-seed fixture coherence (DB-free) ───────────────────
+
+def test_handoff_demo_seed_data_is_coherent():
+    """Guards scripts/seed_handoff_demo.py so a drifting header/event can't ship a
+    demo mailbox that generates an empty package. DB-free: only inspects the
+    module's data tables (importing it constructs no DB engine)."""
+    from scripts.seed_handoff_demo import _EVENTS, _THREADS
+
+    headers = {m["header"] for _s, msgs in _THREADS for m in msgs}
+    sensitive = {m["header"] for _s, msgs in _THREADS for m in msgs if m.get("sensitivity")}
+
+    for etype, _summary, hs in _EVENTS:
+        assert etype in {"proposed", "did", "outcome"}  # maps to a claim kind
+        assert hs and all(h in headers for h in hs)  # every citation is a real seeded message
+
+    # At least one event cites only safe (non-sensitive) messages, so a default-
+    # scope generate produces a non-empty package (claims + evidence).
+    safe_events = [e for e in _EVENTS if all(h not in sensitive for h in e[2])]
+    assert len(safe_events) >= 1
+    # And at least one sensitive citation exists, so the demo also exercises the
+    # exclusion gate (a dropped claim + a visible exclusion count).
+    assert sensitive

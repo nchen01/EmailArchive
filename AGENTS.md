@@ -177,7 +177,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17.2–S17.13 ✓** — Audited handoff package MVP (D14), shipped and
+- **S17.2–S17.14 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
   + recipient session/package endpoints; S17.6 read-only recipient view at
@@ -203,8 +203,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   creator-only empty-generation diagnostic (`generation` on the creator package
   response: `no_events_for_mailbox` / `no_events_in_scope` /
   `all_events_excluded_by_policy`) that explains an empty candidate without
-  weakening any invariant and is never shown to the recipient.
-  Deferred to S17.14+: optional LLM synthesis for the package ask, PDF/docx/zip
+  weakening any invariant and is never shown to the recipient; S17.14 makes the
+  creator workspace mailbox refresh-safe (persists ONLY the mailbox UUID in
+  `sessionStorage`, key `ekc_workspace_mailbox_id`) so creator deep links survive
+  a reload, and adds `scripts/seed_handoff_demo.py` — a deterministic, LLM-free,
+  puluo-isolated demo mailbox with seeded L1 `Event` rows so the full Handoff flow
+  (generate → publish → recipient → export → versioning) can be demoed (puluo has
+  zero Events and cannot generate a package until LLM event extraction runs).
+  Deferred to S17.15+: optional LLM synthesis for the package ask, PDF/docx/zip
   export, manager approval, multi-recipient, **rich snapshotted relationship/
   project/owner trees** (S17.12 ships the lightweight nav tree only), and a
   stronger production auth boundary. See `docs/s17-handoff-package-mvp-plan.md`.
