@@ -1387,16 +1387,37 @@ def test_handoff_demo_seed_generates_publishes_and_excludes(env):
     assert ev_headers.isdisjoint(sensitive) and ev_headers.isdisjoint(noise)
     assert gen["exclusion_counts"].get("sensitivity", 0) >= 1
 
-    # Recipient view renders and never leaks the excluded content.
+    # Every excluded identifier + piece of metadata that must NOT surface anywhere
+    # the recipient (or an exported package) can see: sensitive & noise headers,
+    # the sensitive subject/body, and the noise subject/sender/domain.
+    excluded_headers = sensitive | noise
+    excluded_markers = [
+        "comp-1@acme.dev",              # sensitive header
+        "news-1@techcrunch.com",        # noise header
+        "Confidential Q3 comp review",  # sensitive subject
+        "compensation adjustments",     # sensitive body
+        "Your weekly digest",           # noise subject
+        "weekly digest",
+        "TechCrunch",                   # noise sender display
+        "techcrunch.com",               # noise sender domain
+    ]
+
+    # Recipient view renders and never leaks the excluded content — check both the
+    # evidence headers AND the full serialized payload (metadata, not just body).
     code = _publish(env, pid).json()["capability_code"]
     token = _exchange(env, code).json()["session_token"]
     rv = env.client.get("/api/handoff/recipient/package",
                         headers={"Authorization": f"Bearer {token}"}).json()
     rv_headers = {e["message_id_header"] for e in rv["evidence"]}
-    assert rv_headers.isdisjoint(sensitive) and rv_headers.isdisjoint(noise)
-    assert "Nexus Auth SSO cutover" in json_dumps(rv)  # a safe evidence subject is present
+    assert rv_headers.isdisjoint(excluded_headers)
+    rv_blob = json_dumps(rv)
+    for marker in excluded_markers:
+        assert marker not in rv_blob, f"recipient payload leaked excluded marker: {marker}"
+    assert "Nexus Auth SSO cutover" in rv_blob  # a safe evidence subject is present
 
-    # Static HTML export renders, includes safe content, excludes sensitive/noise.
+    # Static HTML export renders, includes safe content, and leaks none of the same
+    # excluded identifiers/metadata.
     html = env.client.get(f"/api/handoff/{pid}/export.html").text
     assert "Nexus Auth SSO cutover" in html
-    assert "compensation adjustments" not in html and "weekly digest" not in html
+    for marker in excluded_markers:
+        assert marker not in html, f"export HTML leaked excluded marker: {marker}"
