@@ -1,13 +1,13 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.16) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.17) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
 describe what is actually built. Manual demo runbook:
 `docs/s17-handoff-manual-demo-runbook.md`.
 
 Decision source: **D14** in `docs/decisions.md`.
 
-## 0. Sub-sprint status (as of S17.16)
+## 0. Sub-sprint status (as of S17.17)
 
 - **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
   state machine, audit vocab + safe metadata, API surface, capability-token
@@ -115,12 +115,29 @@ Decision source: **D14** in `docs/decisions.md`.
   Confirmed the demo mailbox generates 7 claims / 7 evidence on the default scope
   with the comp-review + newsletter still excluded (no generation bug). Guarded by
   `test_owner_without_identity_graph_returns_empty_graph`; runbook updated.
+- **S17.17 ✓** — Compact topic-centric recipient package UI. The recipient view
+  is now a focused coverage brief: a compact **coverage-area selector** (topic
+  pills) drives a single focused panel (decisions + open loops/next actions first,
+  then other kinds, then people/domains, with supporting evidence collapsed by
+  default). Coverage areas are derived PURELY from the snapshot
+  (`frontend/src/utils/coverageAreas.ts`, `buildCoverageAreas`): conservative
+  clustering on shared cited evidence / >=2 shared salient tokens / one shared
+  *distinctive* (df<=2) token, labelled by a representative **evidence subject**
+  (honest — the payload carries no true Project labels, so no backend/API change
+  was made). The seeded demo package resolves to the 4 expected areas (Nexus Auth,
+  Connection Pool/INC-482, Security Audit/SOC2, ML Engineer). This **supersedes
+  and removes** the S17.12 package navigation tree (`PackageNavigationTree.tsx` +
+  `packageTree.ts` deleted). Package-local Ask and the HTML export are unchanged;
+  privacy parity holds (no mailbox id / counts / Gmail/source links / raw code /
+  token / sensitive-noise content; people/domains derive only from evidence
+  sender fields, labelled "Appears in supporting evidence" with no volume=
+  importance). Creator review is unchanged this sprint.
 
-Deferred to S17.17+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred to S17.18+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
 approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
-inside the package (S17.12 ships the lightweight package-local nav tree only),
-and a stronger production auth boundary.
+inside the package (S17.17 ships a package-local topic brief, not a graph), a
+topic-grouped creator review, and a stronger production auth boundary.
 
 ## 1. Product Thesis
 
