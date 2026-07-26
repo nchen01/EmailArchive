@@ -1336,25 +1336,67 @@ def test_recipient_package_never_exposes_generation_diagnostic(env):
     assert "generation" not in rv  # creator-only field, never on the recipient view
 
 
-# ── S17.14 — handoff demo-seed fixture coherence (DB-free) ───────────────────
+# ── S17.14 — handoff demo-seed fixture (coherence + end-to-end) ──────────────
 
 def test_handoff_demo_seed_data_is_coherent():
     """Guards scripts/seed_handoff_demo.py so a drifting header/event can't ship a
     demo mailbox that generates an empty package. DB-free: only inspects the
     module's data tables (importing it constructs no DB engine)."""
-    from scripts.seed_handoff_demo import _EVENTS, _THREADS
+    from scripts.seed_handoff_demo import DEMO_EVENTS, DEMO_THREADS
 
-    headers = {m["header"] for _s, msgs in _THREADS for m in msgs}
-    sensitive = {m["header"] for _s, msgs in _THREADS for m in msgs if m.get("sensitivity")}
+    headers = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs}
+    sensitive = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs if m.get("sensitivity")}
+    noise = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs if m.get("noise")}
 
-    for etype, _summary, hs in _EVENTS:
+    for etype, _summary, hs in DEMO_EVENTS:
         assert etype in {"proposed", "did", "outcome"}  # maps to a claim kind
         assert hs and all(h in headers for h in hs)  # every citation is a real seeded message
 
-    # At least one event cites only safe (non-sensitive) messages, so a default-
+    # >=1 event cites only safe (non-sensitive, non-noise) messages, so a default-
     # scope generate produces a non-empty package (claims + evidence).
-    safe_events = [e for e in _EVENTS if all(h not in sensitive for h in e[2])]
+    excluded = sensitive | noise
+    safe_events = [e for e in DEMO_EVENTS if all(h not in excluded for h in e[2])]
     assert len(safe_events) >= 1
-    # And at least one sensitive citation exists, so the demo also exercises the
-    # exclusion gate (a dropped claim + a visible exclusion count).
-    assert sensitive
+    # The demo also exercises BOTH exclusion gates.
+    assert sensitive and noise
+
+
+@requires_db
+def test_handoff_demo_seed_generates_publishes_and_excludes(env):
+    """End-to-end validation of the demo dataset: seed it into a mailbox, then run
+    generate -> publish -> recipient -> export, asserting claims/evidence exist and
+    that the sensitive + noise content is excluded everywhere the recipient/export
+    can see."""
+    from scripts.seed_handoff_demo import DEMO_THREADS, seed_into
+
+    seed_into(env.session, env.mid, env.owner_pid)
+
+    pid = env.client.post(f"/api/handoff/{env.mid}", json={"reason": "vacation", "title": "Coverage"}).json()["id"]
+    gen = env.client.post(f"/api/handoff/{pid}/generate").json()
+    assert gen["status"] == "generated"
+    ev_headers = {e["message_id_header"] for e in gen["evidence"]}
+
+    # Non-empty package with both claim kinds represented.
+    assert len(gen["claims"]) >= 6 and len(gen["evidence"]) >= 6
+    kinds = {c["kind"] for c in gen["claims"]}
+    assert "decision" in kinds and "open_loop" in kinds
+
+    # Sensitive + noise messages are excluded from evidence; sensitivity is counted.
+    sensitive = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs if m.get("sensitivity")}
+    noise = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs if m.get("noise")}
+    assert ev_headers.isdisjoint(sensitive) and ev_headers.isdisjoint(noise)
+    assert gen["exclusion_counts"].get("sensitivity", 0) >= 1
+
+    # Recipient view renders and never leaks the excluded content.
+    code = _publish(env, pid).json()["capability_code"]
+    token = _exchange(env, code).json()["session_token"]
+    rv = env.client.get("/api/handoff/recipient/package",
+                        headers={"Authorization": f"Bearer {token}"}).json()
+    rv_headers = {e["message_id_header"] for e in rv["evidence"]}
+    assert rv_headers.isdisjoint(sensitive) and rv_headers.isdisjoint(noise)
+    assert "Nexus Auth SSO cutover" in json_dumps(rv)  # a safe evidence subject is present
+
+    # Static HTML export renders, includes safe content, excludes sensitive/noise.
+    html = env.client.get(f"/api/handoff/{pid}/export.html").text
+    assert "Nexus Auth SSO cutover" in html
+    assert "compensation adjustments" not in html and "weekly digest" not in html
