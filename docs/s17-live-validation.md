@@ -1,4 +1,4 @@
-# S17 Handoff Package — Live Validation (current through S17.18)
+# S17 Handoff Package — Live Validation (current through S17.19)
 
 > For a step-by-step manual demo, see
 > **`docs/s17-handoff-manual-demo-runbook.md`**.
@@ -30,7 +30,11 @@ Security Audit), validated by re-running the grouping over the live recipient
 payload; recipient privacy parity is unchanged. S17.18 turns that into a
 three-part recipient workspace — left coverage-area rail · center brief · a
 separate Related people & domains section + the package-local Ask — with people
-derived only from evidence sender fields and honest context labels.
+derived only from evidence sender fields and honest context labels. S17.19
+finishes the usability pass: Ask is a workspace-level top tab (not a
+bottom-of-page section) and supporting evidence is attached inline to each claim
+(per-claim expandable disclosure; the global supporting-messages section
+removed), still package-local and "no citation, no claim".
 
 ---
 
@@ -175,7 +179,7 @@ Two supported paths:
 
 ---
 
-## 5. Deferred to S17.19+
+## 5. Deferred to S17.20+
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the

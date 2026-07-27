@@ -1,13 +1,13 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.18) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.19) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
 describe what is actually built. Manual demo runbook:
 `docs/s17-handoff-manual-demo-runbook.md`.
 
 Decision source: **D14** in `docs/decisions.md`.
 
-## 0. Sub-sprint status (as of S17.18)
+## 0. Sub-sprint status (as of S17.19)
 
 - **S17.2 ✓** — Domain spec (`docs/s17.2-handoff-package-domain-spec.md`):
   state machine, audit vocab + safe metadata, API surface, capability-token
@@ -146,12 +146,23 @@ Decision source: **D14** in `docs/decisions.md`.
   "Coverage areas" / evidence-derived contacts are used). Privacy parity
   unchanged (no mailbox id / counts / Gmail/source links / source-message calls /
   raw code / token / sensitive-noise content). Creator review unchanged.
+- **S17.19 ✓** — Recipient workspace usability. Two S17.18 pain points fixed:
+  (1) package-local **Ask** is now a workspace-level tab at the top ("Coverage
+  brief" | "Ask about this handoff"), one click from the header — never buried at
+  the bottom of the brief/evidence stack. (2) **Supporting evidence is attached
+  inline to the specific claim it supports**: each decision/open-loop/key-fact
+  renders its own expandable "N supporting message(s)" disclosure showing only
+  that claim's cited evidence; the separate global supporting-messages section is
+  removed. A claim with no in-package evidence is dropped ("no citation, no
+  claim"). Related people & domains stay a separate compact section. Frontend-only
+  (`RecipientPackage` tabs + `ClaimRow` inline disclosure + a package-local
+  header→evidence resolver); no backend/API change; privacy parity unchanged.
 
-Deferred to S17.19+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred to S17.20+: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
 approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
-inside the package (S17.17 ships a package-local topic brief, not a graph), a
-topic-grouped creator review, and a stronger production auth boundary.
+inside the package (S17.17–S17.19 ship a package-local topic workspace, not a
+graph), a topic-grouped creator review, and a stronger production auth boundary.
 
 ## 1. Product Thesis
 

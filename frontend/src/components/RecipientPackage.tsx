@@ -275,6 +275,19 @@ function PackageDocument({
   const [selectedId, setSelectedId] = useState<string | null>(areas[0]?.id ?? null);
   const selected = areas.find((a) => a.id === selectedId) ?? areas[0] ?? null;
 
+  // Workspace-level tab so package-local Ask is always one click from the top —
+  // never buried at the bottom of the brief/evidence stack.
+  const [tab, setTab] = useState<"brief" | "ask">("brief");
+
+  // Resolve a claim's cited headers to their in-package evidence, so evidence can
+  // render directly under the claim it supports. Package-local only.
+  const byHeader = useMemo(
+    () => new Map(pkg.evidence.map((e) => [e.message_id_header, e])),
+    [pkg.evidence],
+  );
+  const resolveEvidence = (headers: string[]): RecipientEvidence[] =>
+    headers.map((h) => byHeader.get(h)).filter((e): e is RecipientEvidence => e != null);
+
   return (
     <article className="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       {/* Document header band — the delivered-package identity. */}
@@ -302,29 +315,40 @@ function PackageDocument({
           <p className="mt-1 leading-relaxed text-emerald-800">{pkg.privacy_posture.note}</p>
         </aside>
 
-        {areas.length === 0 ? (
-          <section className="mt-8">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              What you need to know
-            </h2>
-            <p className="mt-2 text-sm text-slate-400">This handoff has no summary points.</p>
-            {sessionToken ? <AskBox sessionToken={sessionToken} /> : null}
-          </section>
-        ) : (
-          // Three-part workspace: coverage-area rail · brief · people + ask.
-          <div className="mt-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
-            <CoverageAreaRail
-              areas={areas}
-              selectedId={selected?.id ?? null}
-              onSelect={setSelectedId}
-            />
-            <div className="mt-6 min-w-0 lg:mt-0">
-              {selected ? <AreaBrief area={selected} /> : null}
-              {selected ? <PeopleSection area={selected} /> : null}
-              {sessionToken ? <AskBox sessionToken={sessionToken} /> : null}
+        {/* Workspace tabs — Ask sits at the top, alongside the coverage brief. */}
+        <div className="mt-6 flex gap-1 border-b border-slate-200" role="tablist">
+          <WorkspaceTab active={tab === "brief"} onClick={() => setTab("brief")}>
+            Coverage brief
+          </WorkspaceTab>
+          {sessionToken ? (
+            <WorkspaceTab active={tab === "ask"} onClick={() => setTab("ask")}>
+              Ask about this handoff
+            </WorkspaceTab>
+          ) : null}
+        </div>
+
+        <div className="mt-5">
+          {tab === "ask" && sessionToken ? (
+            <AskBox sessionToken={sessionToken} />
+          ) : areas.length === 0 ? (
+            <p className="text-sm text-slate-400">This handoff has no summary points.</p>
+          ) : (
+            // Coverage brief: area rail · brief (claim-attached evidence) · people.
+            <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
+              <CoverageAreaRail
+                areas={areas}
+                selectedId={selected?.id ?? null}
+                onSelect={setSelectedId}
+              />
+              <div className="mt-6 min-w-0 lg:mt-0">
+                {selected ? (
+                  <AreaBrief area={selected} resolveEvidence={resolveEvidence} />
+                ) : null}
+                {selected ? <PeopleSection area={selected} /> : null}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <footer className="mt-9 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-400">
           This is a read-only handoff package. It shows only the messages the
@@ -333,6 +357,34 @@ function PackageDocument({
         </footer>
       </div>
     </article>
+  );
+}
+
+/** A workspace-level tab button (Coverage brief / Ask). */
+function WorkspaceTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={
+        "-mb-px border-b-2 px-3 py-2 text-sm font-medium " +
+        (active
+          ? "border-indigo-600 text-indigo-700"
+          : "border-transparent text-slate-500 hover:text-slate-700")
+      }
+    >
+      {children}
+    </button>
   );
 }
 
@@ -395,15 +447,35 @@ const BRIEF_SECTIONS: { heading: string; kinds: string[] }[] = [
   { heading: "Key facts", kinds: ["briefing", "project_state", "person_note"] },
 ];
 
-/** Middle reading surface: a compact brief for the selected coverage area, with
- * evidence tucked under an expandable disclosure (not the dominant view). */
-function AreaBrief({ area }: { area: CoverageArea }) {
-  const grouped = area.claims.reduce<Record<string, RecipientClaim[]>>((acc, c) => {
+/** Middle reading surface: a compact brief for the selected coverage area.
+ * Evidence is attached INLINE to the specific claim it supports (an expandable
+ * disclosure inside each claim), not a separate global section. A claim with no
+ * in-package evidence is dropped entirely ("no citation, no claim"). */
+function AreaBrief({
+  area,
+  resolveEvidence,
+}: {
+  area: CoverageArea;
+  resolveEvidence: (headers: string[]) => RecipientEvidence[];
+}) {
+  // Only claims backed by in-package evidence are shown.
+  const supported = area.claims.filter(
+    (c) => resolveEvidence(c.source_message_id_headers).length > 0,
+  );
+  const grouped = supported.reduce<Record<string, RecipientClaim[]>>((acc, c) => {
     (acc[c.kind] ??= []).push(c);
     return acc;
   }, {});
   const shownKinds = new Set(BRIEF_SECTIONS.flatMap((s) => s.kinds));
   const extraKinds = Object.keys(grouped).filter((k) => !shownKinds.has(k));
+
+  const renderClaims = (claims: RecipientClaim[]) => (
+    <ul className="mt-2 space-y-2">
+      {claims.map((c) => (
+        <ClaimRow key={c.id} claim={c} evidence={resolveEvidence(c.source_message_id_headers)} />
+      ))}
+    </ul>
+  );
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5">
@@ -422,11 +494,7 @@ function AreaBrief({ area }: { area: CoverageArea }) {
             <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
               {sec.heading}
             </div>
-            <ul className="mt-2 space-y-2">
-              {claims.map((c) => (
-                <ClaimRow key={c.id} claim={c} />
-              ))}
-            </ul>
+            {renderClaims(claims)}
           </div>
         );
       })}
@@ -436,29 +504,12 @@ function AreaBrief({ area }: { area: CoverageArea }) {
           <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
             {PANEL_KIND_HEADING[kind] ?? kind}
           </div>
-          <ul className="mt-2 space-y-2">
-            {grouped[kind].map((c) => (
-              <ClaimRow key={c.id} claim={c} />
-            ))}
-          </ul>
+          {renderClaims(grouped[kind])}
         </div>
       ))}
 
-      {area.claims.length === 0 ? (
+      {supported.length === 0 ? (
         <p className="mt-3 text-sm text-slate-400">No summary points in this area.</p>
-      ) : null}
-
-      {area.evidence.length > 0 ? (
-        <details className="mt-5 rounded-md border border-slate-200 bg-slate-50">
-          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-700">
-            Supporting messages ({area.evidence.length})
-          </summary>
-          <ul className="space-y-3 px-3 pb-3">
-            {area.evidence.map((e) => (
-              <EvidenceItem key={e.message_id_header} ev={e} />
-            ))}
-          </ul>
-        </details>
       ) : null}
     </section>
   );
@@ -497,15 +548,23 @@ function PeopleSection({ area }: { area: CoverageArea }) {
   );
 }
 
-function ClaimRow({ claim }: { claim: RecipientClaim }) {
-  const cited = claim.source_message_id_headers.length;
+/** One claim, with its OWN supporting evidence inline (an expandable disclosure
+ * showing only the messages this claim cites). */
+function ClaimRow({ claim, evidence }: { claim: RecipientClaim; evidence: RecipientEvidence[] }) {
   return (
     <li className="rounded-md border border-slate-100 bg-white px-3 py-2 text-sm shadow-sm">
       <div className="text-slate-800">{claim.text}</div>
-      {cited > 0 ? (
-        <div className="mt-1 text-xs text-slate-400">
-          {cited} supporting message{cited === 1 ? "" : "s"}
-        </div>
+      {evidence.length > 0 ? (
+        <details className="mt-1.5">
+          <summary className="cursor-pointer select-none text-xs font-medium text-indigo-600 hover:text-indigo-700">
+            {evidence.length} supporting message{evidence.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-2 space-y-2">
+            {evidence.map((e) => (
+              <EvidenceItem key={e.message_id_header} ev={e} />
+            ))}
+          </ul>
+        </details>
       ) : null}
     </li>
   );
@@ -563,7 +622,7 @@ function AskBox({ sessionToken }: { sessionToken: string }) {
   };
 
   return (
-    <section className="mt-8 rounded-md border border-indigo-200 bg-indigo-50 p-4">
+    <section className="rounded-md border border-indigo-200 bg-indigo-50 p-4">
       <h2 className="text-sm font-semibold text-indigo-900">Ask about this handoff</h2>
       <p className="mt-0.5 text-xs text-indigo-700">
         Answers come only from this package — the sender's mailbox is not searched.
