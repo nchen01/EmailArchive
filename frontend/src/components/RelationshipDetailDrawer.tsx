@@ -57,19 +57,19 @@ export function RelationshipDetailDrawer({
 
   return (
     <aside
-      className={`fixed right-0 top-0 z-30 flex h-full w-[360px] flex-col border-l border-slate-200 bg-white shadow-xl transition-transform duration-300 ${
+      className={`fixed right-0 top-0 z-30 flex h-full w-[360px] flex-col border-l border-line bg-surface shadow-xl transition-transform duration-300 ${
         open ? "translate-x-0" : "translate-x-full"
       }`}
       aria-hidden={!open}
     >
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-600">
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
+        <h2 className="text-sm font-semibold text-muted">
           {selection?.kind === "edge" ? "Relationship detail" : "Node detail"}
         </h2>
         <button
           type="button"
           onClick={onClose}
-          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          className="rounded p-1 text-faint hover:bg-app2 hover:text-muted"
           aria-label="Close detail"
         >
           ✕
@@ -94,8 +94,8 @@ export function RelationshipDetailDrawer({
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="mb-3">
-      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="text-sm text-slate-800">{value}</div>
+      <div className="text-[11px] uppercase tracking-wide text-faint">{label}</div>
+      <div className="text-sm text-ink">{value}</div>
     </div>
   );
 }
@@ -168,24 +168,24 @@ function SourceMessageInspector({
       <button
         type="button"
         onClick={onBack}
-        className="mb-3 text-[11px] font-medium text-slate-500 hover:text-slate-700"
+        className="mb-3 text-[11px] font-medium text-muted hover:text-ink"
       >
         ← Back to relationship
       </button>
       {state === "loading" ? (
-        <p className="text-sm text-slate-500">Loading message detail…</p>
+        <p className="text-sm text-muted">Loading message detail…</p>
       ) : state === "ready" && detail ? (
         <SourceDetailView source={detail} />
       ) : state === "unavailable" ? (
-        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+        <div className="rounded-md border border-line bg-app2 px-3 py-2 text-sm text-muted">
           Detail not available for this message. It may be excluded or no longer
           present. The relationship still references it by the ID below.
-          <div className="mt-2 break-all rounded bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500">
+          <div className="mt-2 break-all rounded bg-app2 px-2 py-1 font-mono text-[11px] text-muted">
             {header}
           </div>
         </div>
       ) : (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        <div className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
           Couldn't load message detail. Try again.
         </div>
       )}
@@ -247,7 +247,7 @@ function EdgeDetail({
       />
       {edge.source_message_ids.length > 0 ? (
         <div className="mb-3">
-          <div className="text-[11px] uppercase tracking-wide text-slate-400">
+          <div className="text-[11px] uppercase tracking-wide text-faint">
             Source messages ({edge.source_message_ids.length})
           </div>
           <ul className="mt-1 space-y-1">
@@ -257,7 +257,7 @@ function EdgeDetail({
                   type="button"
                   onClick={() => setInspecting(id)}
                   title="Inspect this source message"
-                  className="w-full break-all rounded bg-slate-100 px-2 py-1 text-left font-mono text-[10px] text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                  className="w-full break-all rounded bg-app2 px-2 py-1 text-left font-mono text-[10px] text-muted hover:bg-line hover:text-ink"
                 >
                   {id}
                 </button>
@@ -270,10 +270,10 @@ function EdgeDetail({
         // citation exists. Explain the provenance instead of showing nothing —
         // never fabricate a message id here.
         <div className="mb-3">
-          <div className="text-[11px] uppercase tracking-wide text-slate-400">
+          <div className="text-[11px] uppercase tracking-wide text-faint">
             Evidence
           </div>
-          <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          <div className="mt-1 rounded-md border border-line bg-app2 px-3 py-2 text-sm text-muted">
             {EVIDENCE_KIND_NOTE[edge.evidence_kind] ??
               EVIDENCE_KIND_NOTE.message_headers}
           </div>

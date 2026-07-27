@@ -13,6 +13,7 @@ import { RelationshipMap } from "../components/RelationshipMap";
 import { ProjectList } from "../components/ProjectList";
 import { RoleLegend } from "../components/RoleLegend";
 import { StatusScreen } from "../components/StatusScreen";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { useContactDetail } from "../hooks/useContactDetail";
 import { useDemoReadiness } from "../hooks/useDemoReadiness";
 import { useNetworkMap } from "../hooks/useNetworkMap";
@@ -175,7 +176,7 @@ export function Workspace() {
     screen === "cover";
 
   return (
-    <div className="flex h-full flex-col bg-slate-50">
+    <div className="flex h-full flex-col bg-app2">
       {/* App shell header: brand + nav, then mailbox + health on the right. */}
       <header className="app-header">
         <div className="app-header-left">
@@ -236,6 +237,7 @@ export function Workspace() {
             <span className={INDICATOR_DOT_CLASS[overall]} aria-hidden="true" />
             <span className="health-dot-label">Status</span>
           </Link>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -253,12 +255,12 @@ export function Workspace() {
 
       <main className="relative flex-1 overflow-hidden flex">
         {!mailboxId ? (
-          <div className="flex h-full w-full items-center justify-center px-6 text-center text-slate-500">
+          <div className="flex h-full w-full items-center justify-center px-6 text-center text-muted">
             <div>
-              <p className="text-lg font-medium text-slate-700">
+              <p className="text-lg font-medium text-ink">
                 Load a mailbox to begin.
               </p>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="mt-1 text-sm text-faint">
                 Enter a mailbox ID above, run{" "}
                 <code>python scripts/dev_seed.py</code> to create a fixture
                 mailbox, or set <code>VITE_MAILBOX_ID</code>.
@@ -315,12 +317,12 @@ export function Workspace() {
                   />
                 </div>
               ) : !hasGraph ? (
-                <div className="flex h-full items-center justify-center px-6 text-center text-slate-500">
+                <div className="flex h-full items-center justify-center px-6 text-center text-muted">
                   <div>
-                    <p className="text-lg font-medium text-slate-700">
+                    <p className="text-lg font-medium text-ink">
                       No contacts yet.
                     </p>
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="mt-1 text-sm text-faint">
                       The graph is empty — run the ingest pipeline for this
                       mailbox.
                     </p>
@@ -352,14 +354,14 @@ export function Workspace() {
               </div>
             ) : (
               <div className="flex w-full overflow-hidden">
-                <aside className="w-72 flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-white">
+                <aside className="w-72 flex-shrink-0 overflow-y-auto border-r border-line bg-surface">
                   <ProjectList
                     projects={projects ?? []}
                     selectedProjectId={selectedProjectId}
                     onSelect={setSelectedProjectId}
                   />
                 </aside>
-                <div className="flex-1 overflow-y-auto bg-slate-50">
+                <div className="flex-1 overflow-y-auto bg-app2">
                   {projectDetailLoading ? (
                     <div className="flex h-full items-center justify-center">
                       <LoadingSpinner label="Loading project…" />
@@ -371,7 +373,7 @@ export function Workspace() {
                   ) : selectedProjectId && projectDetail ? (
                     <ProjectDetail detail={projectDetail} mailboxId={mailboxId} />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-slate-400 text-sm">
+                    <div className="flex h-full items-center justify-center text-faint text-sm">
                       {projects && projects.length > 0
                         ? "Select a project to see details."
                         : "No projects yet — run the clustering pipeline."}
@@ -386,7 +388,7 @@ export function Workspace() {
             <RelationshipMap mailboxId={mailboxId} projects={projects} />
           </div>
         ) : screen === "cover" ? (
-          <div className="w-full overflow-y-auto bg-slate-50">
+          <div className="w-full overflow-y-auto bg-app2">
             <CoverForMe
               mailboxId={mailboxId}
               seed={coverSeed}
@@ -394,7 +396,7 @@ export function Workspace() {
             />
           </div>
         ) : screen === "handoff" ? (
-          <div className="w-full overflow-y-auto bg-slate-50">
+          <div className="w-full overflow-y-auto bg-app2">
             <HandoffReview mailboxId={mailboxId} />
           </div>
         ) : null}

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link } from "../router";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * Marketing landing page — "Custody Ledger" visual system (S17 redesign).
@@ -60,6 +61,7 @@ export function Landing() {
             <a className="lx-navlink lx-nav-desktop" href="#how">How it works</a>
             <a className="lx-navlink lx-nav-desktop" href="#custody">Chain of custody</a>
             <Link to="/app/status" className="lx-navlink lx-nav-desktop">Setup</Link>
+            <ThemeToggle className="lx-theme-toggle" />
             <Link to="/app" className="lx-btn lx-btn-primary">Open workspace</Link>
           </nav>
         </div>

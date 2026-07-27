@@ -190,12 +190,12 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
             <ErrorBanner title={errorKindTitle(errorKind)} message={error} />
           </div>
         ) : graphData.nodes.length === 0 ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-slate-500">
+          <div className="flex h-full items-center justify-center px-6 text-center text-muted">
             <div>
-              <p className="text-lg font-medium text-slate-700">
+              <p className="text-lg font-medium text-ink">
                 No relationships to show.
               </p>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="mt-1 text-sm text-faint">
                 {mode === "project" && !projectId
                   ? "Select a project root from the left."
                   : "No eligible (non-noise, non-sensitive) relationships matched these filters."}

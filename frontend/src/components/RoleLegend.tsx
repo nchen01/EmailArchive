@@ -34,8 +34,8 @@ export function RoleLegend({ nodes, activeRoles, onToggle }: RoleLegendProps) {
             aria-pressed={active}
             className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
               active
-                ? "border-slate-300 bg-white text-slate-700"
-                : "border-slate-200 bg-slate-100 text-slate-400"
+                ? "border-line2 bg-surface text-ink"
+                : "border-line bg-app2 text-faint"
             }`}
             title={active ? "Click to hide" : "Click to show"}
           >
@@ -47,7 +47,7 @@ export function RoleLegend({ nodes, activeRoles, onToggle }: RoleLegendProps) {
               }}
             />
             <span>{roleLabel(role)}</span>
-            <span className="text-slate-400">({count})</span>
+            <span className="text-faint">({count})</span>
           </button>
         );
       })}

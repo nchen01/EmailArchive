@@ -7,7 +7,7 @@ interface ErrorBannerProps {
 
 export function ErrorBanner({ message, title, onRetry }: ErrorBannerProps) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+    <div className="flex items-start justify-between gap-4 rounded-md border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger">
       <div className="flex flex-col gap-0.5">
         {title ? <span className="font-semibold">{title}</span> : null}
         <span>{message}</span>
@@ -16,7 +16,7 @@ export function ErrorBanner({ message, title, onRetry }: ErrorBannerProps) {
         <button
           type="button"
           onClick={onRetry}
-          className="shrink-0 rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+          className="shrink-0 rounded border border-danger-line bg-surface px-2 py-1 text-xs font-medium text-danger hover:bg-danger-soft"
         >
           Retry
         </button>

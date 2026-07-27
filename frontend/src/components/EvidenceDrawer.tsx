@@ -40,17 +40,17 @@ export function EvidenceDrawer({
 
   return (
     <aside
-      className={`fixed right-0 top-0 z-30 flex h-full w-[380px] flex-col border-l border-slate-200 bg-white shadow-xl transition-transform duration-300 ${
+      className={`fixed right-0 top-0 z-30 flex h-full w-[380px] flex-col border-l border-line bg-surface shadow-xl transition-transform duration-300 ${
         open ? "translate-x-0" : "translate-x-full"
       }`}
       aria-hidden={!open}
     >
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-600">Citation detail</h2>
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
+        <h2 className="text-sm font-semibold text-muted">Citation detail</h2>
         <button
           type="button"
           onClick={onClose}
-          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          className="rounded p-1 text-faint hover:bg-app2 hover:text-muted"
           aria-label="Close citation detail"
         >
           ✕
@@ -69,7 +69,7 @@ export function EvidenceDrawer({
             // Degraded: the claim cited this header but no evidence row was
             // returned (e.g. an L1-structured citation with no message snippet).
             <div className="space-y-4">
-              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              <div className="rounded-md border border-line bg-app2 px-3 py-2 text-sm text-muted">
                 No message preview is available for this citation. The claim still
                 references a real source message by its ID below.
               </div>
