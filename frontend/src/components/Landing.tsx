@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link } from "../router";
 
 /**
@@ -10,8 +11,19 @@ import { Link } from "../router";
  * weight.
  */
 export function Landing() {
+  // The landing has its own internal scroll container. On a fresh page load it
+  // opens at the top, but arriving via the in-app "Continuity" brand link
+  // (client navigation from /app) can leave a residual scroll offset, so the page
+  // appeared shifted down vs. a direct load. Reset to the top on mount so the top
+  // of the landing is the default for every entry point.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    rootRef.current?.scrollTo({ top: 0, left: 0 });
+    window.scrollTo(0, 0);
+  }, []);
+
   return (
-    <div className="landing">
+    <div className="landing" ref={rootRef}>
       {/* Top bar */}
       <header className="landing-topbar">
         <span className="landing-brand">Continuity</span>
