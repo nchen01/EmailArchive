@@ -9,6 +9,12 @@ body,
   margin: 0;
 }
 
+html {
+  /* Keep centered app/document layouts from nudging horizontally when a tab
+     switch changes whether the page needs a vertical scrollbar. */
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
