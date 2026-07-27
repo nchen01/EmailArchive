@@ -180,6 +180,13 @@ export function Workspace() {
       <header className="app-header">
         <div className="app-header-left">
           <Link to="/" className="app-brand" title="Back to landing">
+            <span className="app-seal" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z" />
+                <path d="m9 12 2 2 4-4" />
+              </svg>
+            </span>
             Continuity
           </Link>
           <nav className="app-nav" aria-label="Workspace">
