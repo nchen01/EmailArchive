@@ -294,6 +294,13 @@ content (S18 §8, D6). This extends the S19 §9 auth audit catalog.
 
 ## 12. S21+ dependency map (not started)
 
+> **Sprint numbering superseded by S21 §14.** The authoritative implementation
+> sequence is **S22 auth → S23 OAuth/vault (implements this spec) → S24 job infra →
+> S25 ingest→jobs → S26 enrichment→jobs → S27 hosted deploy** (admin/audit viewer
+> + security/privacy hardening after). Read the entries below as *dependencies*,
+> not sprint numbers — their older S22/S23/S24 labels predate S21 §14, and S21 §14
+> wins.
+
 - **S21 — Background job orchestration** for ingest / enrichment / embedding
   backfill / project materialization; the worker calls the §3 vault-backed token
   resolver and never holds a refresh token.

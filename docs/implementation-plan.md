@@ -279,9 +279,13 @@ components of the handoff-package experience.
   large mailboxes and scoped snapshots. Date-windowed runs bypass stored sync
   tokens and do not save new ones; replace-snapshot requires an explicit date
   bound and confirmation.
-- **S16.1+** Canonical demo readiness: purpose-built demo fixture for the
-  coverage-handoff story; `puluo` remains messy real-mailbox validation only
-  (D13).
+- **S16.1+** Canonical demo readiness (broader purpose-built demo-story fixture):
+  **superseded in practice** for the current demo path by the shipped S17
+  handoff-demo work — the seeded `handoff-demo` mailbox
+  (`scripts/seed_handoff_demo.py`) drives Handoff package generation and `puluo`
+  drives Cover-for-me / Relationship Map / Network Map
+  (`docs/s17-handoff-manual-demo-runbook.md`). Any remaining broader
+  demo-story/landing work is optional, not a blocker (D13).
 - **S17.2–S17.20 ✓** Audited handoff package MVP: employee-initiated package
   creation, scope review, package publish, one-time recipient link, read-only
   recipient view, deterministic LLM-free package-local ask (S17.9), revoke,
@@ -302,7 +306,11 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Planned (S18 — docs-only):**
+**Specs shipped as docs/spec-only plans — not implemented in code (S18–S21):**
+_Authoritative implementation sequence: S21 §14 — S22 auth → S23 OAuth/vault → S24
+job infra → S25 ingest→jobs → S26 enrichment→jobs → S27 hosted deploy (admin/audit
++ security hardening after). This supersedes the earlier S18 §11 / S19 §11 / S20
+§12 ordering._
 - **S18 — Hosted product readiness / web-app deployment plan** (planning sprint,
   no code): what must be true to move from the localhost/demo MVP to a deployable
   hosted web app — product shape (web, not desktop), production roles + access
@@ -311,9 +319,8 @@ components of the handoff-package experience.
   background worker + secrets manager + observability), background-job states,
   data-tier boundaries (recipient reads package-local snapshots only), privacy/
   compliance posture, a production-readiness gap checklist, a phased launch path,
-  and an S19+ sprint map (S19 auth+tenant → S20 OAuth/token vault → S21 job
-  orchestration → S22 hosted deploy → S23 admin/audit viewer → S24 security/
-  privacy hardening → S25 real-mailbox quality). See
+  and an S19+ sprint map (its original ordering is superseded by S21 §14 — see
+  the section banner above). See
   `docs/s18-hosted-product-readiness-plan.md`. Implementation deferred to S19+.
 - **S19 — Auth + tenant boundary** (docs/spec-only, no code): the production
   identity/tenant/authorization model S20+ implements — tenant/workspace model,
@@ -355,7 +362,7 @@ components of the handoff-package experience.
 - **Multi-mailbox, admin-side offboarding motion, cross-channel ingestion** — v2 product scope.
 - **M365 provider** — stub now; drops in without pipeline changes (D2).
 - **Object store for raw MIME** — `raw_uri = None` until production deployment (D6).
-- **Redis queue, full OAuth/secrets manager, OTel** — needed before real customer mailboxes;
+- **Background job queue (Postgres-backed first per S21; external broker like Redis later), full OAuth/secrets manager, OTel** — needed before real customer mailboxes;
   not needed for a controlled demo against a test inbox.
 
 **Plug-in point (resolved by D12 / S7):** Layer 2 retrieval is now implemented

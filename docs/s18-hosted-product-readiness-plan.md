@@ -5,7 +5,9 @@
 > Handoff Package MVP becomes a real hosted web application instead of a
 > localhost demo?* It maps the work; S19+ implement it.
 
-**Status:** S18 planned (this document). Nothing here is implemented.
+**Status:** S18 is **shipped as a docs-only plan; not implemented in code.** This
+document is the accepted plan — nothing here is built. (Implementation is
+sequenced in S21 §14, starting at S22.)
 
 ---
 
@@ -345,6 +347,13 @@ adds governance and scale, not new end-user surface.
 ---
 
 ## 11. S19+ candidate sprint map (dependency order)
+
+> **Superseded by S21 §14.** S19/S20/S21 shipped as docs/spec-only plans, and the
+> authoritative implementation sequence is now **S22 auth → S23 OAuth/vault → S24
+> job infra → S25 ingest→jobs → S26 enrichment→jobs → S27 hosted deploy** (admin/
+> audit viewer + security/privacy hardening after). The map below is the original
+> rough ordering, kept for context; where sprint numbers here (or in §10) conflict
+> with S21 §14, S21 §14 wins.
 
 Proposed only — **do not start.** Ordered by dependency.
 

@@ -90,14 +90,16 @@ Key docs:
 - `docs/decisions.md` — resolved build decisions (authoritative; D14 locks the handoff-package MVP direction)
 - `docs/s7-implementation-plan.md` — S7 task breakdown and locked decisions
 - `docs/implementation-plan.md` — overall pipeline architecture
-- `docs/s18-hosted-product-readiness-plan.md` — S18 planned (docs-only): hosted
-  web-app deployment readiness + S19+ sprint map (no code this sprint)
-- `docs/s19-auth-tenant-boundary-plan.md` — S19 planned (docs/spec-only): production
-  auth + tenant/authorization model for S20+ (no code this sprint)
-- `docs/s20-oauth-token-vault-plan.md` — S20 planned (docs/spec-only): safe Gmail
-  OAuth connect + token-vault boundary (Gmail only; no code this sprint)
-- `docs/s21-background-job-orchestration-plan.md` — S21 planned (docs/spec-only):
-  production background-job system for long/retryable work (no code this sprint)
+- `docs/s18-hosted-product-readiness-plan.md` — S18 (spec shipped, not implemented
+  in code): hosted web-app deployment readiness + sprint map
+- `docs/s19-auth-tenant-boundary-plan.md` — S19 (spec shipped, not implemented in
+  code): production auth + tenant/authorization model (implemented by S22+)
+- `docs/s20-oauth-token-vault-plan.md` — S20 (spec shipped, not implemented in
+  code): safe Gmail OAuth connect + token-vault boundary (Gmail only)
+- `docs/s21-background-job-orchestration-plan.md` — S21 (spec shipped, not
+  implemented in code): production background-job system for long/retryable work.
+  Authoritative implementation sequence is S21 §14 (S22 auth → S23 OAuth/vault →
+  S24 jobs → S25 ingest → S26 enrichment → S27 deploy)
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
@@ -106,11 +108,16 @@ creator-only empty-generation diagnostic, refresh-safe workspace mailbox, a
 deterministic handoff-demo seed script, a manual-demo runbook, and the creator
 Handoff workspace layout with a sticky action rail — Publish reachable without
 scrolling — S17.20) shipped and
-end-to-end validated; S16 canonical-demo readiness still planned. S18 (planned,
-docs-only) maps hosted product / web-app deployment readiness, and S19 (planned,
-docs/spec-only) specifies the production auth + tenant boundary, and S20 (planned,
-docs/spec-only) specifies safe Gmail OAuth connect + a token-vault boundary, and
-S21 (planned, docs/spec-only) specifies the production background-job system — see
+end-to-end validated. The current demo path is the shipped S17 handoff-demo seed +
+runbook (handoff-demo mailbox for Handoff generation; puluo for Cover-for-me /
+Relationship Map / Network Map); the older S16 canonical-demo readiness is
+superseded in practice for that and remains optional. S18–S21 are each
+**shipped as a docs/spec-only plan, not implemented in code**: S18 maps hosted
+web-app deployment readiness, S19 specifies the production auth + tenant boundary,
+S20 specifies safe Gmail OAuth connect + a token-vault boundary, and S21 specifies
+the production background-job system (authoritative implementation order in S21
+§14: S22 auth → S23 OAuth/vault → S24 jobs → S25 ingest → S26 enrichment → S27
+deploy) — see
 `docs/s18-hosted-product-readiness-plan.md`,
 `docs/s19-auth-tenant-boundary-plan.md`,
 `docs/s20-oauth-token-vault-plan.md`, and

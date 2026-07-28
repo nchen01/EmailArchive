@@ -173,10 +173,15 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   ingest for large mailboxes and scoped snapshots; date-windowed runs bypass
   stored sync tokens and do not save new ones; replace-snapshot requires an
   explicit date bound and confirmation. See `docs/s16-date-range-ingest-plan.md`.
-- **S16 planned / next** — Canonical demo readiness. Purpose-built coverage
-  handoff fixture (D13), evidence-trust demo spine, and demo green validation.
-  With D14, the demo should preview the employee-reviewed handoff package flow.
-  See `docs/s16-demo-readiness-plan.md`.
+- **S16 — superseded in practice / optional** — Canonical demo readiness was a
+  broader purpose-built coverage-handoff fixture + evidence-trust demo spine
+  (D13). For the current demo path it is **superseded** by the shipped S17
+  handoff-demo work: the seeded **handoff-demo** mailbox
+  (`scripts/seed_handoff_demo.py`) drives Handoff package generation, and
+  **puluo** drives Cover-for-me / Relationship Map / Network Map, per
+  `docs/s17-handoff-manual-demo-runbook.md`. Any remaining S16 "broader demo-story
+  / landing" work is optional future polish, not a blocker. See
+  `docs/s16-demo-readiness-plan.md`.
 - **S17.2–S17.20 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
@@ -241,14 +246,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   project/owner trees** (S17.17–S17.19 ship a package-local topic workspace, not a
   graph), and a stronger production auth boundary. See
   `docs/s17-handoff-package-mvp-plan.md`.
-- **S18 — planned (docs-only).** Hosted product readiness / web-app deployment
+- **S18 — shipped as a docs-only plan; not implemented in code.** Hosted product readiness / web-app deployment
   plan: what must be true to go from the localhost/demo MVP to a hosted web app
   (production roles + auth boundary, Gmail-first OAuth + token vault, hosted
   architecture, background-job states, data-tier boundaries with the recipient
   package-local-snapshot invariant intact, privacy/compliance posture, a
   readiness gap checklist, a phased launch path, and an S19+ sprint map). No code
   this sprint. See `docs/s18-hosted-product-readiness-plan.md`.
-- **S19 — planned (docs/spec-only).** Auth + tenant boundary spec: the production
+- **S19 — shipped as a spec; not implemented in code.** Auth + tenant boundary spec: the production
   identity/tenant/authorization model S20+ implements — tenant/workspace model,
   user roles, mailbox ownership + tenant binding, creator/recipient/admin
   permissions, the dev-only `mailbox_id` mode + fail-closed `AUTH_MODE` that
@@ -256,7 +261,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   endpoint, and auth-sensitive audit events. No code this sprint; shipped S17
   behavior unchanged (dev mode preserves the localhost flow); OAuth/token vault
   deferred to S20. See `docs/s19-auth-tenant-boundary-plan.md`.
-- **S20 — planned (docs/spec-only).** OAuth + token vault spec: safe production
+- **S20 — shipped as a spec; not implemented in code.** OAuth + token vault spec: safe production
   Gmail connect (authorization-code flow with state/nonce, provider-account
   verification, owner/tenant binding per S19), a token-vault boundary that keeps
   refresh tokens out of the app DB and logs (app DB holds only a `vault_ref` +
@@ -266,7 +271,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   lifecycle, OAuth audit events, and a threat model. Gmail only; M365 stays the D2
   stub. No code this sprint; recipient snapshot-only invariant untouched. See
   `docs/s20-oauth-token-vault-plan.md`.
-- **S21 — planned (docs/spec-only).** Background job orchestration spec: the
+- **S21 — shipped as a spec; not implemented in code.** Background job orchestration spec: the
   production system that runs long/retryable work (Gmail ingest, L1 enrichment,
   event extraction, embedding backfill, project materialization, cleanup/
   retention; heavy handoff generation + PDF/DOCX/ZIP export later) outside web
