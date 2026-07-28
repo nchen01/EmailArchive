@@ -384,6 +384,52 @@ def test_dev_mode_uses_env_token_path(env, monkeypatch):
         s.close()
 
 
+# ── Access-log redaction (OAuth code/state must never reach logs) ────────────
+
+def test_redact_target_strips_oauth_code_and_state():
+    from services.api.log_redaction import redact_target
+    out = redact_target("/api/oauth/gmail/callback?code=secret-code&state=secret-state")
+    assert "secret-code" not in out and "secret-state" not in out
+    assert "REDACTED" in out
+    assert out.startswith("/api/oauth/gmail/callback?")  # path preserved
+    # non-sensitive params pass through; no query string untouched
+    assert redact_target("/api/projects/abc") == "/api/projects/abc"
+    assert "mailbox_id=xyz" in redact_target("/api/preflight?mailbox_id=xyz&code=abc")
+
+
+def test_uvicorn_access_log_record_is_redacted():
+    """Simulate a uvicorn access record for the callback and confirm the emitted
+    log line contains no raw code/state (the exact acceptance scenario)."""
+    import io
+    import logging
+
+    from services.api.log_redaction import install_access_log_redaction
+
+    install_access_log_redaction()
+    logger = logging.getLogger("uvicorn.access")
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    prev_level, prev_prop = logger.level, logger.propagate
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    try:
+        logger.info(
+            '%s - "%s %s HTTP/%s" %d',
+            "127.0.0.1:54321", "GET",
+            "/api/oauth/gmail/callback?code=secret-code&state=secret-state", "1.1", 302,
+        )
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(prev_level)
+        logger.propagate = prev_prop
+    out = buf.getvalue()
+    assert "secret-code" not in out and "secret-state" not in out
+    assert "REDACTED" in out
+    assert "/api/oauth/gmail/callback" in out  # path still logged for observability
+
+
 # ── Recipient routes untouched ───────────────────────────────────────────────
 
 @requires_db

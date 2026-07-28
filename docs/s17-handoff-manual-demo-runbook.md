@@ -73,6 +73,13 @@ this window running.
 "type a mailbox id and load" workflow works without a login. The launcher prints
 `auth   : AUTH_MODE=dev` at startup.
 
+**Access-log redaction (S23).** The Gmail OAuth callback
+(`GET /api/oauth/gmail/callback?code=…&state=…`) carries the authorization code in
+the query string. `services/api/main.py` installs a filter on the `uvicorn.access`
+logger that replaces `code`/`state`/token query-param values with `REDACTED`, so
+the code never reaches stdout/logs. A hosted deployment must keep this filter and
+must **not** add raw request/query logging that would re-expose it.
+
 **Optional — verify the production fail-closed boundary.** With
 `AUTH_MODE=production` (or unset — the fail-closed default), every creator/mailbox
 route must reject unauthenticated calls with **HTTP 401**. `Invoke-RestMethod`

@@ -25,6 +25,12 @@ from .routers import (
     synthesis,
 )
 
+# Redact OAuth code/state (and tokens) from uvicorn access logs before anything
+# serves — Google's callback carries the authorization code in the query string
+# (S23). Installed at import so it applies under any launcher.
+from .log_redaction import install_access_log_redaction
+install_access_log_redaction()
+
 app = FastAPI(title="Email Knowledge Continuity API")
 app.include_router(network_map.router, prefix="/api")
 app.include_router(project_view.router, prefix="/api")
