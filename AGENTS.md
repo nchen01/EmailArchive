@@ -248,6 +248,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   package-local-snapshot invariant intact, privacy/compliance posture, a
   readiness gap checklist, a phased launch path, and an S19+ sprint map). No code
   this sprint. See `docs/s18-hosted-product-readiness-plan.md`.
+- **S19 — planned (docs/spec-only).** Auth + tenant boundary spec: the production
+  identity/tenant/authorization model S20+ implements — tenant/workspace model,
+  user roles, mailbox ownership + tenant binding, creator/recipient/admin
+  permissions, the dev-only `mailbox_id` mode + fail-closed `AUTH_MODE` that
+  disables it in production, the authorization check required on every creator
+  endpoint, and auth-sensitive audit events. No code this sprint; shipped S17
+  behavior unchanged (dev mode preserves the localhost flow); OAuth/token vault
+  deferred to S20. See `docs/s19-auth-tenant-boundary-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 

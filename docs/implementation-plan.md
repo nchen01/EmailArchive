@@ -315,6 +315,14 @@ components of the handoff-package experience.
   orchestration → S22 hosted deploy → S23 admin/audit viewer → S24 security/
   privacy hardening → S25 real-mailbox quality). See
   `docs/s18-hosted-product-readiness-plan.md`. Implementation deferred to S19+.
+- **S19 — Auth + tenant boundary** (docs/spec-only, no code): the production
+  identity/tenant/authorization model S20+ implements — tenant/workspace model,
+  user roles, mailbox ownership + tenant binding, creator/recipient/admin
+  permissions, the dev-only `mailbox_id` mode + how it is disabled in production
+  (fail-closed `AUTH_MODE`), the authorization check required on every creator
+  endpoint, and audit events for auth-sensitive actions. Shipped S17 behavior is
+  unchanged (dev mode preserves the localhost flow). OAuth/token-vault stays
+  deferred to S20. See `docs/s19-auth-tenant-boundary-plan.md`. Not implemented.
 
 **Deferred beyond S17:**
 - **Thread-context neighbor expansion** (per spec).

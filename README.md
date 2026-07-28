@@ -7,7 +7,11 @@
 **S18 (planned, docs-only)** maps hosted product readiness / web-app deployment —
 production roles + auth boundary, Gmail-first OAuth + token vault, hosted
 architecture, background jobs, data-tier boundaries, and an S19+ sprint map; no
-code this sprint. See `docs/s18-hosted-product-readiness-plan.md`.
+code this sprint. See `docs/s18-hosted-product-readiness-plan.md`. **S19 (planned,
+docs/spec-only)** specifies the production auth + tenant boundary that S20+ will
+implement (tenant/workspace model, roles, mailbox ownership binding, per-endpoint
+creator authorization, dev-only `mailbox_id` mode disabled in production, auth
+audit events); not implemented — see `docs/s19-auth-tenant-boundary-plan.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 
