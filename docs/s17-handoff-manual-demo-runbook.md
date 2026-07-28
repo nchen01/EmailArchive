@@ -21,6 +21,14 @@ recipient (ask, refresh, consumed-link) → export → new-version/supersede.**
 > state (the API returns an empty graph, not an error). That is expected. Use
 > `puluo` for a populated Network / Relationship Map / Cover-for-me demo, and the
 > `handoff-demo` mailbox for the Handoff package flow.
+>
+> **Overview readiness is whole-workspace, not handoff-generation, readiness.**
+> On the `handoff-demo` mailbox the Overview strip can read People = 0,
+> Projects = 0, and Retrieval unavailable/limited **even though Handoff generation
+> works** — because that mailbox is seeded for handoff package generation
+> (messages + events), not the full L1 graph/projects/embeddings profile. This is
+> expected and does not block publishing. The Handoff tab now carries an inline
+> "Why does Overview show 0 people / projects?" note saying the same thing.
 
 All commands assume the repo root and the blessed venv (`.venv\Scripts`). Never
 use a bare `python`.
