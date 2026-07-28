@@ -17,7 +17,12 @@ vault (authorization-code flow, account verification + owner/tenant binding,
 refresh tokens kept out of the app DB/logs behind a `vault_ref`, least-privilege
 read-only scopes, mismatch fail-closed handling, token lifecycle, OAuth audit
 events, threat model; Gmail only, M365 stays stubbed); not implemented — see
-`docs/s20-oauth-token-vault-plan.md`.
+`docs/s20-oauth-token-vault-plan.md`. **S21 (planned, docs/spec-only)** specifies
+the production background-job system for long/retryable work outside web requests
+(tenant-scoped job model + states, per-type authz/idempotency/retry, S16.0 ingest
+as a job, vault-backed token resolution in the worker, safe audit events, a
+Postgres-backed queue + worker, rate/cost controls); not implemented — see
+`docs/s21-background-job-orchestration-plan.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 
