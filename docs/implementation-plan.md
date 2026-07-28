@@ -323,6 +323,17 @@ components of the handoff-package experience.
   endpoint, and audit events for auth-sensitive actions. Shipped S17 behavior is
   unchanged (dev mode preserves the localhost flow). OAuth/token-vault stays
   deferred to S20. See `docs/s19-auth-tenant-boundary-plan.md`. Not implemented.
+- **S20 — OAuth + token vault** (docs/spec-only, no code): how a production tenant
+  user safely connects a Gmail mailbox — the authorization-code OAuth flow
+  (state/nonce, account verification, owner/tenant binding per S19), a token-vault
+  boundary keeping refresh tokens out of the app DB and logs (app DB holds only a
+  `vault_ref` + safe provider metadata; D6), the proposed `mailbox_provider_account`
+  object (service DB only, not `ekc_schemas`), least-privilege Gmail scopes
+  (read-only ingest + identity; no write/send), provider-account-mismatch
+  fail-closed handling, token lifecycle (connect/refresh/revoke/offboarding),
+  auth-sensitive OAuth audit events, and a focused threat model. Gmail only; M365
+  stays the D2 stub (not implemented). See `docs/s20-oauth-token-vault-plan.md`.
+  Not implemented.
 
 **Deferred beyond S17:**
 - **Thread-context neighbor expansion** (per spec).
