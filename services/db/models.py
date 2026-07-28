@@ -130,6 +130,67 @@ class TenantMembership(Base):
     )
 
 
+# ── Gmail OAuth + token vault (S23 — implements docs/s20-oauth-token-vault-plan) ─
+# Service-DB only (no ekc_schemas change, SCHEMA_VERSION not bumped). The app DB
+# stores only a vault_ref + SAFE provider metadata — never raw access/refresh
+# tokens (those live only in the token vault, services/oauth/vault.py).
+class MailboxProviderAccount(Base):
+    __tablename__ = "mailbox_provider_account"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    owner_user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    mailbox_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False, server_default="gmail")
+    provider_account_email: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_account_sub: Mapped[str | None] = mapped_column(Text)
+    # Opaque handle into the token vault — NOT a token.
+    vault_ref: Mapped[str | None] = mapped_column(Text)
+    scopes_granted: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="connected")
+    connected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Safe diagnostics for a rejected connect (never raw provider data).
+    expected_account_email: Mapped[str | None] = mapped_column(Text)
+    mismatch_reason: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "mailbox_id", "provider", name="uq_provider_account_mailbox"
+        ),
+        CheckConstraint("provider IN ('gmail')", name="ck_provider_account_provider"),
+        CheckConstraint(
+            "status IN ('connected','refresh_failed','revoked','disconnected','mismatch_blocked')",
+            name="ck_provider_account_status",
+        ),
+    )
+
+
+class OAuthState(Base):
+    # Single-use CSRF/PKCE state, bound to {tenant,user,mailbox,provider}. Holds
+    # the PKCE code_verifier (an ephemeral per-flow secret, NOT an OAuth token).
+    __tablename__ = "oauth_state"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)  # the opaque `state` value
+    tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    mailbox_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False, server_default="gmail")
+    code_verifier: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class SyncState(Base):
     __tablename__ = "sync_state"
 

@@ -93,6 +93,10 @@ if (-not $SkipPreflight) {
 }
 
 # 3. Start uvicorn with the blessed interpreter.
+#    NOTE (S23): services/api/main.py installs an access-log redaction filter on
+#    the `uvicorn.access` logger so the Gmail OAuth callback's `code`/`state`
+#    query params are never printed. Do NOT swap in a logging config that clears
+#    that filter, and do not add raw request/query logging in a hosted deploy.
 Write-Host ""
 Write-Host "-- starting uvicorn on http://127.0.0.1:$Port --" -ForegroundColor Cyan
 $uvArgs = @("-m", "uvicorn", "services.api.main:app", "--host", "127.0.0.1", "--port", "$Port")

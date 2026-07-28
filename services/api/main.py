@@ -17,12 +17,19 @@ from .routers import (
     handoff,
     handoff_recipient,
     network_map,
+    oauth_gmail,
     preflight,
     project_view,
     relationship_map,
     source_message,
     synthesis,
 )
+
+# Redact OAuth code/state (and tokens) from uvicorn access logs before anything
+# serves — Google's callback carries the authorization code in the query string
+# (S23). Installed at import so it applies under any launcher.
+from .log_redaction import install_access_log_redaction
+install_access_log_redaction()
 
 app = FastAPI(title="Email Knowledge Continuity API")
 app.include_router(network_map.router, prefix="/api")
@@ -35,6 +42,7 @@ app.include_router(source_message.router, prefix="/api")
 app.include_router(gmail_ingest.router, prefix="/api")
 app.include_router(handoff.router, prefix="/api")
 app.include_router(handoff_recipient.router, prefix="/api")
+app.include_router(oauth_gmail.router, prefix="/api")
 
 
 @app.get("/healthz")

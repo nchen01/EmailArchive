@@ -306,6 +306,20 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
+**Implemented (S22–S23):**
+- **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
+  `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
+  fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
+  on every creator/mailbox route (dev preserves the localhost flow; production
+  fails closed). Recipient routes stay package-local snapshot only.
+- **S23 ✓** Gmail OAuth + token-vault minimal slice (implements S20): the
+  state+PKCE start/callback/disconnect/status flow (`services/oauth/`,
+  `services/api/routers/oauth_gmail.py`, migration 0011), a `mailbox_provider_account`
+  storing only `vault_ref` + safe metadata (never raw tokens), mismatch/fail-closed
+  rules, and a vault-backed production credential resolver. The shipped
+  `DevTokenVault` is **dev/test-only**; a production KMS/secrets-manager vault, real
+  Google app verification, and moving ingest onto the resolver are deferred.
+
 **Specs shipped as docs/spec-only plans — not implemented in code (S18–S21):**
 _Authoritative implementation sequence: S21 §14 — S22 auth → S23 OAuth/vault → S24
 job infra → S25 ingest→jobs → S26 enrichment→jobs → S27 hosted deploy (admin/audit

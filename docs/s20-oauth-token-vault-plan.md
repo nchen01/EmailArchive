@@ -17,9 +17,17 @@ wins.
   by this doc).
 - **S18 — shipped as a docs-only** hosted-readiness plan.
 - **S19 — shipped as a docs-only** auth/tenant boundary spec.
-- **S20 — this spec, NOT implemented.** Every object, field, and flow here is
-  *proposed for the S20 build*; none exist yet. Today's token path is still the
-  D6 env-var seam (`services/ingest/providers/gmail.py::get_token`).
+- **S20 — spec.** The minimal slice is **implemented by S23**
+  (`services/oauth/`, migration `0011_gmail_oauth`, `services/api/routers/oauth_gmail.py`):
+  the state+PKCE start/callback/disconnect/status flow, the provider-account
+  model storing only `vault_ref` + safe metadata, the mismatch/fail-closed rules,
+  and the vault-backed production resolver. **The shipped token vault
+  (`services/oauth/vault.py::DevTokenVault`) is DEV/TEST-ONLY** — it holds refresh
+  tokens Fernet-encrypted in an isolated in-process store and refuses to run
+  unless `AUTH_MODE=dev` / `EKC_ALLOW_DEV_VAULT=1`; a production deployment must
+  supply a KMS/secrets-manager-backed `TokenVault`. Still deferred beyond S23:
+  the real Google app verification/restricted-scope review, a production vault,
+  and moving ingest onto the resolver (ingest still uses the D6 env path).
 - **S21+ — not started** (§12).
 
 **Untouched invariant:** the recipient package view still reads **only
