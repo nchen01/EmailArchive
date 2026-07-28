@@ -6,7 +6,8 @@
 > the hosted track opened by `docs/s18-hosted-product-readiness-plan.md` (S18 §2,
 > §3, §7, §11) — read that first; where this doc and S18 disagree, S18 wins.
 
-**Status:** S19 planned (this spec). Not implemented. S17.2–S17.20 remains the
+**Status:** S19 is **shipped as a spec; not implemented in code** (implemented by
+S22, per S21 §14). S17.2–S17.20 remains the
 **shipped** MVP and its behavior is unchanged by this document; S18 remains the
 docs-only hosted-readiness plan.
 
@@ -311,8 +312,8 @@ Event catalog (proposed):
 
 Existing package-lifecycle audit events (create/generate/publish/revoke/
 new-version) are retained and gain the resolved `actor_user_id` + `tenant_id`
-once identity exists. `authz.denied` is the key new signal for the S23 admin
-viewer and for security review (S18 §9).
+once identity exists. `authz.denied` is the key new signal for the later admin/
+audit viewer and for security review (S18 §9).
 
 ---
 
@@ -341,6 +342,12 @@ define *how a mailbox's provider tokens are obtained or stored*:
 ---
 
 ## 11. Downstream dependencies
+
+> **Sprint numbering superseded by S21 §14.** The concrete implementation order is
+> **S22 auth (implements this spec) → S23 OAuth/vault → S24 job infra → S25
+> ingest→jobs → S26 enrichment→jobs → S27 hosted deploy**. Read the dependency
+> notes below as *dependencies*, not sprint numbers — their older S22/S23/S24
+> labels predate S21 §14, and S21 §14 wins.
 
 - **S20 (OAuth / token vault)** depends on S19's `Mailbox.owner_user_id` +
   `tenant_id` binding — tokens attach to an owned mailbox.

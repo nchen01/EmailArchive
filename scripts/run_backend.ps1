@@ -55,6 +55,13 @@ Write-Host "== EKC backend launcher ==" -ForegroundColor Cyan
 Write-Host "repo   : $RepoRoot"
 Write-Host "python : $VenvPython"
 
+# S22 auth boundary: this LOCAL launcher defaults to AUTH_MODE=dev so the
+# localhost workflow (type a mailbox id, no login) keeps working. Unset/unknown
+# elsewhere is treated as production and fails closed. Set $env:AUTH_MODE
+# explicitly before launching for a different mode.
+if (-not $env:AUTH_MODE) { $env:AUTH_MODE = "dev" }
+Write-Host "auth   : AUTH_MODE=$($env:AUTH_MODE)"
+
 # 1. Environment validation (fails loudly if venv/imports are broken).
 & (Join-Path $PSScriptRoot "check_local_env.ps1") -Quiet
 if ($LASTEXITCODE -ne 0) {

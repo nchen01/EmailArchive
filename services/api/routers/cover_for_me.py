@@ -49,6 +49,7 @@ from services.synthesis.client import MissingApiKeyError, make_anthropic_synth_f
 from services.synthesis.cover_for_me import synthesize_cover_for_me
 from services.synthesis.params import PARAMS
 
+from ..auth import require_owner_mailbox
 from ..deps import get_db
 from ..evidence import fetch_safe_source_rows, gmail_search_url, sender_fields
 from ..schemas.cover_for_me import (
@@ -383,7 +384,10 @@ def _route(
     return mappers.row_to_person(best_person), None
 
 
-@router.post("/cover-for-me/{mailbox_id}", response_model=CoverForMeResponse)
+@router.post(
+    "/cover-for-me/{mailbox_id}", response_model=CoverForMeResponse,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def cover_for_me_endpoint(
     mailbox_id: str,
     body: CoverForMeRequest,

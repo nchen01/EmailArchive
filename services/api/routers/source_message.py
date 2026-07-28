@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from services.db import models as orm
 from services.ingest.normalize.mime import decode_mime_words
 
+from ..auth import require_owner_mailbox
 from ..deps import get_db
 from ..evidence import fetch_safe_source_rows, gmail_search_url, sender_fields
 from ..schemas.evidence import SourceMessageDetail
@@ -41,7 +42,10 @@ router = APIRouter(tags=["source-message"])
 _SNIPPET_CHARS = 200
 
 
-@router.get("/source-message/{mailbox_id}", response_model=SourceMessageDetail)
+@router.get(
+    "/source-message/{mailbox_id}", response_model=SourceMessageDetail,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def source_message_endpoint(
     mailbox_id: str,
     message_id_header: str = Query(..., min_length=1, max_length=998),

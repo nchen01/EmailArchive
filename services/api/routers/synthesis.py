@@ -27,6 +27,7 @@ from services.synthesis.contracts import SynthesisResult
 from services.synthesis.params import PARAMS
 from services.synthesis.project_summary import synthesize_project
 
+from ..auth import require_owner_mailbox
 from ..deps import get_db
 
 router = APIRouter(tags=["synthesis"])
@@ -70,6 +71,7 @@ def _messages_by_thread(db: Session, mailbox_id: str, thread_ids: list[str]) -> 
 @router.post(
     "/synthesis/{mailbox_id}/project/{project_id}",
     response_model=SynthesisResult,
+    dependencies=[Depends(require_owner_mailbox)],
 )
 async def synthesize_project_endpoint(
     mailbox_id: str, project_id: str, db: Session = Depends(get_db)
@@ -142,6 +144,7 @@ async def synthesize_project_endpoint(
 @router.post(
     "/synthesis/{mailbox_id}/contact/{person_id}",
     response_model=SynthesisResult,
+    dependencies=[Depends(require_owner_mailbox)],
 )
 async def synthesize_contact_endpoint(
     mailbox_id: str, person_id: str, db: Session = Depends(get_db)

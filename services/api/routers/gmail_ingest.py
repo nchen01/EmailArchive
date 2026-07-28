@@ -40,6 +40,7 @@ from services.ingest.gmail_windowed import (
 )
 from services.ingest.list_options import DateWindowError, ListOptions, parse_date_window
 
+from ..auth import require_owner_mailbox
 from ..deps import get_db
 from ..schemas.gmail_ingest import (
     DateWindowRequest,
@@ -114,7 +115,10 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-@router.post("/gmail-ingest/{mailbox_id}/preview", response_model=IngestWindowResponse)
+@router.post(
+    "/gmail-ingest/{mailbox_id}/preview", response_model=IngestWindowResponse,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def preview_window(
     mailbox_id: str, body: DateWindowRequest, db: Session = Depends(get_db)
 ) -> IngestWindowResponse:
@@ -155,7 +159,10 @@ async def preview_window(
     )
 
 
-@router.post("/gmail-ingest/{mailbox_id}/ingest", response_model=IngestWindowResponse)
+@router.post(
+    "/gmail-ingest/{mailbox_id}/ingest", response_model=IngestWindowResponse,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def ingest_window(
     mailbox_id: str, body: IngestConfirmRequest, db: Session = Depends(get_db)
 ) -> IngestWindowResponse:

@@ -15,6 +15,7 @@ from services.db import models as orm
 from services.relationships.contracts import RelationshipMapResponse
 from services.relationships.derive import derive_relationship_map
 
+from ..auth import require_owner_mailbox
 from ..deps import get_db
 
 router = APIRouter(tags=["relationship-map"])
@@ -29,7 +30,10 @@ _VALID_TYPES = {
 }
 
 
-@router.get("/relationship-map/{mailbox_id}", response_model=RelationshipMapResponse)
+@router.get(
+    "/relationship-map/{mailbox_id}", response_model=RelationshipMapResponse,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def get_relationship_map(
     mailbox_id: str,
     mode: str = Query("owner"),

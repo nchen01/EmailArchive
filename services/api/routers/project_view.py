@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from services.db import models as orm
 
+from ..auth import require_owner_mailbox
 from ..deps import get_db
 from ..schemas.project_view import (
     ActivityItemOut,
@@ -189,7 +190,10 @@ def _recent_outcome_project_ids(
     return recent
 
 
-@router.get("/projects/{mailbox_id}", response_model=ProjectListOut)
+@router.get(
+    "/projects/{mailbox_id}", response_model=ProjectListOut,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def list_projects(
     mailbox_id: str, db: Session = Depends(get_db)
 ) -> ProjectListOut:
@@ -242,7 +246,10 @@ async def list_projects(
     return ProjectListOut(projects=summaries)
 
 
-@router.get("/projects/{mailbox_id}/{project_id}", response_model=ProjectDetailOut)
+@router.get(
+    "/projects/{mailbox_id}/{project_id}", response_model=ProjectDetailOut,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def get_project_detail(
     mailbox_id: str, project_id: str, db: Session = Depends(get_db)
 ) -> ProjectDetailOut:

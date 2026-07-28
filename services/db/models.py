@@ -51,6 +51,12 @@ class Mailbox(Base):
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     owner_email: Mapped[str] = mapped_column(Text, nullable=False)
     owner_person_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    # S22 auth/tenant boundary (docs/s19-auth-tenant-boundary-plan.md §3). Nullable
+    # so existing ingest/seed inserts keep working; the 0010 migration backfills
+    # existing rows to the local dev tenant/user. Production authorization treats a
+    # NULL owner as unowned (fail closed); dev mode owns local/demo mailboxes.
+    tenant_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    owner_user_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     embed_model: Mapped[str] = mapped_column(Text, nullable=False)
     embed_dim: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -64,6 +70,63 @@ class Mailbox(Base):
 
     __table_args__ = (
         CheckConstraint("provider IN ('gmail','msgraph')", name="ck_mailbox_provider"),
+    )
+
+
+# ── Auth / tenant boundary (S22 — implements docs/s19-auth-tenant-boundary-plan) ─
+# Service-DB only (no ekc_schemas shared-contract change). A Tenant is the
+# isolation boundary; a User is an authenticated identity within one tenant; a
+# TenantMembership grants a role. A Mailbox is owned by one User in one Tenant
+# (see Mailbox.tenant_id / owner_user_id above). Recipients are NOT modeled here —
+# they authenticate to a package via a capability code + session (S19 §5).
+class Tenant(Base):
+    __tablename__ = "tenant"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AppUser(Base):
+    # 'user' is reserved in Postgres, so the table is 'app_user'.
+    __tablename__ = "app_user"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    idp_subject: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idp_subject", name="uq_app_user_tenant_subject"),
+    )
+
+
+class TenantMembership(Base):
+    __tablename__ = "tenant_membership"
+
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    role: Mapped[str] = mapped_column(Text, primary_key=True)
+    granted_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('creator','admin','security_reviewer')",
+            name="ck_tenant_membership_role",
+        ),
     )
 
 
