@@ -236,6 +236,13 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   project/owner trees** (S17.17–S17.19 ship a package-local topic workspace, not a
   graph), and a stronger production auth boundary. See
   `docs/s17-handoff-package-mvp-plan.md`.
+- **S18 — planned (docs-only).** Hosted product readiness / web-app deployment
+  plan: what must be true to go from the localhost/demo MVP to a hosted web app
+  (production roles + auth boundary, Gmail-first OAuth + token vault, hosted
+  architecture, background-job states, data-tier boundaries with the recipient
+  package-local-snapshot invariant intact, privacy/compliance posture, a
+  readiness gap checklist, a phased launch path, and an S19+ sprint map). No code
+  this sprint. See `docs/s18-hosted-product-readiness-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 

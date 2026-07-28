@@ -300,6 +300,20 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
+**Planned (S18 — docs-only):**
+- **S18 — Hosted product readiness / web-app deployment plan** (planning sprint,
+  no code): what must be true to move from the localhost/demo MVP to a deployable
+  hosted web app — product shape (web, not desktop), production roles + access
+  model, the creator/recipient/admin auth boundary, Gmail-first OAuth + token
+  vault, hosted architecture (static React + FastAPI + managed Postgres/pgvector +
+  background worker + secrets manager + observability), background-job states,
+  data-tier boundaries (recipient reads package-local snapshots only), privacy/
+  compliance posture, a production-readiness gap checklist, a phased launch path,
+  and an S19+ sprint map (S19 auth+tenant → S20 OAuth/token vault → S21 job
+  orchestration → S22 hosted deploy → S23 admin/audit viewer → S24 security/
+  privacy hardening → S25 real-mailbox quality). See
+  `docs/s18-hosted-product-readiness-plan.md`. Implementation deferred to S19+.
+
 **Deferred beyond S17:**
 - **Thread-context neighbor expansion** (per spec).
 - **Chunk-level splitting, attachment embeddings** — message-level only currently.

@@ -90,13 +90,17 @@ Key docs:
 - `docs/decisions.md` — resolved build decisions (authoritative; D14 locks the handoff-package MVP direction)
 - `docs/s7-implementation-plan.md` — S7 task breakdown and locked decisions
 - `docs/implementation-plan.md` — overall pipeline architecture
+- `docs/s18-hosted-product-readiness-plan.md` — S18 planned (docs-only): hosted
+  web-app deployment readiness + S19+ sprint map (no code this sprint)
 
 Current status: **S0–S16.0 complete; S17.2–S17.19 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
 supersede, static HTML export, a compact three-part recipient coverage workspace,
 creator-only empty-generation diagnostic, refresh-safe workspace mailbox, a
 deterministic handoff-demo seed script, and a manual-demo runbook) shipped and
-end-to-end validated; S16 canonical-demo readiness still planned.** Manual demo:
+end-to-end validated; S16 canonical-demo readiness still planned. S18 (planned,
+docs-only) maps hosted product / web-app deployment readiness — see
+`docs/s18-hosted-product-readiness-plan.md`.** Manual demo:
 `docs/s17-handoff-manual-demo-runbook.md`.
 S7 L2 hybrid retrieval (Voyage AI voyage-4,
 pgvector HNSW, cover-for-me upgrade) shipped and live-validated. S8 real-mailbox
