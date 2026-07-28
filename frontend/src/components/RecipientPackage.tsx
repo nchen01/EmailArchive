@@ -194,7 +194,7 @@ export function RecipientPackage() {
   if (phase === "opening" || phase === "loading") {
     return (
       <Shell>
-        <div className="animate-pulse text-sm text-slate-500">
+        <div className="animate-pulse text-sm text-muted">
           {phase === "opening" ? "Opening your handoff package…" : "Loading package contents…"}
         </div>
       </Shell>
@@ -234,7 +234,7 @@ export function RecipientPackage() {
  * visually distinct from the white-on-default creator workspace. */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-full bg-slate-100">
+    <div className="min-h-full bg-app2">
       <div className="mx-auto w-full max-w-[92rem] px-4 py-8 sm:px-6 lg:px-8">
         {children}
       </div>
@@ -244,9 +244,9 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function NeutralCard({ heading, body }: { heading: string; body: string }) {
   return (
-    <div className="mt-10 rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
-      <h1 className="text-lg font-semibold text-slate-800">{heading}</h1>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">{body}</p>
+    <div className="mt-10 rounded-lg border border-line bg-surface p-8 text-center shadow-sm">
+      <h1 className="text-lg font-semibold text-ink">{heading}</h1>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">{body}</p>
     </div>
   );
 }
@@ -291,20 +291,20 @@ function PackageDocument({
     headers.map((h) => byHeader.get(h)).filter((e): e is RecipientEvidence => e != null);
 
   return (
-    <article className="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <article className="overflow-hidden rounded-lg bg-surface shadow-sm ring-1 ring-line">
       {/* Document header band — the delivered-package identity. */}
-      <header className="bg-indigo-900 px-6 py-6 text-indigo-50 sm:px-8 sm:py-7">
-        <div className="text-xs font-semibold uppercase tracking-widest text-indigo-300">
+      <header className="bg-band px-6 py-6 text-onband sm:px-8 sm:py-7">
+        <div className="text-xs font-semibold uppercase tracking-widest text-onband">
           Handoff package · Read-only
         </div>
         <h1 className="mt-2 text-2xl font-semibold leading-tight">
           {pkg.title || "Coverage handoff"}
         </h1>
-        <div className="mt-3 text-sm text-indigo-200">
-          Prepared for you by <span className="font-medium text-indigo-50">{pkg.creator_email}</span>
+        <div className="mt-3 text-sm text-onband">
+          Prepared for you by <span className="font-medium text-onband">{pkg.creator_email}</span>
           {pkg.reason ? <> · {pkg.reason}</> : null}
         </div>
-        <div className="mt-1 text-xs text-indigo-300">
+        <div className="mt-1 text-xs text-onband">
           Shared {fmtDate(pkg.published_at)}
           {pkg.expires_at ? <> · access expires {fmtDate(pkg.expires_at)}</> : null}
         </div>
@@ -312,13 +312,13 @@ function PackageDocument({
 
       <div className="px-6 py-6 sm:px-8">
         {/* Privacy posture — reassurance, constant, no counts/oracle. */}
-        <aside className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <aside className="rounded-md border border-jade bg-jade-soft px-4 py-3 text-sm text-jade">
           <div className="font-medium">Scope-limited · Sensitive content excluded</div>
-          <p className="mt-1 leading-relaxed text-emerald-800">{pkg.privacy_posture.note}</p>
+          <p className="mt-1 leading-relaxed text-jade">{pkg.privacy_posture.note}</p>
         </aside>
 
         {/* Workspace tabs — Ask sits at the top, alongside the coverage brief. */}
-        <div className="mt-6 flex gap-1 border-b border-slate-200" role="tablist">
+        <div className="mt-6 flex gap-1 border-b border-line" role="tablist">
           <WorkspaceTab active={tab === "brief"} onClick={() => setTab("brief")}>
             Coverage brief
           </WorkspaceTab>
@@ -333,7 +333,7 @@ function PackageDocument({
           {tab === "ask" && sessionToken ? (
             <AskBox sessionToken={sessionToken} />
           ) : areas.length === 0 ? (
-            <p className="text-sm text-slate-400">This handoff has no summary points.</p>
+            <p className="text-sm text-faint">This handoff has no summary points.</p>
           ) : (
             // Coverage brief: area rail · brief (claim-attached evidence) · people.
             <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
@@ -352,7 +352,7 @@ function PackageDocument({
           )}
         </div>
 
-        <footer className="mt-9 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-400">
+        <footer className="mt-9 border-t border-line pt-4 text-xs leading-relaxed text-faint">
           This is a read-only handoff package. It shows only the messages the
           sender chose to include; the underlying mailbox is not accessible from
           here.
@@ -381,8 +381,8 @@ function WorkspaceTab({
       className={
         "-mb-px border-b-2 px-3 py-2 text-sm font-medium " +
         (active
-          ? "border-indigo-600 text-indigo-700"
-          : "border-transparent text-slate-500 hover:text-slate-700")
+          ? "border-brass text-brass"
+          : "border-transparent text-muted hover:text-ink")
       }
     >
       {children}
@@ -404,10 +404,10 @@ function CoverageAreaRail({
   return (
     <nav aria-label="Coverage areas" className="lg:sticky lg:top-4 lg:self-start">
       <div className="mb-2 flex items-baseline justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
           Coverage areas
         </span>
-        <span className="text-xs text-slate-400">{areas.length}</span>
+        <span className="text-xs text-faint">{areas.length}</span>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
         {areas.map((a) => {
@@ -421,15 +421,15 @@ function CoverageAreaRail({
               className={
                 "w-56 shrink-0 rounded-md border px-3 py-2 text-left lg:w-full " +
                 (active
-                  ? "border-indigo-600 bg-indigo-50 ring-1 ring-indigo-200"
-                  : "border-slate-200 bg-white hover:bg-slate-50")
+                  ? "border-brass bg-brass-soft ring-1 ring-brass"
+                  : "border-line bg-surface hover:bg-app2")
               }
               title={a.label}
             >
-              <div className={"truncate text-sm font-medium " + (active ? "text-indigo-800" : "text-slate-700")}>
+              <div className={"truncate text-sm font-medium " + (active ? "text-ink" : "text-ink")}>
                 {a.label}
               </div>
-              <div className="mt-0.5 truncate text-xs text-slate-400">
+              <div className="mt-0.5 truncate text-xs text-faint">
                 {a.decisionCount} dec · {a.openLoopCount} open · {a.evidenceCount} msg
               </div>
             </button>
@@ -480,9 +480,9 @@ function AreaBrief({
   );
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5">
-      <h2 className="text-lg font-semibold text-slate-800">{area.label}</h2>
-      <div className="mt-1 text-xs text-slate-500">
+    <section className="rounded-lg border border-line bg-surface p-5">
+      <h2 className="text-lg font-semibold text-ink">{area.label}</h2>
+      <div className="mt-1 text-xs text-muted">
         {area.decisionCount} decision{area.decisionCount === 1 ? "" : "s"} ·{" "}
         {area.openLoopCount} open loop{area.openLoopCount === 1 ? "" : "s"} ·{" "}
         {area.evidenceCount} message{area.evidenceCount === 1 ? "" : "s"}
@@ -493,7 +493,7 @@ function AreaBrief({
         if (claims.length === 0) return null;
         return (
           <div key={sec.heading} className="mt-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+            <div className="text-xs font-semibold uppercase tracking-wide text-brass">
               {sec.heading}
             </div>
             {renderClaims(claims)}
@@ -503,7 +503,7 @@ function AreaBrief({
 
       {extraKinds.map((kind) => (
         <div key={kind} className="mt-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+          <div className="text-xs font-semibold uppercase tracking-wide text-brass">
             {PANEL_KIND_HEADING[kind] ?? kind}
           </div>
           {renderClaims(grouped[kind])}
@@ -511,7 +511,7 @@ function AreaBrief({
       ))}
 
       {supported.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-400">No summary points in this area.</p>
+        <p className="mt-3 text-sm text-faint">No summary points in this area.</p>
       ) : null}
     </section>
   );
@@ -523,24 +523,24 @@ function PeopleSection({ area }: { area: CoverageArea }) {
   const people = peopleDetailForEvidence(area.evidence);
   if (people.length === 0) return null;
   return (
-    <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+    <section className="mt-6 rounded-lg border border-line bg-surface p-5">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
         Related people &amp; domains
       </h2>
-      <p className="mt-0.5 text-xs text-slate-400">
+      <p className="mt-0.5 text-xs text-faint">
         Derived from this area's cited evidence.
       </p>
       <ul className="mt-3 space-y-2">
         {people.map((p) => (
           <li
             key={`${p.name}|${p.domain}`}
-            className="flex items-baseline justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2"
+            className="flex items-baseline justify-between gap-3 rounded-md border border-line bg-app2 px-3 py-2"
           >
             <div className="min-w-0">
-              <div className="truncate text-sm text-slate-800">{p.name}</div>
-              {p.domain ? <div className="truncate text-xs text-slate-500">{p.domain}</div> : null}
+              <div className="truncate text-sm text-ink">{p.name}</div>
+              {p.domain ? <div className="truncate text-xs text-muted">{p.domain}</div> : null}
             </div>
-            <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500">
+            <span className="shrink-0 rounded-full border border-line bg-surface px-2 py-0.5 text-xs text-muted">
               {p.context}
             </span>
           </li>
@@ -554,11 +554,11 @@ function PeopleSection({ area }: { area: CoverageArea }) {
  * showing only the messages this claim cites). */
 function ClaimRow({ claim, evidence }: { claim: RecipientClaim; evidence: RecipientEvidence[] }) {
   return (
-    <li className="rounded-md border border-slate-100 bg-white px-3 py-2 text-sm shadow-sm">
-      <div className="text-slate-800">{claim.text}</div>
+    <li className="rounded-md border border-line bg-surface px-3 py-2 text-sm shadow-sm">
+      <div className="text-ink">{claim.text}</div>
       {evidence.length > 0 ? (
         <details className="mt-1.5">
-          <summary className="cursor-pointer select-none text-xs font-medium text-indigo-600 hover:text-indigo-700">
+          <summary className="cursor-pointer select-none text-xs font-medium text-brass hover:text-brass">
             {evidence.length} supporting message{evidence.length === 1 ? "" : "s"}
           </summary>
           <ul className="mt-2 space-y-2">
@@ -577,15 +577,15 @@ function ClaimRow({ claim, evidence }: { claim: RecipientClaim; evidence: Recipi
  * list and the ask answer's citations. */
 function EvidenceItem({ ev }: { ev: RecipientEvidence }) {
   return (
-    <li className="rounded-md border border-slate-200 bg-white p-4">
-      <div className="text-sm font-medium text-slate-800">{ev.subject || "(no subject)"}</div>
-      <div className="mt-0.5 text-xs text-slate-500">
+    <li className="rounded-md border border-line bg-surface p-4">
+      <div className="text-sm font-medium text-ink">{ev.subject || "(no subject)"}</div>
+      <div className="mt-0.5 text-xs text-muted">
         {ev.sender_display || "Unknown sender"}
         {ev.sender_domain ? <> · {ev.sender_domain}</> : null}
         {ev.date ? <> · {fmtDate(ev.date)}</> : null}
       </div>
       {ev.body_snapshot ? (
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink">
           {ev.body_snapshot}
         </p>
       ) : null}
@@ -624,22 +624,22 @@ function AskBox({ sessionToken }: { sessionToken: string }) {
   };
 
   return (
-    <section className="rounded-md border border-indigo-200 bg-indigo-50 p-4">
-      <h2 className="text-sm font-semibold text-indigo-900">Ask about this handoff</h2>
-      <p className="mt-0.5 text-xs text-indigo-700">
+    <section className="rounded-md border border-brass bg-brass-soft p-4">
+      <h2 className="text-sm font-semibold text-ink">Ask about this handoff</h2>
+      <p className="mt-0.5 text-xs text-brass">
         Answers come only from this package — the sender's mailbox is not searched.
       </p>
       <form className="mt-3 flex gap-2" onSubmit={submit}>
         <input
           type="text"
-          className="min-w-0 flex-1 rounded border border-indigo-300 bg-white px-3 py-1.5 text-sm text-slate-800"
+          className="min-w-0 flex-1 rounded border border-brass bg-surface px-3 py-1.5 text-sm text-ink"
           placeholder="e.g. What's the status of the Atlas cutover?"
           value={query}
           onChange={(ev) => setQuery(ev.target.value)}
         />
         <button
           type="submit"
-          className="shrink-0 rounded-md bg-indigo-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-600 disabled:bg-indigo-300"
+          className="shrink-0 rounded-md bg-brass px-4 py-1.5 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
           disabled={state.kind === "asking" || !query.trim()}
         >
           {state.kind === "asking" ? "Asking…" : "Ask"}
@@ -647,14 +647,14 @@ function AskBox({ sessionToken }: { sessionToken: string }) {
       </form>
 
       {state.kind === "error" ? (
-        <p className="mt-3 text-sm text-slate-600">
+        <p className="mt-3 text-sm text-muted">
           This handoff package isn't available to answer right now.
         </p>
       ) : null}
 
       {state.kind === "answered" ? (
         <div className="mt-3">
-          <p className="text-sm text-slate-700">{state.resp.message}</p>
+          <p className="text-sm text-ink">{state.resp.message}</p>
           {state.resp.answered ? (
             <>
               {state.resp.claims.length > 0 ? (
@@ -662,7 +662,7 @@ function AskBox({ sessionToken }: { sessionToken: string }) {
                   {state.resp.claims.map((c) => (
                     <li
                       key={c.id}
-                      className="rounded-md border border-indigo-100 bg-white px-3 py-2 text-sm text-slate-800"
+                      className="rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
                     >
                       {c.text}
                     </li>
@@ -671,7 +671,7 @@ function AskBox({ sessionToken }: { sessionToken: string }) {
               ) : null}
               {state.resp.evidence.length > 0 ? (
                 <div className="mt-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-brass">
                     From these messages
                   </div>
                   <ul className="mt-2 space-y-3">

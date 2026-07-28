@@ -299,8 +299,8 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8">
-      <h2 className="text-lg font-semibold text-slate-800">Review handoff package</h2>
-      <p className="mt-1 text-sm text-slate-500">
+      <h2 className="text-lg font-semibold text-ink">Review handoff package</h2>
+      <p className="mt-1 text-sm text-muted">
         Inspect and prune what a coverage handoff would reveal, from your own
         mailbox, <strong>before publishing</strong>. This is your review surface —
         not the recipient view. Sensitive and noise messages are excluded
@@ -317,15 +317,15 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
 
       {/* ── Create (or loading a deep-linked package) ─────────────────────── */}
       {loading && !pkg ? (
-        <p className="mt-6 text-sm text-slate-500">Loading handoff package…</p>
+        <p className="mt-6 text-sm text-muted">Loading handoff package…</p>
       ) : !pkg ? (
-        <section className="mt-6 rounded-md border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-slate-700">Start a handoff</h3>
+        <section className="mt-6 rounded-md border border-line bg-surface p-4">
+          <h3 className="text-sm font-semibold text-ink">Start a handoff</h3>
           <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="flex flex-col text-xs text-slate-500">
+            <label className="flex flex-col text-xs text-muted">
               Reason
               <select
-                className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                className="mt-1 rounded border border-line2 px-2 py-1 text-sm"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
               >
@@ -336,11 +336,11 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                 ))}
               </select>
             </label>
-            <label className="flex flex-1 flex-col text-xs text-slate-500">
+            <label className="flex flex-1 flex-col text-xs text-muted">
               Title (optional)
               <input
                 type="text"
-                className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                className="mt-1 rounded border border-line2 px-2 py-1 text-sm"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder='e.g. "Covering Atlas while I&apos;m out"'
@@ -348,7 +348,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
             </label>
             <button
               type="button"
-              className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:bg-slate-300"
+              className="rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
               onClick={create}
               disabled={busy !== null}
             >
@@ -359,20 +359,20 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       ) : (
         <>
           {/* ── Package meta + scope ─────────────────────────────────────── */}
-          <section className="mt-6 rounded-md border border-slate-200 bg-white p-4">
+          <section className="mt-6 rounded-md border border-line bg-surface p-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm font-semibold text-slate-800">
+                <div className="text-sm font-semibold text-ink">
                   {pkg.title || "(untitled handoff)"}
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-muted">
                   reason: {pkg.reason} · status:{" "}
-                  <span className="font-medium text-slate-700">{pkg.status}</span> · v{pkg.version}
+                  <span className="font-medium text-ink">{pkg.status}</span> · v{pkg.version}
                 </div>
               </div>
               <button
                 type="button"
-                className="text-xs text-slate-400 hover:text-slate-600"
+                className="text-xs text-faint hover:text-muted"
                 onClick={() => navigate(HANDOFF_BASE)}
               >
                 Start over
@@ -380,28 +380,28 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
             </div>
 
             {mutable ? (
-              <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3">
-                <label className="flex flex-col text-xs text-slate-500">
+              <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3">
+                <label className="flex flex-col text-xs text-muted">
                   From
                   <input
                     type="date"
-                    className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                    className="mt-1 rounded border border-line2 px-2 py-1 text-sm"
                     value={from}
                     onChange={(e) => setFrom(e.target.value)}
                   />
                 </label>
-                <label className="flex flex-col text-xs text-slate-500">
+                <label className="flex flex-col text-xs text-muted">
                   To
                   <input
                     type="date"
-                    className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                    className="mt-1 rounded border border-line2 px-2 py-1 text-sm"
                     value={to}
                     onChange={(e) => setTo(e.target.value)}
                   />
                 </label>
                 <button
                   type="button"
-                  className="rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-md border border-line2 px-3 py-2 text-sm hover:bg-app2 disabled:opacity-50"
                   onClick={saveScope}
                   disabled={busy !== null}
                 >
@@ -409,7 +409,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                 </button>
                 <button
                   type="button"
-                  className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:bg-slate-300"
+                  className="rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
                   onClick={generate}
                   disabled={busy !== null}
                 >
@@ -417,7 +417,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                 </button>
               </div>
             ) : (
-              <div className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-400">
+              <div className="mt-3 border-t border-line pt-3 text-xs text-faint">
                 This package is {pkg.status} and frozen — scope, regeneration, and
                 evidence are locked.
               </div>
@@ -425,7 +425,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
             {(pkg.scope.included_project_ids.length > 0 ||
               pkg.scope.included_person_ids.length > 0 ||
               pkg.scope.included_thread_ids.length > 0) && (
-              <div className="mt-2 text-xs text-slate-400">
+              <div className="mt-2 text-xs text-faint">
                 Scoped to {pkg.scope.included_project_ids.length} project(s),{" "}
                 {pkg.scope.included_person_ids.length} person(s),{" "}
                 {pkg.scope.included_thread_ids.length} thread(s).
@@ -439,31 +439,31 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               <ExclusionSummary counts={pkg.exclusion_counts} />
 
               <section className="mt-4">
-                <h3 className="text-sm font-semibold text-slate-700">
+                <h3 className="text-sm font-semibold text-ink">
                   Claims ({pkg.claims.length})
                 </h3>
                 {pkg.claims.length === 0 ? (
-                  <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <div className="mt-1 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
                     {generationEmptyMessage(pkg)}
                   </div>
                 ) : (
                   KIND_ORDER.filter((k) => claimsByKind(k).length > 0).map((kind) => (
                     <div key={kind} className="mt-3">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-faint">
                         {KIND_LABEL[kind] ?? kind}
                       </div>
                       <ul className="mt-1 space-y-2">
                         {claimsByKind(kind).map((c) => (
                           <li
                             key={c.id}
-                            className="rounded-md border border-slate-100 bg-white px-3 py-2 text-sm"
+                            className="rounded-md border border-line bg-surface px-3 py-2 text-sm"
                           >
-                            <div className="text-slate-800">{c.text}</div>
+                            <div className="text-ink">{c.text}</div>
                             <div className="mt-1 flex flex-wrap gap-1">
                               {c.source_message_id_headers.map((h) => (
                                 <span
                                   key={h}
-                                  className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500"
+                                  className="rounded bg-app2 px-1.5 py-0.5 font-mono text-[10px] text-muted"
                                   title="Cited source message"
                                 >
                                   {h}
@@ -479,10 +479,10 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               </section>
 
               <section className="mt-6">
-                <h3 className="text-sm font-semibold text-slate-700">
+                <h3 className="text-sm font-semibold text-ink">
                   Evidence ({pkg.evidence.length})
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-faint">
                   {mutable
                     ? "Snapshotted safe message content. Remove anything that should not travel with the handoff; a claim left without evidence disappears on regenerate."
                     : "Snapshotted safe message content, frozen at publish. This is exactly what the recipient can read."}
@@ -500,7 +500,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                     />
                   ))}
                   {pkg.evidence.length === 0 ? (
-                    <li className="text-sm text-slate-400">No evidence in scope.</li>
+                    <li className="text-sm text-faint">No evidence in scope.</li>
                   ) : null}
                 </ul>
               </section>
@@ -515,7 +515,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               />
             </>
           ) : (
-            <p className="mt-4 text-sm text-slate-500">
+            <p className="mt-4 text-sm text-muted">
               Set a scope (optional) and click <strong>Generate package</strong> to
               build the candidate for review.
             </p>
@@ -532,7 +532,7 @@ function ExclusionSummary({ counts }: { counts: Record<string, number> }) {
     .map(([type, n]) => `${n} ${EXCLUSION_LABEL[type] ?? type}`);
   if (parts.length === 0) return null;
   return (
-    <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+    <div className="mt-4 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
       Withheld from this package (visible to you only, never to the recipient):{" "}
       {parts.join(" · ")}.
     </div>
@@ -556,18 +556,18 @@ function EvidenceCard({
 }) {
   const from = [ev.sender_display, ev.sender_domain].filter(Boolean).join(" · ");
   return (
-    <li className="rounded-md border border-slate-200 bg-white p-3 text-sm">
+    <li className="rounded-md border border-line bg-surface p-3 text-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-semibold text-slate-900">{ev.subject || "(no subject)"}</div>
-          <div className="text-xs text-slate-500">
+          <div className="font-semibold text-ink">{ev.subject || "(no subject)"}</div>
+          <div className="text-xs text-muted">
             {from || "—"} · {fmtDate(ev.date)}
           </div>
         </div>
         {canRemove ? (
           <button
             type="button"
-            className="shrink-0 rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            className="shrink-0 rounded border border-line px-2 py-1 text-[11px] font-medium text-danger hover:bg-danger-soft disabled:opacity-50"
             onClick={onRemove}
             disabled={disabled}
             title="Exclude this message and regenerate"
@@ -577,17 +577,17 @@ function EvidenceCard({
         ) : null}
       </div>
       {ev.body_snapshot ? (
-        <p className="mt-2 whitespace-pre-wrap rounded bg-slate-50 px-2 py-1.5 text-[13px] text-slate-700">
+        <p className="mt-2 whitespace-pre-wrap rounded bg-app2 px-2 py-1.5 text-[13px] text-ink">
           {ev.body_snapshot}
         </p>
       ) : null}
       <div className="mt-1 flex items-center gap-2">
-        <span className="break-all rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+        <span className="break-all rounded bg-app2 px-1.5 py-0.5 font-mono text-[10px] text-muted">
           {ev.message_id_header}
         </span>
         <button
           type="button"
-          className="rounded border border-slate-200 px-2 py-0.5 text-[10px] text-slate-500 hover:bg-slate-100"
+          className="rounded border border-line px-2 py-0.5 text-[10px] text-muted hover:bg-app2"
           onClick={onCopy}
         >
           Copy ID
@@ -603,7 +603,7 @@ function ReviseButton({ busy, onClick }: { busy: string | null; onClick: () => v
   return (
     <button
       type="button"
-      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+      className="rounded-md border border-line2 bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-app2 disabled:opacity-50"
       onClick={onClick}
       disabled={busy !== null}
     >
@@ -626,7 +626,7 @@ function ExportButton({ pkg }: { pkg: HandoffPackage }) {
   return (
     <button
       type="button"
-      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      className="rounded-md border border-line2 bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-app2"
       onClick={download}
     >
       Export HTML
@@ -672,11 +672,11 @@ function PublishPanel({
   if (pkg.status === "revoked" || pkg.status === "superseded") {
     const revoked = pkg.status === "revoked";
     return (
-      <section className="mt-6 rounded-md border border-slate-300 bg-slate-50 p-4">
-        <h3 className="text-sm font-semibold text-slate-800">
+      <section className="mt-6 rounded-md border border-line2 bg-app2 p-4">
+        <h3 className="text-sm font-semibold text-ink">
           {revoked ? "Access revoked" : "Replaced by a newer version"}
         </h3>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-muted">
           {revoked
             ? `This handoff was revoked${pkg.revoked_at ? ` on ${fmtDate(pkg.revoked_at)}` : ""}. The recipient can no longer open it.`
             : "A newer version of this handoff has been published. The recipient's access to this version is blocked."}{" "}
@@ -706,26 +706,26 @@ function PublishPanel({
         .catch(() => window.prompt("Copy this recipient link:", shareUrl));
     };
     return (
-      <section className="mt-6 rounded-md border border-emerald-300 bg-emerald-50 p-4">
-        <h3 className="text-sm font-semibold text-emerald-900">Package published</h3>
-        <div className="mt-1 text-xs text-emerald-800">
+      <section className="mt-6 rounded-md border border-jade bg-jade-soft p-4">
+        <h3 className="text-sm font-semibold text-jade">Package published</h3>
+        <div className="mt-1 text-xs text-jade">
           {share ? <>Recipient: {share.recipient_email} · </> : null}
           Access expires {fmtDate(pkg.expires_at ?? share?.expires_at ?? "")}
         </div>
 
         {share && shareUrl ? (
           <div className="mt-3">
-            <label className="block text-xs font-medium text-emerald-900">
+            <label className="block text-xs font-medium text-jade">
               Recipient share link
               <input
                 type="text"
                 readOnly
                 value={shareUrl}
                 onFocus={(e) => e.currentTarget.select()}
-                className="mt-1 w-full rounded border border-emerald-300 bg-white px-2 py-1 font-mono text-xs text-slate-700"
+                className="mt-1 w-full rounded border border-jade bg-surface px-2 py-1 font-mono text-xs text-ink"
               />
             </label>
-            <div className="mt-2 rounded bg-amber-100 px-2 py-1.5 text-xs text-amber-900">
+            <div className="mt-2 rounded bg-warn-soft px-2 py-1.5 text-xs text-warn">
               <strong>This link is shown once.</strong> Copy it now and store it
               securely — the code cannot be recovered later, not even by you. The
               code is one-time: it is consumed the first time it is opened, so do
@@ -734,7 +734,7 @@ function PublishPanel({
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
+                className="rounded-md bg-jade px-3 py-1.5 text-xs font-medium text-white hover:bg-jade"
                 onClick={copy}
               >
                 {copied ? "Copied!" : "Copy link"}
@@ -742,7 +742,7 @@ function PublishPanel({
             </div>
           </div>
         ) : (
-          <p className="mt-3 text-xs text-emerald-800">
+          <p className="mt-3 text-xs text-jade">
             The share link was shown once, when this package was published, and
             cannot be recovered from the server. If you need the link again, create
             a revised version below — it starts a fresh draft with this package's
@@ -751,12 +751,12 @@ function PublishPanel({
           </p>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-emerald-200 pt-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-jade pt-3">
           <ReviseButton busy={busy} onClick={onNewVersion} />
           <ExportButton pkg={pkg} />
           <button
             type="button"
-            className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+            className="text-xs font-medium text-danger hover:text-danger disabled:opacity-50"
             onClick={onRevoke}
             disabled={busy !== null}
           >
@@ -774,38 +774,38 @@ function PublishPanel({
     onPublish(email.trim(), Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : null);
 
   return (
-    <section className="mt-6 rounded-md border border-indigo-300 bg-indigo-50 p-4">
-      <h3 className="text-sm font-semibold text-indigo-900">Publish package</h3>
-      <p className="mt-1 text-xs text-indigo-800">
+    <section className="mt-6 rounded-md border border-brass bg-brass-soft p-4">
+      <h3 className="text-sm font-semibold text-ink">Publish package</h3>
+      <p className="mt-1 text-xs text-ink">
         Publishing freezes this package and generates a one-time recipient link.
         After publishing you can no longer edit scope, regenerate, or remove
         evidence.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label className="flex flex-1 flex-col text-xs text-indigo-900">
+        <label className="flex flex-1 flex-col text-xs text-ink">
           Recipient email
           <input
             type="email"
-            className="mt-1 rounded border border-indigo-300 bg-white px-2 py-1 text-sm text-slate-800"
+            className="mt-1 rounded border border-brass bg-surface px-2 py-1 text-sm text-ink"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="cover@company.com"
           />
         </label>
-        <label className="flex w-28 flex-col text-xs text-indigo-900">
+        <label className="flex w-28 flex-col text-xs text-ink">
           Expires (days)
           <input
             type="number"
             min={1}
             max={365}
-            className="mt-1 rounded border border-indigo-300 bg-white px-2 py-1 text-sm text-slate-800"
+            className="mt-1 rounded border border-brass bg-surface px-2 py-1 text-sm text-ink"
             value={days}
             onChange={(e) => setDays(e.target.value)}
           />
         </label>
         <button
           type="button"
-          className="rounded-md bg-indigo-700 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:bg-indigo-300"
+          className="rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
           onClick={submit}
           disabled={busy !== null || !email.trim() || noEvidence}
           title={noEvidence ? "Generate a package with evidence before publishing" : undefined}
@@ -814,7 +814,7 @@ function PublishPanel({
         </button>
       </div>
       {noEvidence ? (
-        <p className="mt-2 text-xs text-indigo-700">
+        <p className="mt-2 text-xs text-brass">
           This package has no evidence yet — widen the scope and regenerate before
           publishing.
         </p>

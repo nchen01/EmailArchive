@@ -1,184 +1,202 @@
+import { useEffect, useRef } from "react";
 import { Link } from "../router";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
- * Marketing landing page (S12.4). Professional, calm, operational tone — framed
- * around continuity / evidence / coverage, not "AI email assistant". Routes into
- * the real workspace: primary CTA -> /app, secondary -> /app/status.
+ * Marketing landing page — "Custody Ledger" visual system (S17 redesign).
  *
- * The hero "preview" is a lightweight CSS mock of the actual workspace (not a
- * binary screenshot), so it stays in sync with the product and adds no asset
- * weight.
+ * A precision-dossier identity for an audited handoff product: ink hero band,
+ * editorial serif display, a technical mono for record/audit labels, and one
+ * burnished-brass accent used like an official seal. Routes into the workspace.
+ *
+ * The lifecycle is genuinely numbered because the handoff IS a sequence
+ * (scope → generate → review → publish → hand off → revoke).
  */
-export function Landing() {
+
+/** The brass "seal" mark — a shield used for the brand and scope-verified posture. */
+function Shield({ check = false }: { check?: boolean }) {
   return (
-    <div className="landing">
-      {/* Top bar */}
-      <header className="landing-topbar">
-        <span className="landing-brand">Continuity</span>
-        <nav className="landing-topnav">
-          <a href="#how">How it works</a>
-          <a href="#trust">Trust</a>
-          <Link to="/app/status">Setup</Link>
-          <Link to="/app" className="landing-topnav-cta">
-            Open workspace
-          </Link>
-        </nav>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z" />
+      {check ? <path d="m9 12 2 2 4-4" /> : null}
+    </svg>
+  );
+}
+
+export function Landing() {
+  // Reset scroll to the top on every entry (direct load or the in-app brand
+  // link) so the landing presents consistently — its own scroll container can
+  // otherwise carry a residual offset after client navigation.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    rootRef.current?.scrollTo({ top: 0, left: 0 });
+    window.scrollTo(0, 0);
+    if (!("IntersectionObserver" in window)) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            e.target.classList.add("in");
+            io.unobserve(e.target);
+          }
+        }
+      },
+      { threshold: 0.12 },
+    );
+    rootRef.current?.querySelectorAll(".lx-reveal").forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div className="landing" ref={rootRef}>
+      {/* Topbar */}
+      <header className="lx-top">
+        <div className="lx-wrap lx-top-in">
+          <a className="lx-brand" href="#top">
+            <span className="lx-seal"><Shield /></span>
+            Continuity
+          </a>
+          <nav className="lx-nav">
+            <a className="lx-navlink lx-nav-desktop" href="#how">How it works</a>
+            <a className="lx-navlink lx-nav-desktop" href="#custody">Chain of custody</a>
+            <Link to="/app/status" className="lx-navlink lx-nav-desktop">Setup</Link>
+            <ThemeToggle className="lx-theme-toggle" />
+            <Link to="/app" className="lx-btn lx-btn-primary">Open workspace</Link>
+          </nav>
+        </div>
       </header>
 
       {/* Hero */}
-      <section className="landing-hero">
-        <div className="landing-hero-copy">
-          <p className="landing-eyebrow">Email continuity workspace</p>
-          <h1>
-            Turn an authorized mailbox into a cited map of people, projects, and
-            work history.
-          </h1>
-          <p className="landing-lede">
-            So a teammate can get oriented and cover work without guessing. Not a
-            chatbot reading an inbox — a continuity workspace built from
-            structured email evidence, where every answer is cited.
-          </p>
-          <div className="landing-cta-row">
-            <Link to="/app" className="landing-cta-primary">
-              Open demo workspace
-            </Link>
-            <Link to="/app/status" className="landing-cta-secondary">
-              Check setup
-            </Link>
-          </div>
-          <p className="landing-cta-note">
-            Built for coverage, handoffs, and institutional memory.
-          </p>
-        </div>
-
-        {/* Realistic product preview (CSS mock of the workspace). */}
-        <div className="landing-preview" aria-hidden="true">
-          <div className="lp-chrome">
-            <span className="lp-dot" />
-            <span className="lp-dot" />
-            <span className="lp-dot" />
-            <span className="lp-tab is-active">Overview</span>
-            <span className="lp-tab">Network</span>
-            <span className="lp-tab">Projects</span>
-            <span className="lp-tab">Cover for Me</span>
-          </div>
-          <div className="lp-body">
-            <div className="lp-stats">
-              <div className="lp-stat"><span>People</span><strong>34</strong></div>
-              <div className="lp-stat"><span>Projects</span><strong>7</strong></div>
-              <div className="lp-stat"><span>Retrieval</span><strong className="lp-ok">Ready</strong></div>
+      <section className="lx-hero" id="top">
+        <div className="lx-wrap lx-hero-grid">
+          <div>
+            <p className="lx-eyebrow">Audited handoff packages</p>
+            <h1 className="lx-h1">When someone steps away,<br />the work doesn't <em>go dark</em>.</h1>
+            <p className="lx-lede">
+              Continuity turns a covered employee's email into a scoped, cited, revocable handoff
+              package — so whoever covers them opens with the decisions, open loops, and the evidence
+              behind each one. Nothing sensitive. Nothing off-scope.
+            </p>
+            <div className="lx-cta-row">
+              <Link to="/app" className="lx-btn lx-btn-primary">Open the workspace</Link>
+              <a href="#how" className="lx-btn lx-btn-ghost">See how it works</a>
             </div>
-            <div className="lp-claim">
-              <p>The auth layer was reported code-complete and in QA as of Mar 27.</p>
-              <div className="lp-cites">
-                <span className="lp-chip">Nexus launch readiness · 3/27</span>
-                <span className="lp-chip">Board deck Q2 · 5/31</span>
+            <div className="lx-meta">
+              <div><span className="n">One-time</span><span className="l">Recipient link</span></div>
+              <div><span className="n">Every claim</span><span className="l">Cited to evidence</span></div>
+              <div><span className="n">Revocable</span><span className="l">On your say-so</span></div>
+            </div>
+          </div>
+
+          {/* sealed package preview */}
+          <div className="lx-card" aria-hidden="true">
+            <div className="lx-card-band">
+              <div>
+                <div className="t">Covering Dana — Nexus Auth &amp; on-call</div>
+                <div className="s">HANDOFF · v2 · LINEAGE 7f3a…c1</div>
               </div>
+              <span className="lx-stamp">SEALED</span>
             </div>
-            <div className="lp-claim">
-              <p>Circuit breaker merged; load-testing in progress.</p>
-              <div className="lp-cites">
-                <span className="lp-chip">Nexus launch readiness · 3/27</span>
-              </div>
+            <div className="lx-card-body">
+              <div className="lx-post"><Shield /> Scope-limited · sensitive &amp; out-of-scope excluded</div>
+              <div className="lx-clbl">Decisions &amp; outcomes</div>
+              <div className="lx-claim">Shipped the Nexus Auth SSO cutover to production.
+                <span className="lx-cite">nexus-1 · dana@acme.dev</span></div>
+              <div className="lx-claim">Renewed the Contoso support contract for 12 months.
+                <span className="lx-cite">pool-2 · datadoghq.com</span></div>
+              <div className="lx-clbl">Open loops</div>
+              <div className="lx-claim">Migrate remaining internal apps to Nexus Auth next sprint.
+                <span className="lx-cite">nexus-2 · dana@acme.dev</span></div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Three core surfaces */}
-      <section className="landing-section">
-        <h2 className="landing-h2">Three surfaces, one mailbox</h2>
-        <div className="landing-cards">
-          <article className="landing-card">
-            <h3>Network Map</h3>
-            <p>
-              See who works with whom. Edge weight is communication volume, not a
-              claim of impact.
-            </p>
-          </article>
-          <article className="landing-card">
-            <h3>Projects</h3>
-            <p>
-              See what work is active, who is involved, and the cited timeline of
-              what has actually happened.
-            </p>
-          </article>
-          <article className="landing-card">
-            <h3>Cover for Me</h3>
-            <p>
-              Ask plain-language questions across the mailbox and get answers
-              grounded in cited messages you can open and inspect.
-            </p>
-          </article>
+      {/* Principle */}
+      <section className="lx-section" id="how">
+        <div className="lx-wrap">
+          <div className="lx-sechead">
+            <div>
+              <p className="lx-eyebrow">The principle</p>
+              <h2>A coverage brief you can trust, because it can't overreach.</h2>
+            </div>
+            <p>Not a chatbot loose in an inbox. A deliberate, package-local artifact — every fact
+              carries its citation, and the recipient never touches the live mailbox.</p>
+          </div>
+          <div className="lx-ledger lx-reveal">
+            <div className="lx-lrow">
+              <div className="ix">01</div>
+              <h3>Scoped</h3>
+              <div><p>The covered employee chooses what's in — by date, project, and person — then
+                prunes anything that shouldn't travel. Whole-thread sensitivity and noise are excluded
+                before a single word is snapshotted.</p>
+                <span className="lx-tag">Sensitive &amp; noise never enter</span></div>
+            </div>
+            <div className="lx-lrow">
+              <div className="ix">02</div>
+              <h3>Cited</h3>
+              <div><p>Claims are drawn only from already-extracted, already-cited events. No citation,
+                no claim. Ask a question and the answer is grounded in this package's evidence — never
+                the mailbox behind it.</p>
+                <span className="lx-tag">Every claim → its evidence</span></div>
+            </div>
+            <div className="lx-lrow">
+              <div className="ix">03</div>
+              <h3>Revocable</h3>
+              <div><p>Publish mints a one-time link to a single recipient with a 30-day grant. Revoke,
+                or supersede with a new version, and access ends at once — with every step written to
+                an append-only audit trail.</p>
+                <span className="lx-tag">One-time code · full audit</span></div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Trust model */}
-      <section id="trust" className="landing-section landing-section-alt">
-        <h2 className="landing-h2">Built to be trusted</h2>
-        <ul className="landing-trust">
-          <li><strong>Every answer is cited.</strong> No citation, no claim.</li>
-          <li><strong>Inspectable evidence.</strong> Open any citation to see the source message's subject, date, and snippet.</li>
-          <li><strong>Sensitive content excluded by default.</strong> HR, legal, and personal threads are gated out of retrieval.</li>
-          <li><strong>Retrieval status is visible.</strong> You always know whether an answer used message search or structured data only.</li>
-          <li><strong>Secrets stay out.</strong> OAuth tokens and provider keys are never stored in the app database or logs.</li>
-        </ul>
-      </section>
-
-      {/* How it works */}
-      <section id="how" className="landing-section">
-        <h2 className="landing-h2">How it works</h2>
-        <ol className="landing-steps">
-          <li>
-            <span className="landing-step-n">1</span>
+      {/* Chain of custody */}
+      <section className="lx-section alt" id="custody">
+        <div className="lx-wrap">
+          <div className="lx-sechead">
             <div>
-              <h3>Ingest</h3>
-              <p>Pull authorized mailbox data; normalize and clean it.</p>
+              <p className="lx-eyebrow">Chain of custody</p>
+              <h2>Six steps, from scope to seal.</h2>
             </div>
-          </li>
-          <li>
-            <span className="landing-step-n">2</span>
-            <div>
-              <h3>Structure</h3>
-              <p>Materialize contacts, threads, relationships, projects, and events.</p>
-            </div>
-          </li>
-          <li>
-            <span className="landing-step-n">3</span>
-            <div>
-              <h3>Retrieve</h3>
-              <p>Find the relevant evidence with hybrid search over the mailbox.</p>
-            </div>
-          </li>
-          <li>
-            <span className="landing-step-n">4</span>
-            <div>
-              <h3>Synthesize</h3>
-              <p>Answer in plain language with citations back to source messages.</p>
-            </div>
-          </li>
-        </ol>
-      </section>
-
-      {/* Demo / setup CTA */}
-      <section className="landing-section landing-final">
-        <h2 className="landing-h2">Open the demo workspace</h2>
-        <p className="landing-final-sub">
-          Start in the overview, then explore the network, projects, and cited
-          answers. Check setup first if you are wiring up a fresh environment.
-        </p>
-        <div className="landing-cta-row landing-cta-center">
-          <Link to="/app" className="landing-cta-primary">
-            Open demo workspace
-          </Link>
-          <Link to="/app/status" className="landing-cta-secondary">
-            Check setup
-          </Link>
+            <p>The handoff is a sequence, and Continuity treats it like one — each stage leaves a record.</p>
+          </div>
+          <div className="lx-ledger lx-reveal">
+            <div className="lx-lrow"><div className="ix">01</div><h3>Scope</h3><div><p>Pick the date window, projects, and people. Exclude threads by hand.</p></div></div>
+            <div className="lx-lrow"><div className="ix">02</div><h3>Generate</h3><div><p>Claims + snapshotted evidence assemble; sensitive and noise drop out.</p></div></div>
+            <div className="lx-lrow"><div className="ix">03</div><h3>Review</h3><div><p>Read the candidate, remove any evidence that shouldn't leave.</p></div></div>
+            <div className="lx-lrow"><div className="ix">04</div><h3>Publish</h3><div><p>One recipient, one-time link, 30-day access — the code is shown once.</p></div></div>
+            <div className="lx-lrow"><div className="ix">05</div><h3>Hand off</h3><div><p>They read a package-local brief and can ask questions of it.</p></div></div>
+            <div className="lx-lrow"><div className="ix">06</div><h3>Revoke</h3><div><p>End access, or supersede with v2. Old links go dark instantly.</p></div></div>
+          </div>
         </div>
       </section>
 
-      <footer className="landing-footer">
-        <span>Continuity — email continuity for coverage, handoffs, and institutional memory.</span>
+      {/* Close */}
+      <section className="lx-section" style={{ borderBottom: "none" }}>
+        <div className="lx-wrap">
+          <div className="lx-sechead">
+            <div>
+              <p className="lx-eyebrow">Open the workspace</p>
+              <h2>Scope a handoff, or read one you've been handed.</h2>
+            </div>
+            <p>Start in the workspace to build and publish a package, or check setup if you're wiring
+              up a fresh environment.</p>
+          </div>
+          <div className="lx-cta-row" style={{ marginTop: "26px" }}>
+            <Link to="/app" className="lx-btn lx-btn-primary">Open the workspace</Link>
+            <Link to="/app/status" className="lx-btn lx-btn-ghost">Check setup</Link>
+          </div>
+        </div>
+      </section>
+
+      <footer className="lx-foot">
+        <div className="lx-wrap lx-foot-in">
+          <a className="lx-brand" href="#top"><span className="lx-seal"><Shield /></span>Continuity</a>
+          <p>Audited handoff packages · Email Knowledge Continuity</p>
+        </div>
       </footer>
     </div>
   );

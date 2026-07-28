@@ -66,41 +66,41 @@ function RetrievalStatusNote({
   switch (status) {
     case "active":
       return evidenceCount > 0 ? (
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-faint">
           Retrieved {evidenceCount} supporting message
           {evidenceCount !== 1 ? "s" : ""}.
         </p>
       ) : null;
     case "active_l1_only":
       return (
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-faint">
           No matching retrieved messages — answer uses structured data only.
         </p>
       );
     case "disabled_no_key":
       return (
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-faint">
           Evidence search not configured — set VOYAGE_API_KEY to enable message
           retrieval.
         </p>
       );
     case "degraded_rate_limit":
       return (
-        <p className="mt-2 text-xs text-amber-600">
+        <p className="mt-2 text-xs text-warn">
           Evidence search temporarily limited (rate limit) — answer based on
           structured data only.
         </p>
       );
     case "no_embeddings":
       return (
-        <p className="mt-2 text-xs text-amber-600">
+        <p className="mt-2 text-xs text-warn">
           Message embeddings not found — run <code>embed_backfill.py</code> to
           enable retrieval.
         </p>
       );
     case "unavailable":
       return (
-        <p className="mt-2 text-xs text-amber-600">
+        <p className="mt-2 text-xs text-warn">
           Evidence search unavailable — answer based on structured data only.
         </p>
       );
@@ -189,8 +189,8 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8">
-      <h2 className="text-lg font-semibold text-slate-800">Cover for me</h2>
-      <p className="mt-1 text-sm text-slate-500">
+      <h2 className="text-lg font-semibold text-ink">Cover for me</h2>
+      <p className="mt-1 text-sm text-muted">
         Ask who to go to about a project or contact, or for the current state of
         a project. Every answer is grounded in the mailbox and cited.
       </p>
@@ -202,12 +202,12 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Ask about a project or contact, e.g. &quot;What's the state of Atlas?&quot;"
           maxLength={500}
-          className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+          className="flex-1 rounded-md border border-line2 px-3 py-2 text-sm focus:border-line2 focus:outline-none"
         />
         <button
           type="submit"
           disabled={loading || !query.trim()}
-          className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:cursor-not-allowed disabled:bg-brass-soft disabled:text-faint"
         >
           {loading ? "Asking…" : "Ask"}
         </button>
@@ -217,7 +217,7 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
           don't yet know what to ask have grounded entry points (S12.5). */}
       {!response && !loading && !error && !notConfigured && suggestions.length > 0 ? (
         <div className="mt-4">
-          <p className="mb-2 text-xs text-slate-400">Try one of these:</p>
+          <p className="mb-2 text-xs text-faint">Try one of these:</p>
           <div className="overview-suggestions">
             {suggestions.map((s) => (
               <button
@@ -254,7 +254,7 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
       {result && !loading ? (
         <div className="mt-4">
           {response?.routed_to ? (
-            <div className="mb-2 text-xs uppercase tracking-wide text-slate-400">
+            <div className="mb-2 text-xs uppercase tracking-wide text-faint">
               {response.routed_to.startsWith("project:")
                 ? `Project · ${response.routed_to.slice("project:".length)}`
                 : response.routed_to.startsWith("person:")
@@ -266,12 +266,12 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
           {isInsufficient ? (
             // Polite "no evidence found" — NOT an error. Covers both L1 and L2
             // finding nothing for this query.
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <div className="rounded-md border border-line bg-app2 px-4 py-3 text-sm text-muted">
               No email evidence found for this query. Try asking about a
               specific project or contact name from the mailbox.
             </div>
           ) : claims.length === 0 ? (
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+            <div className="rounded-md border border-line bg-app2 px-4 py-3 text-sm text-muted">
               {result.state || "No evidenced answer in email."}
             </div>
           ) : (

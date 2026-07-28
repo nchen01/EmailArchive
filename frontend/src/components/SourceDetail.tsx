@@ -37,7 +37,7 @@ const RETRIEVAL_SOURCE_LABEL: Record<RetrievalStatus, string> = {
 function Labelled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-faint">{label}</div>
       {children}
     </div>
   );
@@ -63,7 +63,7 @@ function CopyMessageId({ value }: { value: string }) {
     <button
       type="button"
       onClick={copy}
-      className="mt-1 rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+      className="mt-1 rounded border border-line px-2 py-1 text-[11px] font-medium text-muted hover:bg-app2"
     >
       {copied ? "Copied ✓" : "Copy message ID"}
     </button>
@@ -94,38 +94,38 @@ export function SourceDetailView({
   return (
     <div className="space-y-4">
       <Labelled label="Subject">
-        <div className="text-sm font-semibold text-slate-900">
+        <div className="text-sm font-semibold text-ink">
           {source.subject || "(no subject)"}
         </div>
       </Labelled>
 
       {sender ? (
         <Labelled label="From">
-          <div className="text-sm text-slate-700">{sender}</div>
+          <div className="text-sm text-ink">{sender}</div>
         </Labelled>
       ) : null}
 
       <Labelled label="Date">
-        <div className="text-sm text-slate-700">{formatShortDate(source.date)}</div>
+        <div className="text-sm text-ink">{formatShortDate(source.date)}</div>
       </Labelled>
 
       {citationCount && citationCount > 1 ? (
         <Labelled label="Cited">
-          <div className="text-sm text-slate-700">
+          <div className="text-sm text-ink">
             Cited in {citationCount} places in this answer
           </div>
         </Labelled>
       ) : null}
 
       <Labelled label="Snippet">
-        <p className="mt-0.5 whitespace-pre-wrap rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <p className="mt-0.5 whitespace-pre-wrap rounded-md border border-line bg-app2 px-3 py-2 text-sm text-ink">
           {source.snippet || "(no preview available)"}
         </p>
       </Labelled>
 
       {source.source_type ? (
         <Labelled label="Source">
-          <div className="text-sm text-slate-700">
+          <div className="text-sm text-ink">
             {SOURCE_TYPE_LABEL[source.source_type]}
           </div>
         </Labelled>
@@ -133,14 +133,14 @@ export function SourceDetailView({
 
       {retrievalStatus ? (
         <Labelled label="Retrieval source">
-          <div className="text-sm text-slate-700">
+          <div className="text-sm text-ink">
             {RETRIEVAL_SOURCE_LABEL[retrievalStatus] ?? "Structured data"}
           </div>
         </Labelled>
       ) : null}
 
       <Labelled label="Message ID">
-        <div className="mt-0.5 break-all rounded bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500">
+        <div className="mt-0.5 break-all rounded bg-app2 px-2 py-1 font-mono text-[11px] text-muted">
           {source.message_id_header}
         </div>
         <div className="mt-1 flex items-center gap-2">
@@ -153,7 +153,7 @@ export function SourceDetailView({
               href={source.open_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-1 rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+              className="mt-1 rounded border border-line px-2 py-1 text-[11px] font-medium text-muted hover:bg-app2"
               title="Opens a search in your signed-in Gmail"
             >
               Search in Gmail ↗

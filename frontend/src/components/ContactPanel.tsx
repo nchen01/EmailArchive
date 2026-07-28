@@ -30,11 +30,11 @@ function formatDate(iso: string): string {
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-slate-400">
+    <div className="rounded-md bg-app2 px-3 py-2">
+      <div className="text-[11px] uppercase tracking-wide text-faint">
         {label}
       </div>
-      <div className="text-sm font-semibold text-slate-800">{value}</div>
+      <div className="text-sm font-semibold text-ink">{value}</div>
     </div>
   );
 }
@@ -81,17 +81,17 @@ export function ContactPanel({
 
   return (
     <aside
-      className={`fixed right-0 top-0 z-20 flex h-full w-[380px] flex-col border-l border-slate-200 bg-white shadow-xl transition-transform duration-300 ${
+      className={`fixed right-0 top-0 z-20 flex h-full w-[380px] flex-col border-l border-line bg-surface shadow-xl transition-transform duration-300 ${
         open ? "translate-x-0" : "translate-x-full"
       }`}
       aria-hidden={!open}
     >
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-600">Contact detail</h2>
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
+        <h2 className="text-sm font-semibold text-muted">Contact detail</h2>
         <button
           type="button"
           onClick={onClose}
-          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          className="rounded p-1 text-faint hover:bg-app2 hover:text-muted"
           aria-label="Close panel"
         >
           ✕
@@ -102,7 +102,7 @@ export function ContactPanel({
         {loading ? <LoadingSpinner label="Loading contact…" /> : null}
 
         {error && !loading ? (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <div className="rounded-md border border-danger-line bg-danger-soft px-3 py-2 text-sm text-danger">
             {error}
           </div>
         ) : null}
@@ -111,10 +111,10 @@ export function ContactPanel({
           <div className="space-y-5">
             {/* Header */}
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">
+              <h3 className="text-lg font-semibold text-ink">
                 {detail.person.name}
               </h3>
-              <div className="text-sm text-slate-500">
+              <div className="text-sm text-muted">
                 {detail.person.canonical_email}
               </div>
               <div className="mt-2 flex items-center gap-2">
@@ -125,20 +125,20 @@ export function ContactPanel({
                   {roleLabel(detail.person.role)}
                 </span>
                 {detail.person.org_domain ? (
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-faint">
                     {detail.person.org_domain}
                   </span>
                 ) : null}
               </div>
 
               <div className="mt-3">
-                <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                <div className="mb-1 flex justify-between text-[11px] text-faint">
                   <span>Role confidence</span>
                   <span>
                     {Math.round(detail.person.role_confidence * 100)}%
                   </span>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-app2">
                   <div
                     className="h-full rounded-full"
                     style={{
@@ -153,8 +153,8 @@ export function ContactPanel({
               </div>
 
               {detail.person.all_emails.length > 1 ? (
-                <div className="mt-3 text-xs text-slate-500">
-                  <div className="mb-1 font-medium text-slate-400">
+                <div className="mt-3 text-xs text-muted">
+                  <div className="mb-1 font-medium text-faint">
                     All addresses
                   </div>
                   <ul className="space-y-0.5">
@@ -168,7 +168,7 @@ export function ContactPanel({
 
             {/* Relationship stats */}
             <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
                 Relationship
               </h4>
               <div className="grid grid-cols-2 gap-2">
@@ -189,22 +189,22 @@ export function ContactPanel({
 
             {/* Recent threads */}
             <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
                 Recent threads ({detail.recent_threads.length})
               </h4>
               {detail.recent_threads.length === 0 ? (
-                <div className="text-sm text-slate-400">No shared threads.</div>
+                <div className="text-sm text-faint">No shared threads.</div>
               ) : (
                 <ul className="space-y-2">
                   {detail.recent_threads.map((t) => (
                     <li
                       key={t.thread_id}
-                      className="rounded-md border border-slate-100 px-3 py-2"
+                      className="rounded-md border border-line px-3 py-2"
                     >
-                      <div className="text-sm font-medium text-slate-800">
+                      <div className="text-sm font-medium text-ink">
                         {t.subject || "(no subject)"}
                       </div>
-                      <div className="mt-0.5 flex justify-between text-xs text-slate-400">
+                      <div className="mt-0.5 flex justify-between text-xs text-faint">
                         <span>{formatDate(t.last)}</span>
                         <span>
                           {t.other_participants.length} other
@@ -223,7 +223,7 @@ export function ContactPanel({
                 type="button"
                 onClick={askAboutContact}
                 disabled={summaryLoading || !mailboxId || !personId}
-                className="w-full rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="w-full rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:cursor-not-allowed disabled:bg-brass-soft disabled:text-faint"
               >
                 {summaryLoading ? "Asking…" : "Ask about this contact"}
               </button>
@@ -234,7 +234,7 @@ export function ContactPanel({
 
               {summaryError ? (
                 <div
-                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                  className="rounded-md border border-danger-line bg-danger-soft px-3 py-2 text-sm text-danger"
                   role="alert"
                 >
                   {summaryError}
@@ -242,9 +242,9 @@ export function ContactPanel({
               ) : null}
 
               {summary && !summaryLoading ? (
-                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <div className="rounded-md border border-line bg-app2 px-3 py-2 text-sm text-ink">
                   {summary.claims.length === 0 ? (
-                    <p className="text-slate-400">
+                    <p className="text-faint">
                       {summary.state ?? "No evidenced activity in email."}
                     </p>
                   ) : (
@@ -257,7 +257,7 @@ export function ContactPanel({
                               <span
                                 key={id}
                                 title={id}
-                                className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600"
+                                className="rounded bg-line px-1.5 py-0.5 text-[10px] text-muted"
                               >
                                 {id}
                               </span>
