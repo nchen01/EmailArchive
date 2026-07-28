@@ -108,6 +108,41 @@ body {
    right ground even before their own rules load. */
 body { background: var(--paper); color: var(--text); }
 
+/* ── Form controls — readable, theme-aware defaults (S22.1) ─────────────────
+   Tailwind's preflight resets inputs to `color: inherit`, so a control with no
+   explicit text color picks up whatever (often muted) color its container has —
+   which made typed text low-contrast after the redesign (e.g. Cover-for-me).
+   These base rules give every input/textarea/select a legible default for text,
+   background, placeholder, focus, and disabled states. They're element-level
+   (low specificity), so component utility classes (bg-*, text-*, border-*) still
+   win where a control needs something specific. Checkboxes/radios keep their
+   native rendering. */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  color: var(--text);
+  background-color: var(--surface);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--faint);
+  opacity: 1; /* Firefox dims placeholders by default */
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-soft);
+}
+input:disabled,
+textarea:disabled,
+select:disabled {
+  color: var(--muted);
+  background-color: var(--surface-2);
+  cursor: not-allowed;
+}
+
 /* ── Project list (sidebar) ─────────────────────────────────────────── */
 .project-list { list-style: none; margin: 0; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .project-list-empty { padding: 1.5rem; color: var(--faint); font-size: 0.875rem; text-align: center; line-height: 1.5; }

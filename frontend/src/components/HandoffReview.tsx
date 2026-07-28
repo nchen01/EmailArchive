@@ -125,7 +125,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState<
-    null | "create" | "scope" | "generate" | "remove" | "publish" | "revoke" | "version"
+    null | "create" | "scope" | "generate" | "remove" | "restore" | "publish" | "revoke" | "version"
   >(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -228,6 +228,16 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       return generateHandoff(pkg.id); // prune + rebuild in one action
     });
 
+  // Clear ONLY the creator's manual evidence removals and rebuild from the full
+  // safe scope. Policy exclusions (sensitivity/noise) are re-applied at generate,
+  // so this never restores sensitive/noise content — only what you removed by hand.
+  const restoreAllEvidence = () =>
+    pkg &&
+    run("restore", async () => {
+      await updateHandoffScope(pkg.id, { ...scopeBody(pkg), excluded_message_id_headers: [] });
+      return generateHandoff(pkg.id);
+    });
+
   // Publish freezes the package and returns the one-time code exactly once; we
   // hold the result in transient state (setShare) and never persist/log it.
   const publish = async (recipientEmail: string, expiresInDays: number | null) => {
@@ -292,6 +302,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
 
   const claimsByKind = (kind: string) => (pkg?.claims ?? []).filter((c) => c.kind === kind);
   const excludedHeaders = new Set(pkg?.scope.excluded_message_id_headers ?? []);
+  const excludedCount = excludedHeaders.size; // creator manual removals in this scope
   // Only draft/generated packages are editable. Once published (or revoked) the
   // package is immutable: scope edits, regenerate, and evidence removal are all
   // disabled in the UI (§immutability). Backend also rejects these transitions.
@@ -476,9 +487,40 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                     </h3>
                     <p className="text-xs text-faint">
                       {mutable
-                        ? "Snapshotted safe message content. Remove anything that should not travel with the handoff; a claim left without evidence disappears on regenerate."
+                        ? "Snapshotted safe message content. Remove anything that should not travel with the handoff; a claim left without evidence disappears on regenerate. Removed evidence stays excluded when you regenerate or create a revised version."
                         : "Snapshotted safe message content, frozen at publish. This is exactly what the recipient can read."}
                     </p>
+
+                    {excludedCount > 0 ? (
+                      <div className="mt-2 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn">
+                        <div className="font-medium">
+                          {excludedCount} evidence item{excludedCount === 1 ? "" : "s"} removed by
+                          you (excluded from this package).
+                        </div>
+                        <p className="mt-1">
+                          Regenerate rebuilds from the current scope, including your removals — the
+                          count stays reduced on purpose. Sensitive/noise content is excluded by
+                          policy separately and is never restored here.
+                        </p>
+                        {mutable ? (
+                          <button
+                            type="button"
+                            className="mt-2 rounded-md border border-warn-line bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-app2 disabled:opacity-50"
+                            onClick={restoreAllEvidence}
+                            disabled={busy !== null}
+                            title="Clear only your manual removals and rebuild from the full safe scope"
+                          >
+                            {busy === "restore" ? "Restoring…" : "Restore all removed evidence"}
+                          </button>
+                        ) : (
+                          <p className="mt-1">
+                            To rebuild from the full safe scope, use{" "}
+                            <strong>Create revised version</strong> (below), then restore there.
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+
                     <ul className="mt-2 space-y-3">
                       {pkg.evidence.map((e) => (
                         <EvidenceCard

@@ -68,6 +68,38 @@ Uvicorn serves on `http://localhost:8000`; the Vite dev server proxies `/api`
 there. `.env` supplies `DATABASE_URL` (point it at the same DB you seeded). Leave
 this window running.
 
+**Auth mode (S22).** `run_backend.ps1` defaults the local launcher to
+`AUTH_MODE=dev`, so a fixed dev principal owns the local/demo mailboxes and the
+"type a mailbox id and load" workflow works without a login. The launcher prints
+`auth   : AUTH_MODE=dev` at startup.
+
+**Optional — verify the production fail-closed boundary.** With
+`AUTH_MODE=production` (or unset — the fail-closed default), every creator/mailbox
+route must reject unauthenticated calls with **HTTP 401**. `Invoke-RestMethod`
+hides the status code in its exception, so use `Invoke-WebRequest` with a
+try/catch to see it:
+
+```powershell
+try {
+  Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/projects/7996bc63-5739-4321-85b0-bb2664595e47" -UseBasicParsing
+} catch {
+  "status: $($_.Exception.Response.StatusCode.value__)"
+  "body: $($_.ErrorDetails.Message)"
+}
+```
+
+Expected (this is a **PASS**):
+
+```
+status: 401
+body: {"detail":"Authentication required."}
+```
+
+`401 Authentication required.` is the correct S22 behavior — production has no
+login wired yet (that lands with the OAuth slice), so it fails closed. Recipient
+package routes are **not** affected: they keep their capability-code + session
+auth and stay package-local snapshot only.
+
 ---
 
 ## Window 3 — frontend (keep open)
