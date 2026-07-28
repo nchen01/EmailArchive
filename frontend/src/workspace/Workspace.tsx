@@ -49,6 +49,12 @@ const NAV: { screen: Screen; label: string; path: string }[] = [
 
 const ENV_MAILBOX_ID = import.meta.env.VITE_MAILBOX_ID ?? "";
 
+// S22 auth boundary: raw mailbox-id entry is a DEV-ONLY affordance. In a
+// production build (import.meta.env.DEV === false) it is hidden — the product
+// access model is authenticated sign-in (not yet built), never a typed mailbox
+// id. This mirrors the backend AUTH_MODE fail-closed behavior.
+const AUTH_DEV: boolean = import.meta.env.DEV;
+
 // Persist ONLY the workspace mailbox UUID so creator deep links
 // (/app/handoff/<id>) survive a refresh in the same browser session. Deliberately
 // sessionStorage (not localStorage) so it does not become a long-lived
@@ -204,29 +210,38 @@ export function Workspace() {
         </div>
 
         <div className="app-header-right">
-          <form
-            className="mailbox-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const next = mailboxInput.trim();
-              setSelectedPersonId(null);
-              setSelectedProjectId(null);
-              setMailboxId(next);
-              writeStoredMailboxId(next); // persist (or clear) for refresh-safety
-            }}
-          >
-            <input
-              type="text"
-              value={mailboxInput}
-              onChange={(e) => setMailboxInput(e.target.value)}
-              placeholder="Mailbox ID"
-              className="mailbox-input"
-              aria-label="Mailbox ID"
-            />
-            <button type="submit" className="mailbox-load">
-              Load
-            </button>
-          </form>
+          {AUTH_DEV ? (
+            <form
+              className="mailbox-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const next = mailboxInput.trim();
+                setSelectedPersonId(null);
+                setSelectedProjectId(null);
+                setMailboxId(next);
+                writeStoredMailboxId(next); // persist (or clear) for refresh-safety
+              }}
+            >
+              <input
+                type="text"
+                value={mailboxInput}
+                onChange={(e) => setMailboxInput(e.target.value)}
+                placeholder="Mailbox ID (dev)"
+                className="mailbox-input"
+                aria-label="Mailbox ID (dev only)"
+              />
+              <button type="submit" className="mailbox-load">
+                Load
+              </button>
+            </form>
+          ) : (
+            <span
+              className="mailbox-prod-note"
+              title="Raw mailbox-id loading is a dev-only affordance. Production access is authenticated sign-in (not yet built)."
+            >
+              Sign-in required
+            </span>
+          )}
           <Link
             to="/app/status"
             className="health-dot-link"
@@ -257,14 +272,29 @@ export function Workspace() {
         {!mailboxId ? (
           <div className="flex h-full w-full items-center justify-center px-6 text-center text-muted">
             <div>
-              <p className="text-lg font-medium text-ink">
-                Load a mailbox to begin.
-              </p>
-              <p className="mt-1 text-sm text-faint">
-                Enter a mailbox ID above, run{" "}
-                <code>python scripts/dev_seed.py</code> to create a fixture
-                mailbox, or set <code>VITE_MAILBOX_ID</code>.
-              </p>
+              {AUTH_DEV ? (
+                <>
+                  <p className="text-lg font-medium text-ink">
+                    Load a mailbox to begin.
+                  </p>
+                  <p className="mt-1 text-sm text-faint">
+                    Enter a mailbox ID above, run{" "}
+                    <code>python scripts/dev_seed.py</code> to create a fixture
+                    mailbox, or set <code>VITE_MAILBOX_ID</code>.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-medium text-ink">
+                    Sign-in required.
+                  </p>
+                  <p className="mt-1 text-sm text-faint">
+                    A workspace loads for an authenticated mailbox owner.
+                    Production sign-in is not built yet (S22); run locally with{" "}
+                    <code>AUTH_MODE=dev</code> to use the developer workflow.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         ) : screen === "overview" ? (

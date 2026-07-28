@@ -13,10 +13,12 @@ creator forks a NEW version in the same lineage (POST /new-version) and publishe
 it; publishing supersedes the prior published version and blocks its recipient.
 Manager approval and multi-recipient are intentionally NOT implemented here.
 
-Creator auth boundary: these endpoints require mailbox-owner authorization. In
-local/demo mode this uses the existing operator / mailbox-id context; production
-package creation requires real owner authentication before customer use (no
-production owner auth is implied by this slice).
+Creator auth boundary (S22): every route here is guarded by require_owner_mailbox
+/ require_owner_package (services/api/auth.py), which enforce mailbox ownership per
+docs/s19-auth-tenant-boundary-plan.md. Under AUTH_MODE=dev a synthetic dev
+principal owns local/demo mailboxes (localhost workflow preserved); under
+production every request needs an authenticated owner Principal and fails closed
+otherwise. Not-owned / cross-tenant resources return 404 (no existence oracle).
 """
 from __future__ import annotations
 
@@ -35,6 +37,7 @@ from services.handoff.generator import generate_candidate, generation_diagnostic
 from services.handoff.tokens import actor_hash_prefix, hash_token, new_capability_code
 from services.ingest.list_options import DateWindowError, parse_date_window
 
+from ..auth import require_owner_mailbox, require_owner_package
 from ..deps import get_db
 from ..schemas.handoff import (
     CreateHandoffRequest,
@@ -153,7 +156,10 @@ def _package_out(db: Session, pkg: orm.HandoffPackage) -> HandoffPackageOut:
     )
 
 
-@router.post("/handoff/{mailbox_id}", response_model=HandoffPackageOut)
+@router.post(
+    "/handoff/{mailbox_id}", response_model=HandoffPackageOut,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def create_handoff(
     mailbox_id: str, body: CreateHandoffRequest, db: Session = Depends(get_db)
 ) -> HandoffPackageOut:
@@ -179,7 +185,10 @@ async def create_handoff(
     return _package_out(db, pkg)
 
 
-@router.patch("/handoff/{package_id}/scope", response_model=HandoffPackageOut)
+@router.patch(
+    "/handoff/{package_id}/scope", response_model=HandoffPackageOut,
+    dependencies=[Depends(require_owner_package)],
+)
 async def update_scope(
     package_id: str, body: ScopeRequest, db: Session = Depends(get_db)
 ) -> HandoffPackageOut:
@@ -216,7 +225,10 @@ async def update_scope(
     return _package_out(db, pkg)
 
 
-@router.post("/handoff/{package_id}/generate", response_model=HandoffPackageOut)
+@router.post(
+    "/handoff/{package_id}/generate", response_model=HandoffPackageOut,
+    dependencies=[Depends(require_owner_package)],
+)
 async def generate_package(
     package_id: str, db: Session = Depends(get_db)
 ) -> HandoffPackageOut:
@@ -227,12 +239,18 @@ async def generate_package(
     return _package_out(db, pkg)
 
 
-@router.get("/handoff/{package_id}", response_model=HandoffPackageOut)
+@router.get(
+    "/handoff/{package_id}", response_model=HandoffPackageOut,
+    dependencies=[Depends(require_owner_package)],
+)
 async def get_handoff(package_id: str, db: Session = Depends(get_db)) -> HandoffPackageOut:
     return _package_out(db, _get_package(db, package_id))
 
 
-@router.post("/handoff/{package_id}/publish", response_model=PublishResponse)
+@router.post(
+    "/handoff/{package_id}/publish", response_model=PublishResponse,
+    dependencies=[Depends(require_owner_package)],
+)
 async def publish_handoff(
     package_id: str, body: PublishRequest, db: Session = Depends(get_db)
 ) -> PublishResponse:
@@ -323,7 +341,10 @@ async def publish_handoff(
     )
 
 
-@router.post("/handoff/{package_id}/revoke", response_model=HandoffPackageOut)
+@router.post(
+    "/handoff/{package_id}/revoke", response_model=HandoffPackageOut,
+    dependencies=[Depends(require_owner_package)],
+)
 async def revoke_handoff(
     package_id: str, db: Session = Depends(get_db)
 ) -> HandoffPackageOut:
@@ -405,7 +426,10 @@ def _supersede_prior_published(
     return result
 
 
-@router.post("/handoff/{package_id}/new-version", response_model=HandoffPackageOut)
+@router.post(
+    "/handoff/{package_id}/new-version", response_model=HandoffPackageOut,
+    dependencies=[Depends(require_owner_package)],
+)
 async def new_version_handoff(
     package_id: str, db: Session = Depends(get_db)
 ) -> HandoffPackageOut:
@@ -474,7 +498,10 @@ async def new_version_handoff(
     return _package_out(db, new_pkg)
 
 
-@router.get("/handoff/{package_id}/export.html", response_class=HTMLResponse)
+@router.get(
+    "/handoff/{package_id}/export.html", response_class=HTMLResponse,
+    dependencies=[Depends(require_owner_package)],
+)
 async def export_handoff_html(
     package_id: str, db: Session = Depends(get_db)
 ) -> HTMLResponse:

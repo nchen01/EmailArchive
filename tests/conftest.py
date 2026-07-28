@@ -10,6 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# S22 auth boundary: the test suite runs as the local dev principal by default so
+# existing creator/mailbox routes keep working. Tests that assert the production
+# fail-closed / ownership behavior monkeypatch AUTH_MODE=production explicitly.
+os.environ.setdefault("AUTH_MODE", "dev")
+
 FIXTURE_DIR = ROOT / "fixtures"
 
 

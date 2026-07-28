@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from services.db import models as orm
 
+from ..auth import require_owner_mailbox
 from ..deps import get_db
 from ..schemas.network_map import (
     ContactDetailOut,
@@ -60,7 +61,10 @@ def _resolve_person_by_email(db: Session, mailbox_id: str, email: str) -> orm.Pe
     return db.get(orm.Person, ident.person_id)
 
 
-@router.get("/network-map/{mailbox_id}", response_model=NetworkMapOut)
+@router.get(
+    "/network-map/{mailbox_id}", response_model=NetworkMapOut,
+    dependencies=[Depends(require_owner_mailbox)],
+)
 async def get_network_map(
     mailbox_id: str,
     roles: str | None = Query(None, description="Comma-separated Role values"),
@@ -148,6 +152,7 @@ async def get_network_map(
 @router.get(
     "/network-map/{mailbox_id}/contact/{person_id}",
     response_model=ContactDetailOut,
+    dependencies=[Depends(require_owner_mailbox)],
 )
 async def get_contact_detail(
     mailbox_id: str,
