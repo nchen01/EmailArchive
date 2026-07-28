@@ -92,6 +92,8 @@ Key docs:
 - `docs/implementation-plan.md` — overall pipeline architecture
 - `docs/s18-hosted-product-readiness-plan.md` — S18 planned (docs-only): hosted
   web-app deployment readiness + S19+ sprint map (no code this sprint)
+- `docs/s19-auth-tenant-boundary-plan.md` — S19 planned (docs/spec-only): production
+  auth + tenant/authorization model for S20+ (no code this sprint)
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
@@ -101,8 +103,10 @@ deterministic handoff-demo seed script, a manual-demo runbook, and the creator
 Handoff workspace layout with a sticky action rail — Publish reachable without
 scrolling — S17.20) shipped and
 end-to-end validated; S16 canonical-demo readiness still planned. S18 (planned,
-docs-only) maps hosted product / web-app deployment readiness — see
-`docs/s18-hosted-product-readiness-plan.md`.** Manual demo:
+docs-only) maps hosted product / web-app deployment readiness, and S19 (planned,
+docs/spec-only) specifies the production auth + tenant boundary — see
+`docs/s18-hosted-product-readiness-plan.md` and
+`docs/s19-auth-tenant-boundary-plan.md`.** Manual demo:
 `docs/s17-handoff-manual-demo-runbook.md`.
 S7 L2 hybrid retrieval (Voyage AI voyage-4,
 pgvector HNSW, cover-for-me upgrade) shipped and live-validated. S8 real-mailbox
