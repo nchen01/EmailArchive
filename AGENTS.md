@@ -256,6 +256,16 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   endpoint, and auth-sensitive audit events. No code this sprint; shipped S17
   behavior unchanged (dev mode preserves the localhost flow); OAuth/token vault
   deferred to S20. See `docs/s19-auth-tenant-boundary-plan.md`.
+- **S20 — planned (docs/spec-only).** OAuth + token vault spec: safe production
+  Gmail connect (authorization-code flow with state/nonce, provider-account
+  verification, owner/tenant binding per S19), a token-vault boundary that keeps
+  refresh tokens out of the app DB and logs (app DB holds only a `vault_ref` +
+  safe provider metadata, per D6), the proposed `mailbox_provider_account` object
+  (service DB only, not `ekc_schemas`), least-privilege read-only Gmail scopes (no
+  write/send), fail-closed provider-account-mismatch handling, full token
+  lifecycle, OAuth audit events, and a threat model. Gmail only; M365 stays the D2
+  stub. No code this sprint; recipient snapshot-only invariant untouched. See
+  `docs/s20-oauth-token-vault-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 

@@ -12,6 +12,12 @@ docs/spec-only)** specifies the production auth + tenant boundary that S20+ will
 implement (tenant/workspace model, roles, mailbox ownership binding, per-endpoint
 creator authorization, dev-only `mailbox_id` mode disabled in production, auth
 audit events); not implemented — see `docs/s19-auth-tenant-boundary-plan.md`.
+**S20 (planned, docs/spec-only)** specifies safe Gmail OAuth connect + a token
+vault (authorization-code flow, account verification + owner/tenant binding,
+refresh tokens kept out of the app DB/logs behind a `vault_ref`, least-privilege
+read-only scopes, mismatch fail-closed handling, token lifecycle, OAuth audit
+events, threat model; Gmail only, M365 stays stubbed); not implemented — see
+`docs/s20-oauth-token-vault-plan.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 
