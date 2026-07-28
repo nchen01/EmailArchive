@@ -167,7 +167,7 @@ components of the handoff-package experience.
 1. **Handoff package** — the primary product artifact. The covered employee
    selects date/project/person scope, reviews generated package content, removes
    unnecessary evidence, publishes to a recipient, and leaves an audit trail.
-   Shipped and end-to-end validated in S17.2–S17.19, including a deterministic
+   Shipped and end-to-end validated in S17.2–S17.20, including a deterministic
    package-local ask, new-version re-share/supersede, static HTML export, a
    package-local recipient navigation tree, a creator-only empty-generation
    diagnostic, a refresh-safe workspace mailbox, a deterministic handoff-demo
@@ -282,7 +282,7 @@ components of the handoff-package experience.
 - **S16.1+** Canonical demo readiness: purpose-built demo fixture for the
   coverage-handoff story; `puluo` remains messy real-mailbox validation only
   (D13).
-- **S17.2–S17.19 ✓** Audited handoff package MVP: employee-initiated package
+- **S17.2–S17.20 ✓** Audited handoff package MVP: employee-initiated package
   creation, scope review, package publish, one-time recipient link, read-only
   recipient view, deterministic LLM-free package-local ask (S17.9), revoke,
   new-version re-share / supersede (S17.10), static HTML export (S17.11),
@@ -292,10 +292,12 @@ components of the handoff-package experience.
   diagnostic + Start-over fix (S17.13), refresh-safe workspace mailbox +
   deterministic handoff-demo seed (S17.14), manual-demo runbook + `--verify`
   seed mode (S17.15), Handoff-demo network-map graph tolerance (S17.16),
-  + audit lifecycle — shipped and e2e-validated
+  creator Handoff workspace layout — full-width package header + sticky action
+  rail so Publish is reachable without scrolling, + Overview-readiness note
+  (S17.20), + audit lifecycle — shipped and e2e-validated
   (D14; `docs/s17-handoff-package-mvp-plan.md`, `docs/s17-live-validation.md`,
   `docs/s17-handoff-manual-demo-runbook.md`).
-  Deferred to S17.20+: optional LLM synthesis for the package ask, PDF/docx/zip
+  Deferred beyond S17: optional LLM synthesis for the package ask, PDF/docx/zip
   export, manager approval, multi-recipient, rich snapshotted relationship/
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.

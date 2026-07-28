@@ -1,6 +1,6 @@
 # S17 - Audited Handoff Package MVP Plan
 
-**Status:** SHIPPED (S17.2–S17.19) and end-to-end validated. This file remains
+**Status:** SHIPPED (S17.2–S17.20) and end-to-end validated. This file remains
 the plan of record; the sub-sprint status below and `docs/s17-live-validation.md`
 describe what is actually built. Manual demo runbook:
 `docs/s17-handoff-manual-demo-runbook.md`.
@@ -158,7 +158,7 @@ Decision source: **D14** in `docs/decisions.md`.
   (`RecipientPackage` tabs + `ClaimRow` inline disclosure + a package-local
   header→evidence resolver); no backend/API change; privacy parity unchanged.
 
-Deferred to S17.20+: **optional LLM synthesis** for the package ask (S17.9 is
+Deferred beyond S17: **optional LLM synthesis** for the package ask (S17.9 is
 deterministic-only), PDF/docx/zip export (S17.11 ships HTML only), manager
 approval, multi-recipient, **rich snapshotted relationship/project/owner trees**
 inside the package (S17.17–S17.19 ship a package-local topic workspace, not a

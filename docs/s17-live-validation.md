@@ -179,7 +179,7 @@ Two supported paths:
 
 ---
 
-## 5. Deferred to S17.20+
+## 5. Deferred beyond S17
 
 - **Optional LLM synthesis** for the package ask. The recipient package-local
   **ask** shipped in S17.9 as a *deterministic, LLM-free* term-overlap over the

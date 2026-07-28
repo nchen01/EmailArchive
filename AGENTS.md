@@ -177,7 +177,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   handoff fixture (D13), evidence-trust demo spine, and demo green validation.
   With D14, the demo should preview the employee-reviewed handoff package flow.
   See `docs/s16-demo-readiness-plan.md`.
-- **S17.2–S17.19 ✓** — Audited handoff package MVP (D14), shipped and
+- **S17.2–S17.20 ✓** — Audited handoff package MVP (D14), shipped and
   end-to-end validated. S17.2 domain spec; S17.3 draft/scope/generate backend;
   S17.4 creator scope-review UI; S17.5 publish/revoke + one-time capability code
   + recipient session/package endpoints; S17.6 read-only recipient view at
@@ -231,7 +231,12 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   at the bottom), and supporting evidence is attached inline to the specific
   claim it supports (an expandable disclosure per claim; the separate global
   supporting-messages section removed; "no citation, no claim" preserved).
-  Deferred to S17.20+: optional LLM synthesis for the package ask, PDF/docx/zip
+  S17.20 converts the creator Handoff review to a workspace layout (full-width
+  package header + sticky right action rail so Publish is reachable without
+  scrolling; mobile promotes the rail to the top) and adds an Overview-readiness
+  clarification note; immutability, copy-only one-time link, and creator-only
+  content (exclusion counts, Copy ID, Remove) all preserved.
+  Deferred beyond S17: optional LLM synthesis for the package ask, PDF/docx/zip
   export, manager approval, multi-recipient, **rich snapshotted relationship/
   project/owner trees** (S17.17–S17.19 ship a package-local topic workspace, not a
   graph), and a stronger production auth boundary. See

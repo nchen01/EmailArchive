@@ -93,11 +93,13 @@ Key docs:
 - `docs/s18-hosted-product-readiness-plan.md` — S18 planned (docs-only): hosted
   web-app deployment readiness + S19+ sprint map (no code this sprint)
 
-Current status: **S0–S16.0 complete; S17.2–S17.19 (handoff package MVP, incl. the
+Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
 supersede, static HTML export, a compact three-part recipient coverage workspace,
 creator-only empty-generation diagnostic, refresh-safe workspace mailbox, a
-deterministic handoff-demo seed script, and a manual-demo runbook) shipped and
+deterministic handoff-demo seed script, a manual-demo runbook, and the creator
+Handoff workspace layout with a sticky action rail — Publish reachable without
+scrolling — S17.20) shipped and
 end-to-end validated; S16 canonical-demo readiness still planned. S18 (planned,
 docs-only) maps hosted product / web-app deployment readiness — see
 `docs/s18-hosted-product-readiness-plan.md`.** Manual demo:
