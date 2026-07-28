@@ -284,6 +284,18 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   concrete S22+ implementation map. No code this sprint; recipient snapshot-only
   invariant untouched. See `docs/s21-background-job-orchestration-plan.md`.
 
+- **S22–S23 ✓ implemented.** S22 adds the auth/tenant boundary (implements S19):
+  `Tenant`/`AppUser`/`TenantMembership` + `Mailbox.tenant_id`/`owner_user_id`
+  (migration 0010), fail-closed `AUTH_MODE`, and `require_owner_mailbox`/
+  `require_owner_package` on every creator/mailbox route. S23 adds the Gmail OAuth
+  + token-vault minimal slice (implements S20): `services/oauth/` +
+  `services/api/routers/oauth_gmail.py` + migration 0011 — a state+PKCE start/
+  callback/disconnect/status flow, a `mailbox_provider_account` storing only
+  `vault_ref` + safe metadata (raw tokens live only in the vault; the shipped
+  `DevTokenVault` is dev/test-only), mismatch/fail-closed rules, and a vault-backed
+  production resolver. Recipient routes are unchanged and never touch OAuth/vault/
+  provider data.
+
 ## 6. Known gaps — flag, don't fake
 
 - **L2 retrieval** — implemented in S7.1–S7.10 under `services/retrieval/`. See D12 in

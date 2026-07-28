@@ -22,7 +22,13 @@ the production background-job system for long/retryable work outside web request
 (tenant-scoped job model + states, per-type authz/idempotency/retry, S16.0 ingest
 as a job, vault-backed token resolution in the worker, safe audit events, a
 Postgres-backed queue + worker, rate/cost controls); not implemented — see
-`docs/s21-background-job-orchestration-plan.md`.
+`docs/s21-background-job-orchestration-plan.md`. **S22 (auth + tenant boundary,
+implements S19) and S23 (Gmail OAuth + token-vault minimal slice, implements S20)
+are now IMPLEMENTED**: creator/mailbox routes are owner/tenant-gated with a
+fail-closed `AUTH_MODE` (S22, migration 0010), and a mailbox owner can connect
+Gmail through a state+PKCE flow that stores only a `vault_ref` + safe metadata —
+never raw tokens (S23, `services/oauth/`, migration 0011; the shipped token vault
+is dev/test-only). Recipient package access remains package-local snapshot only.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 

@@ -526,3 +526,32 @@ export async function ingestGmailWindow(
   const url = `${API_BASE}/api/gmail-ingest/${encodeURIComponent(mailboxId)}/ingest`;
   return postJsonBody<GmailWindowResponse>(url, req);
 }
+
+// ── Gmail OAuth connect (S23) ────────────────────────────────────────────────
+// Safe metadata only — no tokens ever cross this boundary.
+export interface GmailConnectionStatus {
+  connected: boolean;
+  provider_account_email?: string | null;
+  scopes_granted?: string[];
+  status?: string | null;
+  connected_at?: string | null;
+}
+
+export async function getGmailStatus(mailboxId: string): Promise<GmailConnectionStatus> {
+  return getJson<GmailConnectionStatus>(
+    `${API_BASE}/api/mailbox/${encodeURIComponent(mailboxId)}/gmail/status`,
+  );
+}
+
+/** Start Gmail OAuth; returns the Google authorization URL to redirect the browser to. */
+export async function startGmailConnect(mailboxId: string): Promise<{ authorization_url: string }> {
+  return postJson<{ authorization_url: string }>(
+    `${API_BASE}/api/mailbox/${encodeURIComponent(mailboxId)}/gmail/connect/start`,
+  );
+}
+
+export async function disconnectGmail(mailboxId: string): Promise<{ disconnected: boolean }> {
+  return postJson<{ disconnected: boolean }>(
+    `${API_BASE}/api/mailbox/${encodeURIComponent(mailboxId)}/gmail/disconnect`,
+  );
+}

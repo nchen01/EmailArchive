@@ -100,6 +100,11 @@ Key docs:
   implemented in code): production background-job system for long/retryable work.
   Authoritative implementation sequence is S21 §14 (S22 auth → S23 OAuth/vault →
   S24 jobs → S25 ingest → S26 enrichment → S27 deploy)
+- **S22 ✓ + S23 ✓ implemented.** S22 = auth + tenant boundary (migration 0010,
+  fail-closed `AUTH_MODE`, owner/tenant-gated creator routes). S23 = Gmail OAuth +
+  token-vault minimal slice (`services/oauth/`, `services/api/routers/oauth_gmail.py`,
+  migration 0011). App DB stores only a `vault_ref` + safe provider metadata; the
+  shipped `DevTokenVault` is dev/test-only. Recipient access stays snapshot-only.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
