@@ -27,7 +27,7 @@ const HANDOFF_BASE = "/app/handoff";
  * their OWN mailbox, then publishes it to a single recipient. This is deliberately
  * closer to the old mailbox-review UX (own data), and is NOT the recipient package
  * view (that read-only view lives at /handoff/recipient, S17.6). Publishing here
- * (PublishPanel) freezes the package and mints the one-time recipient link; the
+ * (PublishControls) freezes the package and mints the one-time recipient link; the
  * raw capability code is held only in transient state and never persisted/logged.
  *
  * No frontend test runner exists in this repo (see docs/s15-verification-matrix.md);
@@ -298,16 +298,31 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   const mutable = !pkg || pkg.status === "draft" || pkg.status === "generated";
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8">
+    <div className="mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6">
       <h2 className="text-lg font-semibold text-ink">Review handoff package</h2>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 max-w-2xl text-sm text-muted">
         Inspect and prune what a coverage handoff would reveal, from your own
         mailbox, <strong>before publishing</strong>. This is your review surface —
         not the recipient view. Sensitive and noise messages are excluded
         automatically; you can remove anything else. When it looks right,{" "}
-        <strong>publish</strong> to freeze it and generate a one-time recipient
-        link.
+        <strong>publish</strong> to freeze it and mint a one-time recipient link.
       </p>
+
+      {/* Why can Overview read 0/0/limited while Handoff works? (S17.20) */}
+      <details className="mt-3 max-w-2xl rounded-md border border-line bg-app2 px-3 py-2 text-xs text-muted">
+        <summary className="cursor-pointer font-medium text-ink">
+          Why does Overview show 0 people / projects for this mailbox?
+        </summary>
+        <p className="mt-2 leading-relaxed">
+          The seeded Handoff mailbox is provisioned for{" "}
+          <strong>handoff package generation</strong> (messages + extracted events),
+          not the full graph profile. The Overview readiness strip reports{" "}
+          <strong>whole-workspace</strong> readiness (People, Projects, Retrieval) —
+          not handoff-generation readiness — so 0/0/limited here is expected and does
+          not block publishing. The Cover-for-me, Relationship Map, and Network Map
+          demos use the <strong>puluo</strong> mailbox instead.
+        </p>
+      </details>
 
       {error ? (
         <div className="status-failed mt-4" role="alert">
@@ -319,7 +334,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       {loading && !pkg ? (
         <p className="mt-6 text-sm text-muted">Loading handoff package…</p>
       ) : !pkg ? (
-        <section className="mt-6 rounded-md border border-line bg-surface p-4">
+        <section className="rounded-md border border-line bg-surface p-4">
           <h3 className="text-sm font-semibold text-ink">Start a handoff</h3>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <label className="flex flex-col text-xs text-muted">
@@ -358,168 +373,218 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
         </section>
       ) : (
         <>
-          {/* ── Package meta + scope ─────────────────────────────────────── */}
-          <section className="mt-6 rounded-md border border-line bg-surface p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold text-ink">
-                  {pkg.title || "(untitled handoff)"}
+          <PackageHeader
+            pkg={pkg}
+            mutable={mutable}
+            onStartOver={() => navigate(HANDOFF_BASE)}
+          />
+
+          {/* Workspace layout: section nav (wide) · center review · sticky
+              action rail. The rail carries every action (scope, generate,
+              publish/share/revoke/revise/export) so Publish is reachable near
+              the top — on mobile it stacks first, on desktop it is a sticky
+              right rail. */}
+          <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[9rem_minmax(0,1fr)_21rem]">
+            <nav
+              className="hidden xl:block xl:sticky xl:top-4 xl:self-start"
+              aria-label="Sections"
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">
+                On this page
+              </div>
+              <ul className="mt-2 space-y-1">
+                {([
+                  ["actions", "Scope & actions"],
+                  ["claims", `Claims (${pkg.claims.length})`],
+                  ["evidence", `Evidence (${pkg.evidence.length})`],
+                  ...(pkg.status !== "draft"
+                    ? [["publish", pkg.status === "generated" ? "Publish" : "Share & revoke"] as [string, string]]
+                    : []),
+                ] as [string, string][]).map(([id, label]) => (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      className="w-full rounded px-2 py-1 text-left text-sm text-muted hover:bg-app2 hover:text-ink"
+                      onClick={() =>
+                        document
+                          .getElementById(id)
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                      }
+                    >
+                      {label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+
+            {/* Center: generated claims + evidence (with creator pruning). */}
+            <main className="order-2 min-w-0 lg:order-none">
+              {pkg.status === "draft" ? (
+                <div className="rounded-md border border-line bg-surface p-6 text-sm text-muted">
+                  Set a scope (optional) in the actions panel, then click{" "}
+                  <strong>Generate package</strong> to build the candidate for
+                  review.
                 </div>
-                <div className="text-xs text-muted">
-                  reason: {pkg.reason} · status:{" "}
-                  <span className="font-medium text-ink">{pkg.status}</span> · v{pkg.version}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="text-xs text-faint hover:text-muted"
-                onClick={() => navigate(HANDOFF_BASE)}
-              >
-                Start over
-              </button>
-            </div>
+              ) : (
+                <>
+                  <ExclusionSummary counts={pkg.exclusion_counts} />
 
-            {mutable ? (
-              <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3">
-                <label className="flex flex-col text-xs text-muted">
-                  From
-                  <input
-                    type="date"
-                    className="mt-1 rounded border border-line2 px-2 py-1 text-sm"
-                    value={from}
-                    onChange={(e) => setFrom(e.target.value)}
-                  />
-                </label>
-                <label className="flex flex-col text-xs text-muted">
-                  To
-                  <input
-                    type="date"
-                    className="mt-1 rounded border border-line2 px-2 py-1 text-sm"
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="rounded-md border border-line2 px-3 py-2 text-sm hover:bg-app2 disabled:opacity-50"
-                  onClick={saveScope}
-                  disabled={busy !== null}
-                >
-                  {busy === "scope" ? "Saving…" : "Save scope"}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
-                  onClick={generate}
-                  disabled={busy !== null}
-                >
-                  {busy === "generate" || busy === "remove" ? "Generating…" : "Generate package"}
-                </button>
-              </div>
-            ) : (
-              <div className="mt-3 border-t border-line pt-3 text-xs text-faint">
-                This package is {pkg.status} and frozen — scope, regeneration, and
-                evidence are locked.
-              </div>
-            )}
-            {(pkg.scope.included_project_ids.length > 0 ||
-              pkg.scope.included_person_ids.length > 0 ||
-              pkg.scope.included_thread_ids.length > 0) && (
-              <div className="mt-2 text-xs text-faint">
-                Scoped to {pkg.scope.included_project_ids.length} project(s),{" "}
-                {pkg.scope.included_person_ids.length} person(s),{" "}
-                {pkg.scope.included_thread_ids.length} thread(s).
-              </div>
-            )}
-          </section>
-
-          {/* ── Generated content (kept visible read-only after publish) ──── */}
-          {pkg.status !== "draft" ? (
-            <>
-              <ExclusionSummary counts={pkg.exclusion_counts} />
-
-              <section className="mt-4">
-                <h3 className="text-sm font-semibold text-ink">
-                  Claims ({pkg.claims.length})
-                </h3>
-                {pkg.claims.length === 0 ? (
-                  <div className="mt-1 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
-                    {generationEmptyMessage(pkg)}
-                  </div>
-                ) : (
-                  KIND_ORDER.filter((k) => claimsByKind(k).length > 0).map((kind) => (
-                    <div key={kind} className="mt-3">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-faint">
-                        {KIND_LABEL[kind] ?? kind}
+                  <section id="claims" className="scroll-mt-4">
+                    <h3 className="text-sm font-semibold text-ink">
+                      Claims ({pkg.claims.length})
+                    </h3>
+                    {pkg.claims.length === 0 ? (
+                      <div className="mt-1 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
+                        {generationEmptyMessage(pkg)}
                       </div>
-                      <ul className="mt-1 space-y-2">
-                        {claimsByKind(kind).map((c) => (
-                          <li
-                            key={c.id}
-                            className="rounded-md border border-line bg-surface px-3 py-2 text-sm"
-                          >
-                            <div className="text-ink">{c.text}</div>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {c.source_message_id_headers.map((h) => (
-                                <span
-                                  key={h}
-                                  className="rounded bg-app2 px-1.5 py-0.5 font-mono text-[10px] text-muted"
-                                  title="Cited source message"
-                                >
-                                  {h}
-                                </span>
-                              ))}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
+                    ) : (
+                      KIND_ORDER.filter((k) => claimsByKind(k).length > 0).map((kind) => (
+                        <div key={kind} className="mt-3">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-faint">
+                            {KIND_LABEL[kind] ?? kind}
+                          </div>
+                          <ul className="mt-1 space-y-2">
+                            {claimsByKind(kind).map((c) => (
+                              <li
+                                key={c.id}
+                                className="rounded-md border border-line bg-surface px-3 py-2 text-sm"
+                              >
+                                <div className="text-ink">{c.text}</div>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {c.source_message_id_headers.map((h) => (
+                                    <span
+                                      key={h}
+                                      className="rounded bg-app2 px-1.5 py-0.5 font-mono text-[10px] text-muted"
+                                      title="Cited source message"
+                                    >
+                                      {h}
+                                    </span>
+                                  ))}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))
+                    )}
+                  </section>
+
+                  <section id="evidence" className="mt-6 scroll-mt-4">
+                    <h3 className="text-sm font-semibold text-ink">
+                      Evidence ({pkg.evidence.length})
+                    </h3>
+                    <p className="text-xs text-faint">
+                      {mutable
+                        ? "Snapshotted safe message content. Remove anything that should not travel with the handoff; a claim left without evidence disappears on regenerate."
+                        : "Snapshotted safe message content, frozen at publish. This is exactly what the recipient can read."}
+                    </p>
+                    <ul className="mt-2 space-y-3">
+                      {pkg.evidence.map((e) => (
+                        <EvidenceCard
+                          key={e.message_id_header}
+                          ev={e}
+                          removing={excludedHeaders.has(e.message_id_header)}
+                          onRemove={() => removeEvidence(e.message_id_header)}
+                          onCopy={() => copyId(e.message_id_header)}
+                          disabled={busy !== null}
+                          canRemove={mutable}
+                        />
+                      ))}
+                      {pkg.evidence.length === 0 ? (
+                        <li className="text-sm text-faint">No evidence in scope.</li>
+                      ) : null}
+                    </ul>
+                  </section>
+                </>
+              )}
+            </main>
+
+            {/* Right rail: all actions. order-first = top section on mobile;
+                sticky rail on desktop so Publish never hides below evidence. */}
+            <aside className="order-first space-y-4 lg:order-none lg:sticky lg:top-4 lg:self-start">
+              {mutable ? (
+                <div
+                  id="actions"
+                  className="scroll-mt-4 rounded-md border border-line bg-surface p-4"
+                >
+                  <h3 className="text-sm font-semibold text-ink">Scope &amp; generate</h3>
+                  <div className="mt-3 flex gap-3">
+                    <label className="flex flex-1 flex-col text-xs text-muted">
+                      From
+                      <input
+                        type="date"
+                        className="mt-1 rounded border border-line2 bg-surface px-2 py-1 text-sm text-ink"
+                        value={from}
+                        onChange={(e) => setFrom(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-1 flex-col text-xs text-muted">
+                      To
+                      <input
+                        type="date"
+                        className="mt-1 rounded border border-line2 bg-surface px-2 py-1 text-sm text-ink"
+                        value={to}
+                        onChange={(e) => setTo(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  {(pkg.scope.included_project_ids.length > 0 ||
+                    pkg.scope.included_person_ids.length > 0 ||
+                    pkg.scope.included_thread_ids.length > 0) && (
+                    <div className="mt-2 text-[11px] text-faint">
+                      Scoped to {pkg.scope.included_project_ids.length} project(s),{" "}
+                      {pkg.scope.included_person_ids.length} person(s),{" "}
+                      {pkg.scope.included_thread_ids.length} thread(s).
                     </div>
-                  ))
-                )}
-              </section>
-
-              <section className="mt-6">
-                <h3 className="text-sm font-semibold text-ink">
-                  Evidence ({pkg.evidence.length})
-                </h3>
-                <p className="text-xs text-faint">
-                  {mutable
-                    ? "Snapshotted safe message content. Remove anything that should not travel with the handoff; a claim left without evidence disappears on regenerate."
-                    : "Snapshotted safe message content, frozen at publish. This is exactly what the recipient can read."}
-                </p>
-                <ul className="mt-2 space-y-3">
-                  {pkg.evidence.map((e) => (
-                    <EvidenceCard
-                      key={e.message_id_header}
-                      ev={e}
-                      removing={excludedHeaders.has(e.message_id_header)}
-                      onRemove={() => removeEvidence(e.message_id_header)}
-                      onCopy={() => copyId(e.message_id_header)}
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-md border border-line2 px-3 py-2 text-sm text-ink hover:bg-app2 disabled:opacity-50"
+                      onClick={saveScope}
                       disabled={busy !== null}
-                      canRemove={mutable}
-                    />
-                  ))}
-                  {pkg.evidence.length === 0 ? (
-                    <li className="text-sm text-faint">No evidence in scope.</li>
-                  ) : null}
-                </ul>
-              </section>
+                    >
+                      {busy === "scope" ? "Saving…" : "Save scope"}
+                    </button>
+                    <button
+                      type="button"
+                      className="flex-1 rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
+                      onClick={generate}
+                      disabled={busy !== null}
+                    >
+                      {busy === "generate" || busy === "remove"
+                        ? "Generating…"
+                        : pkg.status === "draft"
+                          ? "Generate package"
+                          : "Regenerate"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  id="actions"
+                  className="scroll-mt-4 rounded-md border border-line2 bg-app2 p-4 text-xs text-faint"
+                >
+                  This package is {pkg.status} and frozen — scope, regeneration, and
+                  evidence removal are locked.
+                </div>
+              )}
 
-              <PublishPanel
-                pkg={pkg}
-                share={share}
-                busy={busy}
-                onPublish={publish}
-                onRevoke={revoke}
-                onNewVersion={newVersion}
-              />
-            </>
-          ) : (
-            <p className="mt-4 text-sm text-muted">
-              Set a scope (optional) and click <strong>Generate package</strong> to
-              build the candidate for review.
-            </p>
-          )}
+              {pkg.status !== "draft" ? (
+                <div id="publish" className="scroll-mt-4">
+                  <PublishControls
+                    pkg={pkg}
+                    share={share}
+                    busy={busy}
+                    onPublish={publish}
+                    onRevoke={revoke}
+                    onNewVersion={newVersion}
+                  />
+                </div>
+              ) : null}
+            </aside>
+          </div>
         </>
       )}
     </div>
@@ -536,6 +601,67 @@ function ExclusionSummary({ counts }: { counts: Record<string, number> }) {
       Withheld from this package (visible to you only, never to the recipient):{" "}
       {parts.join(" · ")}.
     </div>
+  );
+}
+
+/** Status chip — encodes lifecycle state in color as well as text. */
+function StatusPill({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    draft: "border-line bg-app2 text-muted",
+    generated: "border-brass bg-brass-soft text-brass",
+    published: "border-jade bg-jade-soft text-jade",
+    revoked: "border-danger-line bg-danger-soft text-danger",
+    superseded: "border-line2 bg-app2 text-muted",
+  };
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${map[status] ?? map.draft}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+/** Full-width package summary bar: title, status/version, editable-or-frozen
+ * state, reason, and Start over — the identity of the open package. */
+function PackageHeader({
+  pkg,
+  mutable,
+  onStartOver,
+}: {
+  pkg: HandoffPackage;
+  mutable: boolean;
+  onStartOver: () => void;
+}) {
+  return (
+    <section className="mt-6 rounded-md border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-ink">
+              {pkg.title || "(untitled handoff)"}
+            </h3>
+            <StatusPill status={pkg.status} />
+            <span className="rounded-full border border-line bg-app2 px-2 py-0.5 text-[11px] font-medium text-muted">
+              v{pkg.version}
+            </span>
+            <span
+              className={`text-[11px] font-medium ${mutable ? "text-jade" : "text-faint"}`}
+            >
+              {mutable ? "Editable" : "Frozen"}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-muted">reason: {pkg.reason}</div>
+        </div>
+        <button
+          type="button"
+          className="shrink-0 rounded-md border border-line2 px-3 py-1.5 text-xs font-medium text-muted hover:bg-app2 hover:text-ink"
+          onClick={onStartOver}
+        >
+          Start over
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -650,7 +776,7 @@ function ExportButton({ pkg }: { pkg: HandoffPackage }) {
  * (transient React state) — never written to storage, never logged, and only ever
  * placed in the URL *fragment* of the copyable link.
  */
-function PublishPanel({
+function PublishControls({
   pkg,
   share,
   busy,
@@ -672,7 +798,7 @@ function PublishPanel({
   if (pkg.status === "revoked" || pkg.status === "superseded") {
     const revoked = pkg.status === "revoked";
     return (
-      <section className="mt-6 rounded-md border border-line2 bg-app2 p-4">
+      <section className="rounded-md border border-line2 bg-app2 p-4">
         <h3 className="text-sm font-semibold text-ink">
           {revoked ? "Access revoked" : "Replaced by a newer version"}
         </h3>
@@ -706,7 +832,7 @@ function PublishPanel({
         .catch(() => window.prompt("Copy this recipient link:", shareUrl));
     };
     return (
-      <section className="mt-6 rounded-md border border-jade bg-jade-soft p-4">
+      <section className="rounded-md border border-jade bg-jade-soft p-4">
         <h3 className="text-sm font-semibold text-jade">Package published</h3>
         <div className="mt-1 text-xs text-jade">
           {share ? <>Recipient: {share.recipient_email} · </> : null}
