@@ -266,6 +266,18 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   lifecycle, OAuth audit events, and a threat model. Gmail only; M365 stays the D2
   stub. No code this sprint; recipient snapshot-only invariant untouched. See
   `docs/s20-oauth-token-vault-plan.md`.
+- **S21 — planned (docs/spec-only).** Background job orchestration spec: the
+  production system that runs long/retryable work (Gmail ingest, L1 enrichment,
+  event extraction, embedding backfill, project materialization, cleanup/
+  retention; heavy handoff generation + PDF/DOCX/ZIP export later) outside web
+  requests — a tenant-scoped `job` model + states (queued/running/succeeded/
+  failed/canceled/partially_succeeded), per-type authz/idempotency/retry/progress,
+  S16.0 ingest as a job (confirm starts it; `replace_snapshot` staged swap),
+  vault-backed token resolution inside the worker (no tokens in payloads/logs),
+  S19 authz re-checked by the worker, safe audit events, a Postgres-backed queue +
+  worker (leases/heartbeat/stuck-job recovery) default, rate/cost controls, and a
+  concrete S22+ implementation map. No code this sprint; recipient snapshot-only
+  invariant untouched. See `docs/s21-background-job-orchestration-plan.md`.
 
 ## 6. Known gaps — flag, don't fake
 

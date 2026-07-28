@@ -334,6 +334,18 @@ components of the handoff-package experience.
   auth-sensitive OAuth audit events, and a focused threat model. Gmail only; M365
   stays the D2 stub (not implemented). See `docs/s20-oauth-token-vault-plan.md`.
   Not implemented.
+- **S21 — Background job orchestration** (docs/spec-only, no code): the production
+  job system for long/retryable work outside web requests (Gmail ingest, L1
+  enrichment, event extraction, embedding backfill, project materialization,
+  cleanup/retention; heavy handoff generation + PDF/DOCX/ZIP export later) — a
+  tenant-scoped `job` model + states (queued/running/succeeded/failed/canceled/
+  partially_succeeded), per-type authz/idempotency/retry/progress, S16.0 ingest
+  integration (confirm starts a job; `replace_snapshot` staged transactional
+  swap), vault-backed token resolution in the worker (no tokens in payloads/logs),
+  S19 authz re-checked in the worker, safe audit events, a Postgres-backed
+  queue + worker (leases/heartbeat/stuck-job recovery) default, rate/cost controls,
+  and a concrete S22+ implementation map. See
+  `docs/s21-background-job-orchestration-plan.md`. Not implemented.
 
 **Deferred beyond S17:**
 - **Thread-context neighbor expansion** (per spec).

@@ -96,6 +96,8 @@ Key docs:
   auth + tenant/authorization model for S20+ (no code this sprint)
 - `docs/s20-oauth-token-vault-plan.md` — S20 planned (docs/spec-only): safe Gmail
   OAuth connect + token-vault boundary (Gmail only; no code this sprint)
+- `docs/s21-background-job-orchestration-plan.md` — S21 planned (docs/spec-only):
+  production background-job system for long/retryable work (no code this sprint)
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
@@ -107,10 +109,12 @@ scrolling — S17.20) shipped and
 end-to-end validated; S16 canonical-demo readiness still planned. S18 (planned,
 docs-only) maps hosted product / web-app deployment readiness, and S19 (planned,
 docs/spec-only) specifies the production auth + tenant boundary, and S20 (planned,
-docs/spec-only) specifies safe Gmail OAuth connect + a token-vault boundary — see
+docs/spec-only) specifies safe Gmail OAuth connect + a token-vault boundary, and
+S21 (planned, docs/spec-only) specifies the production background-job system — see
 `docs/s18-hosted-product-readiness-plan.md`,
-`docs/s19-auth-tenant-boundary-plan.md`, and
-`docs/s20-oauth-token-vault-plan.md`.** Manual demo:
+`docs/s19-auth-tenant-boundary-plan.md`,
+`docs/s20-oauth-token-vault-plan.md`, and
+`docs/s21-background-job-orchestration-plan.md`.** Manual demo:
 `docs/s17-handoff-manual-demo-runbook.md`.
 S7 L2 hybrid retrieval (Voyage AI voyage-4,
 pgvector HNSW, cover-for-me upgrade) shipped and live-validated. S8 real-mailbox
