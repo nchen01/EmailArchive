@@ -111,10 +111,11 @@ auth and stay package-local snapshot only.
 
 ## Window 2b — background worker (only for Gmail date-range ingest)
 
-The core handoff demo (seeded mailbox) needs **no** worker. But since S25, the
-Gmail **date-range ingest** (Status → "Date-windowed Gmail ingest") enqueues a
-`gmail_ingest_window` job instead of running inline — so to actually run an ingest
-you also need a worker draining the queue:
+The core handoff demo (seeded mailbox) needs **no** worker. But since S25/S26, the
+Gmail **date-range ingest** and the **post-ingest pipeline** (Status → "Post-ingest
+pipeline": enrichment / event extraction / embedding backfill / project
+materialization) enqueue background jobs instead of running inline — so to run any
+of those you also need a worker draining the queue:
 
 ```powershell
 cd C:\Users\PC\EmailArchive
