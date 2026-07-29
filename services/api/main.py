@@ -122,8 +122,13 @@ async def _readyz_impl() -> JSONResponse:
 
     try:
         ready, _ = evaluate_readiness()
-    except Exception:  # never leak; an evaluation error is itself not-ready
-        logging.getLogger("ekc.hosted").exception("readiness evaluation error")
+    except Exception as exc:  # never leak; an evaluation error is itself not-ready
+        # Safe-metadata posture (same as the rest of the product): log ONLY the
+        # exception TYPE name — never a traceback (no exc_info) and never str(exc),
+        # which could carry an env value, DB URL, or OAuth/secret detail.
+        logging.getLogger("ekc.hosted").error(
+            "readiness evaluation error (%s) — reporting degraded", type(exc).__name__
+        )
         return JSONResponse(status_code=503, content={"status": "degraded"})
     if ready:
         return JSONResponse(status_code=200, content={"status": "ready"})

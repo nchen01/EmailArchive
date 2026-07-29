@@ -428,6 +428,33 @@ def test_readyz_evaluation_error_is_degraded_not_500():
     assert r.json() == {"status": "degraded"}
 
 
+def test_readyz_fallback_logs_only_exception_type_no_traceback_no_secret(caplog):
+    """On an unexpected readiness-eval error the fallback logs ONLY the exception
+    type name — never a traceback (exc_info) or str(exc) (which could carry a DB
+    URL / OAuth secret / env value). The response stays a bare 503."""
+    from services.api.main import app
+
+    secret = "supersecret-db-pw-in-exc"
+    boom = RuntimeError(f"connection failed for postgresql://u:{secret}@host/db")
+    with patch("services.hosted_readiness.evaluate_readiness", side_effect=boom):
+        with caplog.at_level("ERROR", logger="ekc.hosted"):
+            client = TestClient(app)
+            r = client.get("/readyz")
+
+    assert r.status_code == 503
+    assert r.json() == {"status": "degraded"}
+
+    recs = [rec for rec in caplog.records if rec.name == "ekc.hosted"]
+    assert recs, "expected a readiness fallback log record"
+    rec = recs[-1]
+    assert "RuntimeError" in rec.getMessage()   # the safe category is logged
+    assert rec.exc_info is None                 # NO traceback attached
+    # str(exc) / the secret must appear nowhere in the emitted logs.
+    assert secret not in rec.getMessage()
+    assert secret not in caplog.text
+    assert "connection failed" not in caplog.text
+
+
 def test_healthz_still_works():
     """Liveness probes must not be affected by S27."""
     from services.api.main import app
