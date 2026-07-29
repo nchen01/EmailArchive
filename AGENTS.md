@@ -319,6 +319,17 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   precheck). Each wraps the existing core logic so `scripts/embed_backfill.py` +
   `scripts/materialize_projects.py` still work. Owner/tenant-guarded; safe metadata
   only; recipients never touch jobs.
+- **S27 — planned, docs/spec-only (not implemented).** Hosted deployment readiness
+  (`docs/s27-hosted-deploy-readiness-plan.md`): a safety-gated runbook + an
+  environment-validation module + **fail-closed startup guardrails** that refuse to
+  boot a hosted process with `AUTH_MODE=dev` / the dev token vault, a missing/
+  dev-default `DATABASE_URL`, an un-migrated DB, missing OAuth config or a localhost
+  redirect URI, missing OAuth-callback log redaction, wildcard/missing CORS, a
+  missing worker, or a recipient-router regression. Adds a `--hosted` preflight, a
+  safe `/readyz` endpoint, and a worker-health signal. Deliberately **not** a broad
+  hosted migration and **no migration by default** (head stays `0012_job_infra`);
+  no infra provisioning, admin UI, telemetry vendor, M365, production IdP, recipient
+  auth, or retention enforcement (those stay later sprints).
 
 ## 6. Known gaps — flag, don't fake
 
