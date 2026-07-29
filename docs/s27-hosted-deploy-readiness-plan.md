@@ -533,6 +533,68 @@ review).
 
 ---
 
+## 9. Resolved product/engineering defaults
+
+The §8 open questions may still be revisited on detail, but the S27 **implementation
+has a clear default path** and does not need to wait on them. These defaults are
+authoritative for the build; deviating from one requires an explicit decision.
+
+1. **Hosted-context gate (resolves §8.1).** Require **both** `AUTH_MODE=production`
+   **and** `EKC_DEPLOY_ENV=production` for the hosted production guardrails to
+   apply. Fail-closed pairing rules the build must enforce:
+   - `EKC_DEPLOY_ENV=production` **and** `AUTH_MODE=dev` → **fail startup and
+     readiness loudly** (a hosted deploy that fell back to dev auth is the exact
+     thing to catch; §2.2.1).
+   - `AUTH_MODE=production` **but** `EKC_DEPLOY_ENV` missing/not `production` in a
+     hosted deployment → **fail readiness** (`/readyz` degraded) — the positive
+     deploy-env signal is required, so a partially-configured process is not
+     mistaken for ready.
+   - Both set to production → guardrails apply; both absent (local dev) → the
+     startup guard is a no-op and checks remain CLI-runnable (§2.1, §2.3).
+
+2. **Worker-health signal (resolves §8.2).** **Migration-free for S27.** Reuse the
+   existing `job` table + worker lease/heartbeat behavior (§5.3a — `started_at`
+   /`lease_expires_at` freshness and the `FOR UPDATE SKIP LOCKED` claim) to prove a
+   worker is alive and claiming. **Do not** add a `worker_heartbeat` table (§5.3b)
+   unless the implementation demonstrably proves the job-table approach is
+   insufficient. Default: **no migration; head stays `0012_job_infra`.**
+
+3. **Production `TokenVault` (resolves §8.3).** Keep the provider-neutral
+   `TokenVault` protocol (`services/oauth/vault.py`) unchanged; the first concrete
+   production adapter (KMS/secrets-manager) is selected during implementation. S27
+   **must fail closed if only `DevTokenVault` is available in a hosted production
+   context** (§2.2.2/§2.2.3), and **`EKC_ALLOW_DEV_VAULT` must never be honored in
+   hosted production** — if set alongside `EKC_DEPLOY_ENV=production`, that is a
+   boot/readiness failure, not an override.
+
+4. **Frontend / API origin (resolves §8.4).** **Same-origin deployment is the
+   preferred default** (frontend served behind the same origin as `/api`, e.g. a
+   reverse proxy) and needs no CORS middleware. An explicit CORS **allow-list** is
+   added **only** when the frontend and API are cross-origin. **No wildcard (`*`)
+   CORS in production** under any topology (§2.2.11).
+
+5. **Migration ordering (resolves §8.6).** Migrations **must run before** the API
+   or worker are considered ready. `GET /readyz` **fails (503)** when the DB is not
+   at Alembic head, and the worker likewise **refuses to run / fails its readiness
+   signal** when the DB is not at head (reusing `services/preflight.py::check_alembic_head`;
+   §2.2.5, §3.2). A process never lazily migrates at request time.
+
+6. **Cost caps / kill switch (resolves §8.8).** S27 includes **environment/readiness
+   checks that a provider kill switch and the existing cost gates are configured/
+   intact** (the `embedding_backfill` cost gate + the Voyage-key authorization rule
+   stay un-bypassable), but S27 does **not** build a full cost-governance system.
+   **Per-tenant hard cost caps remain deferred** to the security/privacy hardening
+   sprint unless a given cap is already trivial with current config.
+
+7. **S27 implementation boundary (resolves scope).** The S27 build is
+   **guardrails / runbook / readiness only**: the hosted preflight/check command,
+   the safe `/readyz`, the worker health/readiness signal, the environment-validation
+   module, the deployment runbook, and their tests. **No** broad hosted migration,
+   **no** admin UI, **no** new auth provider (only the fail-closed guard that
+   production ≠ dev), and **no** core product-behavior changes.
+
+---
+
 ## Acceptance (this docs/spec sprint)
 
 - Docs/spec-only; **no** backend/frontend/schema/migration/dependency changes in
