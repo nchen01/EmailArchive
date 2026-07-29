@@ -191,6 +191,49 @@ class OAuthState(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+# ── Background jobs (S24 — implements docs/s21-background-job-orchestration-plan) ─
+# Service-DB only (no ekc_schemas change, SCHEMA_VERSION not bumped). Every job is
+# tenant-scoped. params/progress/summary/error_* carry SAFE metadata only — never
+# tokens, OAuth codes, email bodies/subjects/snippets, prompts, provider
+# responses, or stack traces (sanitized by services/jobs/sanitize.py).
+class Job(Base):
+    __tablename__ = "job"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    requested_by_user_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    mailbox_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    job_type: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    idempotency_key: Mapped[str | None] = mapped_column(Text)
+    progress: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    summary: Mapped[str | None] = mapped_column(Text)
+    error_category: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)  # safe/sanitized only
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    worker_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        # Dedupe active jobs by key within a tenant (partial unique — see migration).
+        CheckConstraint(
+            "status IN ('queued','running','succeeded','failed','canceled','partially_succeeded')",
+            name="ck_job_status",
+        ),
+    )
+
+
 class SyncState(Base):
     __tablename__ = "sync_state"
 

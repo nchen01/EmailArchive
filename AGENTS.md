@@ -295,6 +295,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   `DevTokenVault` is dev/test-only), mismatch/fail-closed rules, and a vault-backed
   production resolver. Recipient routes are unchanged and never touch OAuth/vault/
   provider data.
+- **S24 ✓ implemented.** Background job infrastructure (implements S21):
+  `services/jobs/` + `services/api/routers/jobs.py` + migration 0012 — a
+  tenant-scoped `job` table (six states), enqueue/status/list/cancel APIs (S22
+  owner/tenant-guarded), a Postgres `FOR UPDATE SKIP LOCKED` worker claim with
+  lease/heartbeat + expired-lease reclaim, idempotency dedupe, safe-metadata
+  sanitization (params/progress/summary/errors never carry content/tokens/
+  traces), and a harmless `noop` job. Infra only — no ingest/enrichment/backfill
+  moved into jobs yet. Recipients have no principal and cannot reach job routes.
 
 ## 6. Known gaps — flag, don't fake
 

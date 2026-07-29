@@ -18,12 +18,15 @@ sync-token bypass), `docs/s17-handoff-package-mvp-plan.md`, and `README.md` /
 - **S17.2–S17.20 — shipped** (audited Handoff Package MVP; behavior unchanged here).
 - **S18 / S19 / S20 — shipped as docs-only specs** (hosted readiness; auth+tenant
   boundary; OAuth+token vault). None are implemented as code.
-- **S21 — this spec, NOT implemented.** Every object, state, and job type is
-  *proposed for a later build sprint* (§14); none exist yet. Today the heavy tasks
-  run as **manual scripts** (`scripts/embed_backfill.py`,
-  `scripts/materialize_projects.py`, ingest, seed) — this doc plans their move to
-  durable jobs.
-- **S22+ implementation — not started** (§14).
+- **S21 — spec.** The **job infrastructure** (§2, §3, §8, §11) is **implemented by
+  S24** (`services/jobs/`, migration `0012_job_infra`, `services/api/routers/jobs.py`):
+  the tenant-scoped `job` table + the six states, enqueue/status/list/cancel APIs
+  (S22 owner/tenant-guarded), a Postgres `FOR UPDATE SKIP LOCKED` worker claim with
+  lease/heartbeat + expired-lease reclaim, idempotency dedupe, safe-metadata
+  sanitization, and a harmless `noop` job for validation. **Still deferred:**
+  moving Gmail ingest / L1 enrichment / event extraction / embedding backfill /
+  project materialization onto jobs (§4) — those remain manual scripts for now.
+- **S22 (auth), S23 (OAuth/vault), S24 (job infra) — implemented.**
 
 **Untouched invariant:** the recipient package view reads **only package-local
 snapshot rows** (S18 §7, S19 §5). Jobs are a **creator/operator-side** mechanism;
@@ -328,22 +331,26 @@ access token, stack trace, LLM prompt or response, or capability/session token
 
 ---
 
-## 14. Proposed S22+ implementation map (not started)
+## 14. S22+ implementation map
 
 The prior S18 §11 sprint map was a rough planning order; **this is the concrete
 implementation sequencing** and supersedes it. Each is an *implementation* sprint
-turning a shipped spec (S19/S20/S21) into code — none are started.
+turning a shipped spec (S19/S20/S21) into code. **S22, S23, and S24 are
+implemented** (see the status block at the top); **S25 is next**, and S26–S27 are
+not started.
 
-- **S22 — Auth + tenant minimal vertical slice** (implement S19): tenant/user
+- **S22 ✓ — Auth + tenant minimal vertical slice** (implements S19): tenant/user
   model, mailbox ownership binding, the `owner(mailbox)` dependency on every
   creator endpoint, fail-closed `AUTH_MODE`, auth audit events.
-- **S23 — Gmail OAuth + token vault minimal vertical slice** (implement S20):
+- **S23 ✓ — Gmail OAuth + token vault minimal vertical slice** (implements S20):
   connect flow, vault-backed token resolver, `mailbox_provider_account`, mismatch
   handling, OAuth audit events.
-- **S24 — Background job infrastructure** (implement S21): `job` table,
+- **S24 ✓ — Background job infrastructure** (implements S21): `job` table,
   Postgres-backed queue + worker, leases/heartbeat, states, idempotency, audit.
-- **S25 — Move Gmail date-range ingest into jobs** (`gmail_ingest_window`,
-  preserving S16.0 preview/confirm + `replace_snapshot` safeguards).
+- **S25 — NEXT — Move Gmail date-range ingest into jobs** (`gmail_ingest_window`,
+  preserving S16.0 preview/confirm + `replace_snapshot` safeguards). This moves
+  **only** date-range ingest onto the S24 job runner — **not** enrichment,
+  embedding backfill, or project materialization (those are S26).
 - **S26 — Move enrichment / embedding backfill / project materialization into
   jobs** (`l1_enrichment`, `event_extraction`, `embedding_backfill`,
   `project_materialization`), with the cost controls of §12.
