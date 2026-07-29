@@ -35,16 +35,20 @@ from services.ingest.gmail_windowed import (
     AccountMismatchError,
     build_gmail_provider,
     plan_window,
-    run_windowed_ingest,
     verify_account,
 )
+# S25: the live ingest now runs in the `gmail_ingest_window` job handler, not here.
+# Re-exported so it stays a named seam (the handler + tests reference this symbol);
+# the endpoint itself no longer calls it.
+from services.ingest.gmail_windowed import run_windowed_ingest as run_windowed_ingest  # noqa: F401
 from services.ingest.list_options import DateWindowError, ListOptions, parse_date_window
 
-from ..auth import require_owner_mailbox
+from ..auth import Principal, get_principal, require_owner_mailbox
 from ..deps import get_db
 from ..schemas.gmail_ingest import (
     DateWindowRequest,
     IngestConfirmRequest,
+    IngestJobResponse,
     IngestWindowResponse,
 )
 
@@ -160,12 +164,19 @@ async def preview_window(
 
 
 @router.post(
-    "/gmail-ingest/{mailbox_id}/ingest", response_model=IngestWindowResponse,
+    "/gmail-ingest/{mailbox_id}/ingest", response_model=IngestJobResponse,
     dependencies=[Depends(require_owner_mailbox)],
 )
 async def ingest_window(
-    mailbox_id: str, body: IngestConfirmRequest, db: Session = Depends(get_db)
-) -> IngestWindowResponse:
+    mailbox_id: str,
+    body: IngestConfirmRequest,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> IngestJobResponse:
+    """S25: validate + verify the account request-time (preserving the S16.0
+    fail-fast safeguards), then ENQUEUE a `gmail_ingest_window` job on the S24
+    runner. The heavy fetch/normalize/persist runs in the job; poll
+    `GET /api/jobs/{job_id}` for status/progress."""
     options = _validate_window(body)
     mbx = _get_gmail_mailbox(db, mailbox_id)
     if not body.confirm:
@@ -183,64 +194,49 @@ async def ingest_window(
             detail="replace_snapshot requires date_from and/or date_to so the "
                    "replacement snapshot has an explicit window",
         )
-    # Validate request internal_domains but DO NOT persist yet — a mismatched
-    # token or a failed ingest must not mutate mailbox.config (P1.2).
+    # Validate request internal_domains but DO NOT persist yet — persisted only on
+    # a successful ingest, now inside the job (P1.2).
     requested_domains = _clean_internal_domains(body)
-    effective_domains = (
-        requested_domains
-        if requested_domains is not None
-        else list((mbx.config or {}).get("internal_domains", []))
-    )
-    provider = _provider_for(mailbox_id)
 
+    # Account guard request-time (getProfile) so a mismatch fails fast with 409,
+    # before any job is enqueued — preserving the S16.0 safeguard.
+    provider = _provider_for(mailbox_id)
     started = _now()
-    write_audit_event(
-        db, mailbox_id=mailbox_id, actor=_ACTOR, action="ingest_start",
-        scope=_SCOPE, started_at=started,
-    )
     try:
-        verify_account(provider, mbx.owner_email)  # getProfile — before listing/fetch
-        summary = run_windowed_ingest(
-            db,
-            db_mailbox_id=mailbox_id,
-            token_mailbox_id=mailbox_id,
-            owner_email=mbx.owner_email,
-            internal_domains=effective_domains,
-            options=options,
-            max_messages=body.max_messages,
-            replace_snapshot=body.replace_snapshot,
-            provider=provider,
-        )
+        verify_account(provider, mbx.owner_email)
     except AccountMismatchError as exc:
         _audit_error(db, mailbox_id, started)
         raise HTTPException(status_code=409, detail=str(exc)) from None
     except Exception as exc:  # noqa: BLE001 — sanitized, never leak provider data
-        _log.error("gmail_ingest_failed", extra={"error_type": type(exc).__name__})
+        _log.error("gmail_ingest_preflight_failed", extra={"error_type": type(exc).__name__})
         _audit_error(db, mailbox_id, started)
-        raise HTTPException(status_code=502, detail="gmail ingest failed") from None
+        raise HTTPException(status_code=502, detail="gmail ingest preflight failed") from None
 
-    # Success path only: now persist request-supplied internal_domains to config.
+    # Enqueue the ingest job on the S24 runner (importing handlers registers the type).
+    import services.jobs.handlers  # noqa: F401 — ensure gmail_ingest_window registered
+    from services.jobs import service
+
+    params: dict = {
+        "mailbox_id": mailbox_id,
+        "date_from": body.date_from,
+        "date_to": body.date_to,
+        "max_messages": body.max_messages,
+        "replace_snapshot": bool(body.replace_snapshot),
+    }
     if requested_domains is not None:
-        mbx = db.get(orm.Mailbox, UUID(mailbox_id))
-        cfg = dict(mbx.config or {})
-        cfg["internal_domains"] = requested_domains
-        mbx.config = cfg  # reassign so the JSONB change is tracked
-        db.commit()
+        params["internal_domains"] = requested_domains
 
-    write_audit_event(
-        db, mailbox_id=mailbox_id, actor=_ACTOR, action="ingest_finish",
-        scope=_SCOPE, message_count=summary["messages"],
-        started_at=started, finished_at=_now(),
+    job = service.enqueue(
+        db, tenant_id=principal.tenant_id, job_type="gmail_ingest_window",
+        mailbox_id=mailbox_id, requested_by=principal.user_id, params=params,
+        # Dedupe repeated clicks of the same window/replace into one active job.
+        idempotency_key=(
+            f"gmail_ingest:{mailbox_id}:{body.date_from}:{body.date_to}:{int(bool(body.replace_snapshot))}"
+        ),
     )
-    return IngestWindowResponse(
-        count=summary["messages"],
-        is_estimate=summary["hit_cap"],
-        cap_hit=summary["hit_cap"],
-        persisted=True,
-        mode="replace" if summary["replaced"] else "append_upsert",
-        replaced=summary["replaced"],
-        sync_token_disposition=summary["sync_token_disposition"],
-        **_window_fields(body, options),
+    return IngestJobResponse(
+        job_id=str(job.id), status=job.status,
+        mode="replace" if body.replace_snapshot else "append_upsert",
     )
 
 

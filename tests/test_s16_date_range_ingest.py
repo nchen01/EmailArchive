@@ -366,6 +366,9 @@ def gmail_mailbox():
     try:
         yield client, mailbox_id
     finally:
+        # S25: clean up any enqueued jobs + audit rows for this mailbox too.
+        session.execute(orm.Job.__table__.delete().where(orm.Job.mailbox_id == mailbox_id))
+        session.execute(orm.AuditLog.__table__.delete().where(orm.AuditLog.mailbox_id == mailbox_id))
         session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mailbox_id))
         session.commit()
         session.close()
@@ -415,9 +418,10 @@ def test_api_preview_invalid_date_422(gmail_mailbox, monkeypatch):
 
 @requires_db
 def test_api_ingest_requires_confirm(gmail_mailbox, monkeypatch):
-    from services.api.routers import gmail_ingest as router
+    # confirm gates all live ingest → 400 before any enqueue/ingest (S25).
+    from services.ingest import gmail_windowed as gw
 
-    monkeypatch.setattr(router, "run_windowed_ingest", lambda *a, **k: (_ for _ in ()).throw(
+    monkeypatch.setattr(gw, "run_windowed_ingest", lambda *a, **k: (_ for _ in ()).throw(
         AssertionError("must not ingest without confirm")))
     client, mailbox_id = gmail_mailbox
 
@@ -429,8 +433,14 @@ def test_api_ingest_requires_confirm(gmail_mailbox, monkeypatch):
 
 
 @requires_db
-def test_api_ingest_confirm_shares_snapshot_semantics(gmail_mailbox, monkeypatch):
+def test_api_ingest_confirm_enqueues_job_and_worker_runs_it(gmail_mailbox, monkeypatch):
+    """S25: confirm enqueues a gmail_ingest_window job (fast, request-time
+    validation + account verify), and the worker runs the real ingest path."""
     from services.api.routers import gmail_ingest as router
+    from services.db.engine import SessionLocal
+    from services.ingest import gmail_windowed as gw
+    from services.jobs import worker as jobworker
+    from services.jobs.handlers import gmail_ingest as handler
 
     captured = {}
 
@@ -442,26 +452,41 @@ def test_api_ingest_confirm_shares_snapshot_semantics(gmail_mailbox, monkeypatch
             "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True,
         }
 
-    monkeypatch.setattr(router, "run_windowed_ingest", _fake_ingest)
-    # Skip the real getProfile account check in this pure-forwarding test.
+    # request-time account guard (endpoint) + handler-side ingest.
     monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
     monkeypatch.setattr(router, "_provider_for", lambda _id: object())
-    client, mailbox_id = gmail_mailbox
+    monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(gw, "run_windowed_ingest", _fake_ingest)
+    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
 
+    client, mailbox_id = gmail_mailbox
     resp = client.post(
         f"/api/gmail-ingest/{mailbox_id}/ingest",
         json={"date_from": "2026-04-01", "date_to": "2026-06-30", "max_messages": 100, "confirm": True},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["persisted"] is True
-    assert body["mode"] == "append_upsert"
-    assert body["replaced"] is False
-    assert "date-windowed snapshot" in body["sync_token_disposition"]
-    # Confirms the endpoint forwarded the validated window + cap to the shared runner.
+    assert body["status"] == "queued" and body["mode"] == "append_upsert"
+    job_id = body["job_id"]
+
+    db = SessionLocal()
+    try:
+        ran = jobworker.run_once(db, worker_id="w1")
+        assert ran is not None and str(ran.id) == job_id
+        assert ran.status == "succeeded" and ran.job_type == "gmail_ingest_window"
+        assert ran.progress.get("messages") == 4
+        # no unsafe metadata in the job row
+        blob = f"{ran.params} {ran.progress} {ran.summary} {ran.error_message}"
+        assert "token" not in blob.lower()
+    finally:
+        db.close()
+    # snapshot semantics preserved: the handler forwarded the right ingest kwargs.
+    assert captured.get("replace_snapshot") is False
+    assert captured.get("db_mailbox_id") == mailbox_id
+    assert captured.get("max_messages") == 100
+    # the validated window is forwarded to the shared runner
     assert captured["options"].date_from == date(2026, 4, 1)
     assert captured["options"].date_to == date(2026, 6, 30)
-    assert captured["max_messages"] == 100
 
 
 @requires_db
@@ -779,13 +804,15 @@ def test_api_account_match_ok(gmail_mailbox, monkeypatch):
 
 @requires_db
 def test_api_internal_domains_used_and_persisted(gmail_mailbox, monkeypatch):
+    # S25: cleaning happens request-time; persistence happens in the job on success.
     from services.api.routers import gmail_ingest as router
     from services.db import models as orm
     from services.db.engine import SessionLocal
+    from services.ingest import gmail_windowed as gw
+    from services.jobs import worker as jobworker
+    from services.jobs.handlers import gmail_ingest as handler
 
     captured = {}
-    monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
-    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
 
     def _fake(session, **kw):
         captured.update(kw)
@@ -793,53 +820,72 @@ def test_api_internal_domains_used_and_persisted(gmail_mailbox, monkeypatch):
                 "replaced": False, "cleared": None,
                 "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True}
 
-    monkeypatch.setattr(router, "run_windowed_ingest", _fake)
+    monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+    monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(gw, "run_windowed_ingest", _fake)
+    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
+
     client, mailbox_id = gmail_mailbox
     resp = client.post(
         f"/api/gmail-ingest/{mailbox_id}/ingest",
         json={"date_from": "2026-04-01", "confirm": True, "internal_domains": ["Acme.Corp", " "]},
     )
     assert resp.status_code == 200
-    assert captured["internal_domains"] == ["acme.corp"]  # cleaned + lowercased
-    # Persisted into mailbox.config.
+    db = SessionLocal()
+    try:
+        ran = jobworker.run_once(db, worker_id="w1")
+        assert ran.status == "succeeded"
+    finally:
+        db.close()
+    assert captured["internal_domains"] == ["acme.corp"]  # cleaned + lowercased request-time
     s = SessionLocal()
     try:
         mbx = s.get(orm.Mailbox, mailbox_id)
-        assert mbx.config.get("internal_domains") == ["acme.corp"]
+        assert mbx.config.get("internal_domains") == ["acme.corp"]  # persisted by the job
     finally:
         s.close()
 
 
 @requires_db
 def test_api_writes_audit_rows(gmail_mailbox, monkeypatch):
-    from sqlalchemy import func, select
+    # S25: the job lifecycle audits job_created + job_succeeded (safe metadata).
+    from sqlalchemy import select
 
     from services.api.routers import gmail_ingest as router
     from services.db import models as orm
     from services.db.engine import SessionLocal
+    from services.ingest import gmail_windowed as gw
+    from services.jobs import worker as jobworker
+    from services.jobs.handlers import gmail_ingest as handler
 
     monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
     monkeypatch.setattr(router, "_provider_for", lambda _id: object())
-    monkeypatch.setattr(router, "run_windowed_ingest", lambda *a, **k: {
+    monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(gw, "run_windowed_ingest", lambda *a, **k: {
         "messages": 3, "threads": 1, "people": 2, "edges": 1, "hit_cap": False,
         "replaced": False, "cleared": None,
         "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True,
     })
+    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
+
     client, mailbox_id = gmail_mailbox
     resp = client.post(
         f"/api/gmail-ingest/{mailbox_id}/ingest",
         json={"date_from": "2026-04-01", "confirm": True},
     )
     assert resp.status_code == 200
+    db = SessionLocal()
+    try:
+        jobworker.run_once(db, worker_id="w1")
+    finally:
+        db.close()
     s = SessionLocal()
     try:
         actions = set(s.execute(
-            select(orm.AuditLog.action).where(
-                orm.AuditLog.mailbox_id == mailbox_id,
-                orm.AuditLog.actor == "api:gmail-ingest",
-            )
+            select(orm.AuditLog.action).where(orm.AuditLog.mailbox_id == mailbox_id)
         ).scalars())
-        assert {"ingest_start", "ingest_finish"} <= actions
+        assert {"job_created", "job_succeeded"} <= actions
     finally:
         s.close()
 
@@ -924,18 +970,34 @@ def test_api_mismatch_does_not_persist_internal_domains(gmail_mailbox, monkeypat
 
 @requires_db
 def test_api_ingest_failure_does_not_persist_internal_domains(gmail_mailbox, monkeypatch):
+    # S25: enqueue succeeds (200); the ingest fails IN the job → job failed and
+    # internal_domains is NOT persisted (the job persists only on success).
     from services.api.routers import gmail_ingest as router
+    from services.db.engine import SessionLocal
+    from services.ingest import gmail_windowed as gw
+    from services.jobs import worker as jobworker
+    from services.jobs.handlers import gmail_ingest as handler
 
     monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
     monkeypatch.setattr(router, "_provider_for", lambda _id: object())
-    monkeypatch.setattr(router, "run_windowed_ingest",
+    monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
+    monkeypatch.setattr(gw, "run_windowed_ingest",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
+
     client, mailbox_id = gmail_mailbox
     resp = client.post(
         f"/api/gmail-ingest/{mailbox_id}/ingest",
         json={"date_from": "2026-04-01", "confirm": True, "internal_domains": ["new.example"]},
     )
-    assert resp.status_code == 502
+    assert resp.status_code == 200  # enqueued
+    db = SessionLocal()
+    try:
+        ran = jobworker.run_once(db, worker_id="w1")
+        assert ran.status == "failed" and ran.error_category == "handler_error"
+        assert "boom" not in (ran.error_message or "")  # no raw exception text
+    finally:
+        db.close()
     assert _config_domains(mailbox_id) == ["acme.corp"]  # unchanged after failure
 
 

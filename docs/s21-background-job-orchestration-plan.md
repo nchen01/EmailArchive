@@ -26,7 +26,11 @@ sync-token bypass), `docs/s17-handoff-package-mvp-plan.md`, and `README.md` /
   sanitization, and a harmless `noop` job for validation. **Still deferred:**
   moving Gmail ingest / L1 enrichment / event extraction / embedding backfill /
   project materialization onto jobs (§4) — those remain manual scripts for now.
-- **S22 (auth), S23 (OAuth/vault), S24 (job infra) — implemented.**
+- **S22 (auth), S23 (OAuth/vault), S24 (job infra), S25 (date-range ingest → jobs)
+  — implemented.** The confirm endpoint now enqueues a `gmail_ingest_window` job on
+  the S24 runner (validation + account verify stay request-time; preview stays
+  synchronous); a worker (`scripts/run_worker.py`) executes it. **S26 is next:**
+  move enrichment / embedding backfill / project materialization into jobs.
 
 **Untouched invariant:** the recipient package view reads **only package-local
 snapshot rows** (S18 §7, S19 §5). Jobs are a **creator/operator-side** mechanism;
@@ -336,8 +340,8 @@ access token, stack trace, LLM prompt or response, or capability/session token
 The prior S18 §11 sprint map was a rough planning order; **this is the concrete
 implementation sequencing** and supersedes it. Each is an *implementation* sprint
 turning a shipped spec (S19/S20/S21) into code. **S22, S23, and S24 are
-implemented** (see the status block at the top); **S25 is next**, and S26–S27 are
-not started.
+implemented** (see the status block at the top); **S26 is next**, and S27 is not
+started.
 
 - **S22 ✓ — Auth + tenant minimal vertical slice** (implements S19): tenant/user
   model, mailbox ownership binding, the `owner(mailbox)` dependency on every
@@ -347,12 +351,12 @@ not started.
   handling, OAuth audit events.
 - **S24 ✓ — Background job infrastructure** (implements S21): `job` table,
   Postgres-backed queue + worker, leases/heartbeat, states, idempotency, audit.
-- **S25 — NEXT — Move Gmail date-range ingest into jobs** (`gmail_ingest_window`,
-  preserving S16.0 preview/confirm + `replace_snapshot` safeguards). This moves
-  **only** date-range ingest onto the S24 job runner — **not** enrichment,
-  embedding backfill, or project materialization (those are S26).
-- **S26 — Move enrichment / embedding backfill / project materialization into
-  jobs** (`l1_enrichment`, `event_extraction`, `embedding_backfill`,
+- **S25 ✓ — Move Gmail date-range ingest into jobs** (`gmail_ingest_window`,
+  preserving S16.0 preview/confirm + `replace_snapshot` safeguards). Moves **only**
+  date-range ingest onto the S24 job runner — **not** enrichment, embedding
+  backfill, or project materialization (those are S26).
+- **S26 — NEXT — Move enrichment / embedding backfill / project materialization
+  into jobs** (`l1_enrichment`, `event_extraction`, `embedding_backfill`,
   `project_materialization`), with the cost controls of §12.
 - **S27 — Hosted deployment / runbook** (S18 §5): managed DB migrations, secrets
   manager (OAuth client secret + token vault/KMS), worker deploy, monitoring,

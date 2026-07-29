@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { describeError, ingestGmailWindow, previewGmailWindow } from "../api/client";
+import { useRef, useState } from "react";
+import {
+  describeError,
+  getJob,
+  ingestGmailWindow,
+  isJobTerminal,
+  previewGmailWindow,
+  type JobView,
+} from "../api/client";
 import type { GmailWindowResponse } from "../api/types";
 
 /**
@@ -32,9 +39,10 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
   const [maxMessages, setMaxMessages] = useState(500);
   const [replace, setReplace] = useState(false);
   const [preview, setPreview] = useState<GmailWindowResponse | null>(null);
-  const [ingested, setIngested] = useState<GmailWindowResponse | null>(null);
+  const [job, setJob] = useState<JobView | null>(null); // S25: ingest job status
   const [busy, setBusy] = useState<null | "preview" | "ingest">(null);
   const [error, setError] = useState<string | null>(null);
+  const pollTimer = useRef<number | null>(null);
 
   const clientError = validateWindow(from, to);
   // A live ingest is gated behind a successful preview of the current window.
@@ -49,13 +57,26 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
   const onFieldChange = () => {
     // Changing the window invalidates a prior preview so ingest can't run stale.
     setPreview(null);
-    setIngested(null);
+    setJob(null);
     setError(null);
+    if (pollTimer.current) window.clearTimeout(pollTimer.current);
+  };
+
+  // S25: poll the ingest job until it reaches a terminal state.
+  const pollJob = (jobId: string) => {
+    getJob(jobId)
+      .then((j) => {
+        setJob(j);
+        if (!isJobTerminal(j.status)) {
+          pollTimer.current = window.setTimeout(() => pollJob(jobId), 1500);
+        }
+      })
+      .catch((e) => setError(describeError(e).message));
   };
 
   const doPreview = async () => {
     setError(null);
-    setIngested(null);
+    setJob(null);
     if (clientError) {
       setError(clientError); // block before any backend call
       return;
@@ -78,15 +99,17 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
       return;
     }
     setBusy("ingest");
+    setJob(null);
     try {
       // replace_snapshot is sent ONLY when the operator explicitly enabled it.
-      setIngested(
-        await ingestGmailWindow(mailboxId, {
-          ...req(),
-          confirm: true,
-          replace_snapshot: replace,
-        }),
-      );
+      // S25: this enqueues a background job; poll it for status/progress.
+      const ref = await ingestGmailWindow(mailboxId, {
+        ...req(),
+        confirm: true,
+        replace_snapshot: replace,
+      });
+      setJob({ id: ref.job_id, status: ref.status, progress: {}, summary: null, error_category: null });
+      pollJob(ref.job_id);
     } catch (e) {
       setError(describeError(e).message);
     } finally {
@@ -167,7 +190,7 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
         <input
           type="checkbox"
           checked={replace}
-          onChange={(e) => { setReplace(e.target.checked); setIngested(null); }}
+          onChange={(e) => { setReplace(e.target.checked); setJob(null); }}
         />
         Replace current mailbox snapshot
       </label>
@@ -196,7 +219,7 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
         </div>
       ) : null}
 
-      {preview && !ingested ? (
+      {preview && !job ? (
         <div className="status-list" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
           <div>
             Window: <strong>{preview.date_from ?? "(open)"}</strong> –{" "}
@@ -224,19 +247,29 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
         </div>
       ) : null}
 
-      {ingested ? (
+      {job ? (
         <div className="status-list" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
           <div>
-            {ingested.replaced ? "Replaced snapshot — ingested" : "Ingested"}{" "}
-            <strong>{ingested.count}</strong> messages for window{" "}
-            {ingested.date_from ?? "(open)"} – {ingested.date_to ?? "(open)"}.
+            Ingest job: <strong>{job.status}</strong>
+            {!isJobTerminal(job.status) ? " — running in the background…" : null}
           </div>
-          <div>Mode: {ingested.mode}. Sync token: {ingested.sync_token_disposition}.</div>
-          {ingested.cap_hit ? (
-            <div style={{ color: "#b45309" }}>
-              Cap was hit — snapshot may be incomplete; narrow the range or raise the cap.
+          {typeof job.progress?.phase === "string" ? (
+            <div>Phase: {String(job.progress.phase)}</div>
+          ) : null}
+          {job.status === "succeeded" ? (
+            <div>
+              Ingested <strong>{String(job.progress?.messages ?? "?")}</strong> messages
+              {job.progress?.replaced ? " (replaced snapshot)" : ""}. Sync token not saved.
             </div>
           ) : null}
+          {job.status === "failed" ? (
+            <div style={{ color: "#a9412b" }}>
+              Ingest failed ({job.error_category ?? "error"}). No secrets or content are logged.
+            </div>
+          ) : null}
+          <div style={{ color: "var(--faint)" }}>
+            Runs on the background worker (scripts/run_worker.py); track it on the jobs API.
+          </div>
         </div>
       ) : null}
     </section>

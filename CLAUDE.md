@@ -110,6 +110,11 @@ Key docs:
   `job` table, enqueue/status/list/cancel APIs (S22-guarded), Postgres
   `FOR UPDATE SKIP LOCKED` worker (lease/heartbeat, idempotency, safe metadata),
   a `noop` validation job. Infra only; recipients never touch jobs.
+- **S25 ✓ implemented.** Gmail date-range ingest moved onto the S24 runner
+  (`services/jobs/handlers/gmail_ingest.py`, `scripts/run_worker.py`): confirm
+  endpoint enqueues an idempotent `gmail_ingest_window` job (S16.0 confirm/
+  replace_snapshot/account-guard preserved; preview stays synchronous). Only
+  date-range ingest is moved — enrichment/backfill/materialization are S26.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

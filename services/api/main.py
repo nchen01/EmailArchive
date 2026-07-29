@@ -32,6 +32,10 @@ from .routers import (
 from .log_redaction import install_access_log_redaction
 install_access_log_redaction()
 
+# Register all job handlers (noop, gmail_ingest_window, …) at startup so the API
+# can enqueue them and the type check passes (S24/S25).
+import services.jobs.handlers  # noqa: E402,F401
+
 app = FastAPI(title="Email Knowledge Continuity API")
 app.include_router(network_map.router, prefix="/api")
 app.include_router(project_view.router, prefix="/api")
