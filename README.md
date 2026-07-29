@@ -53,6 +53,13 @@ worker-readiness signal off the existing job table, a `scripts/preflight.py --ho
 check, and a deploy runbook. Gated on `EKC_DEPLOY_ENV=production` + `AUTH_MODE=production`
 so local dev is unchanged; no schema migration (head stays `0012_job_infra`). See
 `docs/s27-hosted-deploy-readiness-plan.md` and `docs/s27-hosted-deploy-runbook.md`.
+**S28 (Admin / Audit Viewer + Operations Console) is planned as a docs-only spec,
+not yet implemented** — a governance/ops surface for safe metadata (package
+lifecycle, provider-connection, jobs, audit trails, aggregate exclusion counts,
+readiness) plus two audited admin actions (revoke package, disconnect provider,
+each with a mandatory reason), designed so **no admin route becomes a content
+backdoor**; metadata-only, recipient snapshot-only invariant untouched. See
+`docs/s28-admin-audit-ops-plan.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 
