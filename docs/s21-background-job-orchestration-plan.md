@@ -331,22 +331,26 @@ access token, stack trace, LLM prompt or response, or capability/session token
 
 ---
 
-## 14. Proposed S22+ implementation map (not started)
+## 14. S22+ implementation map
 
 The prior S18 §11 sprint map was a rough planning order; **this is the concrete
 implementation sequencing** and supersedes it. Each is an *implementation* sprint
-turning a shipped spec (S19/S20/S21) into code — none are started.
+turning a shipped spec (S19/S20/S21) into code. **S22, S23, and S24 are
+implemented** (see the status block at the top); **S25 is next**, and S26–S27 are
+not started.
 
-- **S22 — Auth + tenant minimal vertical slice** (implement S19): tenant/user
+- **S22 ✓ — Auth + tenant minimal vertical slice** (implements S19): tenant/user
   model, mailbox ownership binding, the `owner(mailbox)` dependency on every
   creator endpoint, fail-closed `AUTH_MODE`, auth audit events.
-- **S23 — Gmail OAuth + token vault minimal vertical slice** (implement S20):
+- **S23 ✓ — Gmail OAuth + token vault minimal vertical slice** (implements S20):
   connect flow, vault-backed token resolver, `mailbox_provider_account`, mismatch
   handling, OAuth audit events.
-- **S24 — Background job infrastructure** (implement S21): `job` table,
+- **S24 ✓ — Background job infrastructure** (implements S21): `job` table,
   Postgres-backed queue + worker, leases/heartbeat, states, idempotency, audit.
-- **S25 — Move Gmail date-range ingest into jobs** (`gmail_ingest_window`,
-  preserving S16.0 preview/confirm + `replace_snapshot` safeguards).
+- **S25 — NEXT — Move Gmail date-range ingest into jobs** (`gmail_ingest_window`,
+  preserving S16.0 preview/confirm + `replace_snapshot` safeguards). This moves
+  **only** date-range ingest onto the S24 job runner — **not** enrichment,
+  embedding backfill, or project materialization (those are S26).
 - **S26 — Move enrichment / embedding backfill / project materialization into
   jobs** (`l1_enrichment`, `event_extraction`, `embedding_backfill`,
   `project_materialization`), with the cost controls of §12.
