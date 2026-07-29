@@ -120,13 +120,16 @@ Key docs:
   `l1_enrichment`, `event_extraction`, `embedding_backfill` (cost-gated — no live
   Voyage call without an explicit operator confirm), `project_materialization`
   (S9 embeddings precheck). Wraps existing core so the CLI scripts still work.
-- **S27 planned — docs/spec-only, not implemented.** Hosted deployment readiness
-  (`docs/s27-hosted-deploy-readiness-plan.md`): a safety-gated runbook + fail-closed
-  startup guardrails (refuse hosted boot with dev auth/vault, missing/dev `DATABASE_URL`,
-  un-migrated DB, missing OAuth config/redirect, missing callback-log redaction,
-  wildcard/missing CORS, missing worker, or a recipient-router regression), a
-  `scripts/preflight.py --hosted` check, a safe `/readyz` endpoint, and a worker-health
-  signal. Not a broad hosted migration; no migration by default (head `0012_job_infra`).
+- **S27 ✓ implemented.** Hosted deployment readiness (`services/hosted_readiness.py`,
+  `docs/s27-hosted-deploy-readiness-plan.md`, `docs/s27-hosted-deploy-runbook.md`):
+  a safety-gated slice, not a broad hosted migration. An environment-validation
+  module + fail-closed startup guards on the API (lifespan) and worker that no-op
+  unless `EKC_DEPLOY_ENV=production` and otherwise refuse to boot with dev auth/vault,
+  missing/dev `DATABASE_URL`, un-migrated DB, missing/localhost OAuth config, missing
+  callback-log redaction, wildcard CORS, an unobservable queue, or a recipient-router
+  regression. Safe `GET /readyz` (bare status, no leak), migration-free worker
+  readiness off the `job` table, and `scripts/preflight.py --hosted`. No migration
+  (head `0012_job_infra`); recipient access stays snapshot-only.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

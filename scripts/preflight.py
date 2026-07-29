@@ -40,9 +40,24 @@ def main() -> None:
         help="make ONE tiny live Voyage embed call to verify the credential "
              "(costs tokens; off by default).",
     )
+    parser.add_argument(
+        "--hosted", action="store_true",
+        help="run the S27 hosted deployment-readiness checks (auth mode, token "
+             "vault, DB/migration, OAuth config + redaction, CORS, worker/queue, "
+             "recipient snapshot-only). Exits non-zero on any hard failure. Makes "
+             "no live external call and never prints a secret.",
+    )
     args = parser.parse_args()
 
-    checks = run_checks(mailbox_id=args.mailbox_id, live_embed=args.live_embed)
+    if args.hosted:
+        # Import the app module so the check runs with the same import-time setup a
+        # served process has — notably install_access_log_redaction() (main.py) — so
+        # the redaction check reflects reality rather than a bare CLI process.
+        import services.api.main  # noqa: F401
+        from services.hosted_readiness import run_hosted_checks
+        checks = run_hosted_checks()
+    else:
+        checks = run_checks(mailbox_id=args.mailbox_id, live_embed=args.live_embed)
 
     any_fail = False
     for c in checks:

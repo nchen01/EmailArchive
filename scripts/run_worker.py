@@ -40,6 +40,27 @@ def main() -> int:
     ap.add_argument("--lease", type=int, default=120, help="job lease seconds")
     args = ap.parse_args()
 
+    # Mirror the API's import-time redaction install so the worker satisfies the
+    # shared "OAuth callback log redaction installed" invariant too (idempotent,
+    # defense in depth — the worker serves no callback, but the guard is uniform).
+    from services.api.log_redaction import install_access_log_redaction
+    install_access_log_redaction()
+
+    # S27 hosted-readiness guard: no-op unless EKC_DEPLOY_ENV=production, so local
+    # dev workers run unchanged. In a hosted deployment the worker refuses to start
+    # on unsafe config — dev auth/vault, an unreachable DB, a DB not at migration
+    # head, or an unobservable job queue. The banner is safe metadata only.
+    from services.hosted_readiness import HostedReadinessError, run_startup_guard
+
+    try:
+        run_startup_guard(component="worker")
+    except HostedReadinessError as exc:
+        _log.error(
+            "HOSTED READINESS GUARD FAILED — refusing to start the worker:\n  %s",
+            exc.safe_summary(),
+        )
+        return 1
+
     # Import handlers so every job type (noop, gmail_ingest_window, …) is registered.
     import services.jobs.handlers  # noqa: F401
     from services.db.engine import SessionLocal

@@ -130,3 +130,11 @@ def set_vault(vault: TokenVault | None) -> None:
 
 def reset_vault() -> None:
     set_vault(None)
+
+
+def current_vault_is_dev() -> bool:
+    """True when no production TokenVault is registered — i.e. a ``DevTokenVault``
+    is (or would be) used. Read by the S27 hosted-readiness guard: hosted production
+    must register a real vault via ``set_vault`` so this returns False. A ``None``
+    registry counts as dev because ``get_vault`` would lazily build a DevTokenVault."""
+    return _vault is None or isinstance(_vault, DevTokenVault)

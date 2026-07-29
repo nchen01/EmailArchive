@@ -42,11 +42,17 @@ post-ingest pipeline onto the runner too — `l1_enrichment`, `event_extraction`
 no live Voyage call otherwise), and `project_materialization` (S9 embeddings
 precheck) — each wrapping the existing core logic so the CLI scripts still work.
 Recipient package access remains package-local snapshot only and never touches
-jobs. **S27 (hosted deployment readiness) is planned as a docs-only spec, not yet
-implemented** — a safety-gated runbook + fail-closed startup guardrails (dev
-auth/vault refused in production, DB-migration/worker/OAuth-redaction/recipient
-snapshot-only checks) rather than a broad hosted migration; see
-`docs/s27-hosted-deploy-readiness-plan.md`.
+jobs. **S27 (hosted deployment readiness) is implemented** — a safety-gated slice,
+not a broad hosted migration: an environment-validation module
+(`services/hosted_readiness.py`), fail-closed startup guardrails on the API and
+worker (refuse to boot with dev auth/vault, a missing/dev-default `DATABASE_URL`,
+an un-migrated DB, missing/localhost OAuth config, missing OAuth-callback log
+redaction, wildcard CORS, an unobservable job queue, or a recipient-router
+regression), a safe `GET /readyz` (bare status, no leak), a migration-free
+worker-readiness signal off the existing job table, a `scripts/preflight.py --hosted`
+check, and a deploy runbook. Gated on `EKC_DEPLOY_ENV=production` + `AUTH_MODE=production`
+so local dev is unchanged; no schema migration (head stays `0012_job_infra`). See
+`docs/s27-hosted-deploy-readiness-plan.md` and `docs/s27-hosted-deploy-runbook.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 

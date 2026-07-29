@@ -319,17 +319,27 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   precheck). Each wraps the existing core logic so `scripts/embed_backfill.py` +
   `scripts/materialize_projects.py` still work. Owner/tenant-guarded; safe metadata
   only; recipients never touch jobs.
-- **S27 — planned, docs/spec-only (not implemented).** Hosted deployment readiness
-  (`docs/s27-hosted-deploy-readiness-plan.md`): a safety-gated runbook + an
-  environment-validation module + **fail-closed startup guardrails** that refuse to
-  boot a hosted process with `AUTH_MODE=dev` / the dev token vault, a missing/
-  dev-default `DATABASE_URL`, an un-migrated DB, missing OAuth config or a localhost
-  redirect URI, missing OAuth-callback log redaction, wildcard/missing CORS, a
-  missing worker, or a recipient-router regression. Adds a `--hosted` preflight, a
-  safe `/readyz` endpoint, and a worker-health signal. Deliberately **not** a broad
-  hosted migration and **no migration by default** (head stays `0012_job_infra`);
-  no infra provisioning, admin UI, telemetry vendor, M365, production IdP, recipient
-  auth, or retention enforcement (those stay later sprints).
+- **S27 ✓ implemented.** Hosted deployment readiness
+  (`services/hosted_readiness.py`, `docs/s27-hosted-deploy-readiness-plan.md`,
+  `docs/s27-hosted-deploy-runbook.md`): a safety-gated slice, **not** a broad hosted
+  migration. An environment-validation module of pure, injectable `PreflightCheck`
+  functions (auth mode, deploy env, dev-principal bypass, token vault +
+  `EKC_ALLOW_DEV_VAULT`, `DATABASE_URL` not dev-default, DB reachable + at Alembic
+  head, OAuth config + non-localhost https redirect, access-log redaction installed,
+  no wildcard CORS, recipient snapshot-only static assertion, worker/job-queue
+  observability, cost-gate/kill-switch info). **Fail-closed startup guards** on the
+  API (`services/api/main.py` lifespan) and worker (`scripts/run_worker.py`) that are
+  a **no-op unless `EKC_DEPLOY_ENV=production`** and otherwise refuse to boot on any
+  hard failure with a safe banner. A safe **`GET /readyz` + `/api/readyz`** (bare
+  `ready`/`degraded`, no leak; `/healthz` unchanged), a **migration-free**
+  worker-readiness signal off the existing `job` table lease/heartbeat, and a
+  **`scripts/preflight.py --hosted`** command. Two-signal gate (§9.1):
+  `EKC_DEPLOY_ENV=production`+`AUTH_MODE=production` enforces; `EKC_DEPLOY_ENV=production`
+  +`AUTH_MODE=dev` fails startup; `AUTH_MODE=production` without `EKC_DEPLOY_ENV`
+  degrades `/readyz`. **No schema migration** (head stays `0012_job_infra`). Recipient
+  package access stays package-local snapshot-only. Non-goals unchanged: no infra
+  provisioning, admin UI, telemetry vendor, M365, production IdP, recipient auth, or
+  retention enforcement.
 
 ## 6. Known gaps — flag, don't fake
 

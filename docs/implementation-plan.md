@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S26):**
+**Implemented (S22–S27):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -343,24 +343,25 @@ components of the handoff-package experience.
   still work. Owner/tenant-guarded enqueue endpoints + a minimal Status pipeline
   panel + a worker (`scripts/run_worker.py`). Recipients never touch jobs.
 
-**Planned — docs/spec-only, not implemented (S27):**
-- **S27 — Hosted deployment readiness** (`docs/s27-hosted-deploy-readiness-plan.md`):
-  a **safety-gated** runbook + environment-validation module + **fail-closed startup
-  guardrails**, not a broad hosted migration. Guardrails refuse to boot a hosted
-  process with `AUTH_MODE=dev` / the dev token vault (`EKC_ALLOW_DEV_VAULT`), a
-  missing/dev-default `DATABASE_URL`, an un-migrated DB, missing OAuth client
-  config or a localhost redirect URI, missing OAuth-callback log redaction,
-  wildcard/missing CORS, a missing worker, a raw mailbox-id production bypass, or a
-  recipient-router snapshot-only regression. Ships a `scripts/preflight.py --hosted`
-  command, safe `/readyz` + `/api/readyz` endpoints (bare status only — no leak), a
-  worker-health signal, a startup guard wired into `services/api/main.py` +
-  `scripts/run_worker.py`, and a `docs/s27-hosted-deploy-runbook.md`. Reuses the
+- **S27 ✓** Hosted deployment readiness (`services/hosted_readiness.py`,
+  `docs/s27-hosted-deploy-readiness-plan.md`, `docs/s27-hosted-deploy-runbook.md`):
+  a **safety-gated** slice — an environment-validation module + **fail-closed startup
+  guardrails** — not a broad hosted migration. The guards (API lifespan in
+  `services/api/main.py`, worker in `scripts/run_worker.py`) are a **no-op unless
+  `EKC_DEPLOY_ENV=production`** and otherwise refuse to boot a hosted process with
+  `AUTH_MODE=dev` / the dev token vault (`EKC_ALLOW_DEV_VAULT`), a missing/dev-default
+  `DATABASE_URL`, an un-migrated DB, missing OAuth client config or a localhost/non-https
+  redirect URI, missing OAuth-callback log redaction, wildcard CORS, an unobservable
+  job queue, a raw mailbox-id production bypass, or a recipient-router snapshot-only
+  regression. Ships a `scripts/preflight.py --hosted` command, safe `/readyz` +
+  `/api/readyz` endpoints (bare status only — no leak), and a **migration-free**
+  worker-readiness signal off the existing `job` table lease/heartbeat. Reuses the
   shipped `services/preflight.py` check framework and the `AUTH_MODE` / vault /
-  redaction seams. **No migration by default** (head stays `0012_job_infra`).
-  Non-goals: infra provisioning, admin/audit UI, telemetry vendor, M365, a
-  production IdP beyond the fail-closed guard, recipient accounts, manager approval,
-  multi-recipient, rich recipient trees, retention enforcement, external security
-  review.
+  redaction seams. **No migration** (head stays `0012_job_infra`). Tests in
+  `tests/test_s27_hosted_readiness.py`. Non-goals (unchanged): infra provisioning,
+  admin/audit UI, telemetry vendor, M365, a production IdP beyond the fail-closed
+  guard, recipient accounts, manager approval, multi-recipient, rich recipient
+  trees, retention enforcement, external security review.
 
 **Specs shipped as docs/spec-only plans — not implemented in code (S18–S21):**
 _Authoritative implementation sequence: S21 §14 — S22 auth → S23 OAuth/vault → S24
