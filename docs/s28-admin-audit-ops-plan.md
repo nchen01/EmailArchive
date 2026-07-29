@@ -507,3 +507,61 @@ not public.
 
 *(Numbering continues the S21 §14 sequence, which ended at S27; S28 is this spec,
 S29+ implement it. Final renumbering is deferred to whoever opens those sprints.)*
+
+---
+
+## 18. Resolved defaults for S29 implementation
+
+The §15 open questions may still be revisited on detail, but the S29 build **has a
+clear default path** and does not need to wait on them. These defaults are
+authoritative for the S29 (read-only Admin/Audit Viewer) build; deviating from one
+requires an explicit decision.
+
+1. **Operator role (resolves §15.1).** Keep **operator infra-level for S29** — it is
+   **not** added to the `TenantMembership` enum yet. S29 implements the **tenant
+   admin** and **security reviewer** read models first. Any product-level operator
+   role, and any cross-tenant operator console, is **deferred** (and would carry the
+   later single `ck_tenant_membership_role` widening, S30+).
+
+2. **Package `reason` visibility (resolves §15.2).** **Exclude** the creator-authored
+   free-text `HandoffPackage.reason` from the admin list/detail DTOs in S29 because it
+   can hint at content. Expose a `reason_category` **only if** a structured safe enum
+   exists; since `reason` is currently free text, **omit it entirely** in S29.
+
+3. **Recipient email visibility (resolves §15.3).** **Tenant admin** may see
+   `recipient_email` as package metadata. **Security reviewer** sees the recipient
+   **domain or a masked email only** (e.g. `j***@example.com`), unless product/legal
+   explicitly approves full recipient email for reviewers.
+
+4. **Audit coverage (resolves §15.4).** **Audit all admin mutations.** For reads,
+   audit **sensitive detail reads and exports**, but **not every routine list view**.
+   Add **throttling / rate-limiting** on list-view endpoints (and coalesce any
+   list-read audit into a throttled/aggregated event) to avoid audit spam.
+
+5. **Security-reviewer provider visibility (resolves §15.5).** Security reviewer sees
+   provider **connection status and timestamps only**. **No** provider email (unless
+   approved), **no** `vault_ref`, **no** raw `scopes_granted` beyond safe high-level
+   labels, and **no** token metadata.
+
+6. **Operator / system-wide visibility (resolves §15.6).** **No cross-tenant customer
+   metadata in S29.** Operator sees **deployment / readiness / job-system health at
+   aggregate safe levels only**. Any tenant-specific drill-down requires a tenant
+   `admin`/`security_reviewer` context, or a later explicit **support-access** feature.
+
+7. **Read-model location (resolves §15.7).** Add a new **`services/admin/`
+   read-service** plus **`services/api/routers/admin.py`**. **No new table** for S29
+   unless implementation proves an audit/read-projection table is necessary (report
+   why if so).
+
+8. **Admin-actions sequencing (resolves §17).** **S29 is read-only** Admin/Audit
+   Viewer. **Revoke-package** and **disconnect-provider-account** are specified but
+   **deferred to S30**, unless they are proven trivial and low-risk **after** the
+   read-only surface is complete (decide at S29 build time, not now).
+
+9. **Scope guard (the S29 no-leak invariant).** S29 **must not** expose:
+   `HandoffEvidence.body_snapshot`, `HandoffClaim.text`, raw `HandoffScope` detail,
+   `source_message_id_headers`, Gmail/source links, raw `Job.params`, raw
+   `Job.error_message`, `OAuthState` (incl. `code_verifier`), recipient session
+   hashes, `vault_ref`, tokens, OAuth codes, DB URLs, env values, tracebacks, or
+   prompt/response text. The S29 no-content test suite (§13) asserts each of these is
+   absent from every `/api/admin/*` response.
