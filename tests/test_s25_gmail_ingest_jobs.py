@@ -60,10 +60,10 @@ def env(monkeypatch):
         return _fake_ingest_result(**kw)
 
     monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
-    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: object())
     monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
     monkeypatch.setattr(gw, "run_windowed_ingest", _fake)
-    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
+    monkeypatch.setattr(handler, "provider_factory", lambda _db, _id: object())
 
     session = SessionLocal()
     t = orm.Tenant(name="T-" + uuid.uuid4().hex[:8]); session.add(t); session.flush()
@@ -136,6 +136,74 @@ def test_replace_snapshot_forwarded_to_runner(env):
     finally:
         db.close()
     assert env.captured.get("replace_snapshot") is True
+
+
+def test_authorized_gmail_provider_routes_through_s23_resolver(monkeypatch):
+    """The worker/endpoint provider goes through the S23 vault-backed resolver
+    (vault in production, env in dev) — never a stored token here. DB-free."""
+    import services.ingest.providers.gmail as gp
+    import services.oauth.resolver as resolver
+    from services.ingest import gmail_windowed as gw
+
+    seen = {}
+    monkeypatch.setattr(resolver, "resolve_gmail_grant",
+                        lambda db, mid, **k: (seen.update(mid=mid) or {"token": "short-lived-access"}))
+
+    class _FakeGP:
+        def __init__(self, params, mid):
+            self.mid = mid
+            self.grant = None
+
+        def authorize(self, grant):
+            self.grant = grant
+
+    monkeypatch.setattr(gp, "GmailProvider", _FakeGP)
+    p = gw.authorized_gmail_provider(db=None, mailbox_id="mb-1")
+    assert seen["mid"] == "mb-1"
+    assert p.grant == {"token": "short-lived-access"}  # authorized via the resolver
+
+
+@requires_db
+def test_missing_connected_account_in_production_fails_fast(monkeypatch):
+    """Point 2: in production with no connected Gmail account, the confirm endpoint
+    fails fast (409) and enqueues NO job."""
+    import uuid as _uuid
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import func, select
+
+    from services.api.auth import Principal, get_principal
+    from services.api.main import app
+    from services.db import models as orm
+    from services.db.engine import SessionLocal
+
+    monkeypatch.setenv("AUTH_MODE", "production")
+    s = SessionLocal()
+    t = orm.Tenant(name="T-" + _uuid.uuid4().hex[:8]); s.add(t); s.flush()
+    u = orm.AppUser(tenant_id=t.id, idp_subject="s25-" + _uuid.uuid4().hex[:8], email="owner@acme.corp")
+    s.add(u); s.flush()
+    s.add(orm.TenantMembership(user_id=u.id, role="creator"))
+    mbx = orm.Mailbox(provider="gmail", owner_email="owner@acme.corp", embed_model="deferred",
+                      embed_dim=0, config={}, tenant_id=t.id, owner_user_id=u.id)
+    s.add(mbx); s.commit(); mid = str(mbx.id)
+    owner = Principal(user_id=str(u.id), tenant_id=str(t.id), email="owner@acme.corp",
+                      roles=frozenset({"creator"}), is_dev=False)
+    app.dependency_overrides[get_principal] = lambda: owner
+    client = TestClient(app)
+    try:
+        r = client.post(f"/api/gmail-ingest/{mid}/ingest",
+                        json={"date_from": "2026-04-01", "confirm": True})
+        assert r.status_code == 409  # no connected Gmail account
+        n = s.execute(select(func.count()).select_from(orm.Job).where(orm.Job.mailbox_id == mid)).scalar()
+        assert n == 0  # nothing enqueued
+    finally:
+        app.dependency_overrides.clear()
+        s.execute(orm.Job.__table__.delete().where(orm.Job.mailbox_id == mid))
+        s.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mid))
+        s.execute(orm.TenantMembership.__table__.delete().where(orm.TenantMembership.user_id == u.id))
+        s.execute(orm.AppUser.__table__.delete().where(orm.AppUser.id == u.id))
+        s.execute(orm.Tenant.__table__.delete().where(orm.Tenant.id == t.id))
+        s.commit(); s.close()
 
 
 @requires_db

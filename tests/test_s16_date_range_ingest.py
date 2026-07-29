@@ -378,7 +378,7 @@ def gmail_mailbox():
 def test_api_preview_no_fetch_no_persist(gmail_mailbox, monkeypatch):
     from services.api.routers import gmail_ingest as router
 
-    monkeypatch.setattr(router, "_provider_for", lambda _id: _FakePreviewProvider())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: _FakePreviewProvider())
     client, mailbox_id = gmail_mailbox
 
     resp = client.post(
@@ -399,7 +399,7 @@ def test_api_preview_invalid_date_422(gmail_mailbox, monkeypatch):
     from services.api.routers import gmail_ingest as router
 
     # Provider should never be built for an invalid request.
-    monkeypatch.setattr(router, "_provider_for", lambda _id: (_ for _ in ()).throw(
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: (_ for _ in ()).throw(
         AssertionError("must not build provider on invalid date")))
     client, mailbox_id = gmail_mailbox
 
@@ -454,10 +454,10 @@ def test_api_ingest_confirm_enqueues_job_and_worker_runs_it(gmail_mailbox, monke
 
     # request-time account guard (endpoint) + handler-side ingest.
     monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
-    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: object())
     monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
     monkeypatch.setattr(gw, "run_windowed_ingest", _fake_ingest)
-    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
+    monkeypatch.setattr(handler, "provider_factory", lambda _db, _id: object())
 
     client, mailbox_id = gmail_mailbox
     resp = client.post(
@@ -769,7 +769,7 @@ def test_api_account_mismatch_409_no_persist(gmail_mailbox, monkeypatch):
         def get_profile_email(self):
             return "someone-else@gmail.com"  # != mailbox owner
 
-    monkeypatch.setattr(router, "_provider_for", lambda _id: _MismatchProvider())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: _MismatchProvider())
     monkeypatch.setattr(router, "run_windowed_ingest",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not persist on mismatch")))
     client, mailbox_id = gmail_mailbox
@@ -788,7 +788,7 @@ def test_api_account_match_ok(gmail_mailbox, monkeypatch):
         def get_profile_email(self):
             return "demo.handoff@acme.corp"  # == fixture owner
 
-    monkeypatch.setattr(router, "_provider_for", lambda _id: _MatchProvider())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: _MatchProvider())
     monkeypatch.setattr(router, "run_windowed_ingest", lambda *a, **k: {
         "messages": 2, "threads": 1, "people": 2, "edges": 1, "hit_cap": False,
         "replaced": False, "cleared": None,
@@ -821,10 +821,10 @@ def test_api_internal_domains_used_and_persisted(gmail_mailbox, monkeypatch):
                 "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True}
 
     monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
-    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: object())
     monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
     monkeypatch.setattr(gw, "run_windowed_ingest", _fake)
-    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
+    monkeypatch.setattr(handler, "provider_factory", lambda _db, _id: object())
 
     client, mailbox_id = gmail_mailbox
     resp = client.post(
@@ -860,14 +860,14 @@ def test_api_writes_audit_rows(gmail_mailbox, monkeypatch):
     from services.jobs.handlers import gmail_ingest as handler
 
     monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
-    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: object())
     monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
     monkeypatch.setattr(gw, "run_windowed_ingest", lambda *a, **k: {
         "messages": 3, "threads": 1, "people": 2, "edges": 1, "hit_cap": False,
         "replaced": False, "cleared": None,
         "sync_token_disposition": "not_saved (date-windowed snapshot)", "persisted": True,
     })
-    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
+    monkeypatch.setattr(handler, "provider_factory", lambda _db, _id: object())
 
     client, mailbox_id = gmail_mailbox
     resp = client.post(
@@ -925,7 +925,7 @@ def test_api_replace_without_dates_400(gmail_mailbox, monkeypatch):
     from services.api.routers import gmail_ingest as router
 
     monkeypatch.setattr(router, "_provider_for",
-                        lambda _id: (_ for _ in ()).throw(AssertionError("must not build provider")))
+                        lambda _db, _id: (_ for _ in ()).throw(AssertionError("must not build provider")))
     monkeypatch.setattr(router, "run_windowed_ingest",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not ingest")))
     client, mailbox_id = gmail_mailbox
@@ -956,7 +956,7 @@ def test_api_mismatch_does_not_persist_internal_domains(gmail_mailbox, monkeypat
         def get_profile_email(self):
             return "someone-else@gmail.com"
 
-    monkeypatch.setattr(router, "_provider_for", lambda _id: _Mismatch())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: _Mismatch())
     monkeypatch.setattr(router, "run_windowed_ingest",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest on mismatch")))
     client, mailbox_id = gmail_mailbox
@@ -979,11 +979,11 @@ def test_api_ingest_failure_does_not_persist_internal_domains(gmail_mailbox, mon
     from services.jobs.handlers import gmail_ingest as handler
 
     monkeypatch.setattr(router, "verify_account", lambda *a, **k: None)
-    monkeypatch.setattr(router, "_provider_for", lambda _id: object())
+    monkeypatch.setattr(router, "_provider_for", lambda _db, _id: object())
     monkeypatch.setattr(gw, "verify_account", lambda *a, **k: None)
     monkeypatch.setattr(gw, "run_windowed_ingest",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
-    monkeypatch.setattr(handler, "provider_factory", lambda _id: object())
+    monkeypatch.setattr(handler, "provider_factory", lambda _db, _id: object())
 
     client, mailbox_id = gmail_mailbox
     resp = client.post(

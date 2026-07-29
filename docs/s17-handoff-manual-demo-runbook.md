@@ -109,6 +109,26 @@ auth and stay package-local snapshot only.
 
 ---
 
+## Window 2b — background worker (only for Gmail date-range ingest)
+
+The core handoff demo (seeded mailbox) needs **no** worker. But since S25, the
+Gmail **date-range ingest** (Status → "Date-windowed Gmail ingest") enqueues a
+`gmail_ingest_window` job instead of running inline — so to actually run an ingest
+you also need a worker draining the queue:
+
+```powershell
+cd C:\Users\PC\EmailArchive
+.\.venv\Scripts\python.exe -m scripts.run_worker            # loop; Ctrl+C to stop
+# or: .\.venv\Scripts\python.exe -m scripts.run_worker --once   # drain then exit
+```
+
+The worker uses the same `AUTH_MODE` / `DATABASE_URL` as the API, resolves Gmail
+credentials via the S23 vault seam (env token under `AUTH_MODE=dev`), and logs only
+safe job metadata (never tokens, OAuth codes, provider responses, or content). The
+frontend polls `GET /api/jobs/{id}` for status/progress.
+
+---
+
 ## Window 3 — frontend (keep open)
 
 ```powershell

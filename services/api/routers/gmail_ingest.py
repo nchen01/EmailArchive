@@ -33,10 +33,11 @@ from services.db import models as orm
 from services.db.store import write_audit_event
 from services.ingest.gmail_windowed import (
     AccountMismatchError,
-    build_gmail_provider,
+    authorized_gmail_provider,
     plan_window,
     verify_account,
 )
+from services.oauth.flow import ProviderNotConnected
 # S25: the live ingest now runs in the `gmail_ingest_window` job handler, not here.
 # Re-exported so it stays a named seam (the handler + tests reference this symbol);
 # the endpoint itself no longer calls it.
@@ -60,8 +61,16 @@ _SCOPE = "gmail.readonly"
 
 
 # Seam so tests can inject a fake provider instead of authorizing against Gmail.
-def _provider_for(mailbox_token_id: str):
-    return build_gmail_provider(mailbox_token_id)
+# Production resolves the Gmail grant via the S23 vault-backed connected account;
+# a missing connected account (production) fails fast as 409 (no job enqueued).
+def _provider_for(db: Session, mailbox_token_id: str):
+    try:
+        return authorized_gmail_provider(db, mailbox_token_id)
+    except ProviderNotConnected:
+        raise HTTPException(
+            status_code=409,
+            detail="no connected Gmail account for this mailbox — connect Gmail first",
+        ) from None
 
 
 def _validate_window(body: DateWindowRequest) -> ListOptions:
@@ -129,7 +138,7 @@ async def preview_window(
     # Validate dates FIRST (matches the CLI order; no DB/Gmail on bad input).
     options = _validate_window(body)
     mbx = _get_gmail_mailbox(db, mailbox_id)
-    provider = _provider_for(mailbox_id)
+    provider = _provider_for(db, mailbox_id)
 
     started = _now()
     write_audit_event(
@@ -200,7 +209,7 @@ async def ingest_window(
 
     # Account guard request-time (getProfile) so a mismatch fails fast with 409,
     # before any job is enqueued — preserving the S16.0 safeguard.
-    provider = _provider_for(mailbox_id)
+    provider = _provider_for(db, mailbox_id)
     started = _now()
     try:
         verify_account(provider, mbx.owner_email)

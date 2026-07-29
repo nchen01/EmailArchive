@@ -18,17 +18,18 @@ from typing import Callable
 
 from services.jobs.registry import JobContext, JobError, JobResult, register
 
-# Provider seam (tests inject a fake). Defaults to the D6/env Gmail provider — S25
-# does not rewire ingest onto the S23 vault resolver; that stays a later step.
-def _default_provider_factory(token_mailbox_id: str):
-    from services.ingest.gmail_windowed import build_gmail_provider
-    return build_gmail_provider(token_mailbox_id)
+# Provider seam (tests inject a fake). Defaults to the S23 vault-backed resolver:
+# a short-lived access token from the connected account in production, or the D6
+# env token in AUTH_MODE=dev. The refresh/access token never leaves the vault.
+def _default_provider_factory(db, token_mailbox_id: str):
+    from services.ingest.gmail_windowed import authorized_gmail_provider
+    return authorized_gmail_provider(db, token_mailbox_id)
 
 
-provider_factory: Callable[[str], object] = _default_provider_factory
+provider_factory: Callable[[object, str], object] = _default_provider_factory
 
 
-def set_provider_factory(fn: Callable[[str], object]) -> None:
+def set_provider_factory(fn: Callable[[object, str], object]) -> None:
     global provider_factory
     provider_factory = fn
 
@@ -49,7 +50,11 @@ def run(ctx: JobContext) -> JobResult:
         raise JobError("mailbox_not_found")
 
     options = parse_date_window(p.get("date_from"), p.get("date_to"))
-    provider = provider_factory(mailbox_id)
+    from services.oauth.flow import ProviderNotConnected
+    try:
+        provider = provider_factory(db, mailbox_id)
+    except ProviderNotConnected:
+        raise JobError("provider_not_connected") from None
 
     ctx.progress(phase="verifying")
     ctx.check_canceled()
