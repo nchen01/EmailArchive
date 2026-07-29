@@ -28,7 +28,11 @@ are now IMPLEMENTED**: creator/mailbox routes are owner/tenant-gated with a
 fail-closed `AUTH_MODE` (S22, migration 0010), and a mailbox owner can connect
 Gmail through a state+PKCE flow that stores only a `vault_ref` + safe metadata —
 never raw tokens (S23, `services/oauth/`, migration 0011; the shipped token vault
-is dev/test-only). Recipient package access remains package-local snapshot only.
+is dev/test-only). **S24 (background job infrastructure, implements S21)** adds a
+tenant-scoped `job` table + enqueue/status/list/cancel APIs + a Postgres
+`FOR UPDATE SKIP LOCKED` worker (lease/heartbeat, idempotency, safe metadata,
+migration 0012) — infra only, no ingest moved into jobs yet. Recipient package
+access remains package-local snapshot only and never touches jobs.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 

@@ -18,12 +18,15 @@ sync-token bypass), `docs/s17-handoff-package-mvp-plan.md`, and `README.md` /
 - **S17.2–S17.20 — shipped** (audited Handoff Package MVP; behavior unchanged here).
 - **S18 / S19 / S20 — shipped as docs-only specs** (hosted readiness; auth+tenant
   boundary; OAuth+token vault). None are implemented as code.
-- **S21 — this spec, NOT implemented.** Every object, state, and job type is
-  *proposed for a later build sprint* (§14); none exist yet. Today the heavy tasks
-  run as **manual scripts** (`scripts/embed_backfill.py`,
-  `scripts/materialize_projects.py`, ingest, seed) — this doc plans their move to
-  durable jobs.
-- **S22+ implementation — not started** (§14).
+- **S21 — spec.** The **job infrastructure** (§2, §3, §8, §11) is **implemented by
+  S24** (`services/jobs/`, migration `0012_job_infra`, `services/api/routers/jobs.py`):
+  the tenant-scoped `job` table + the six states, enqueue/status/list/cancel APIs
+  (S22 owner/tenant-guarded), a Postgres `FOR UPDATE SKIP LOCKED` worker claim with
+  lease/heartbeat + expired-lease reclaim, idempotency dedupe, safe-metadata
+  sanitization, and a harmless `noop` job for validation. **Still deferred:**
+  moving Gmail ingest / L1 enrichment / event extraction / embedding backfill /
+  project materialization onto jobs (§4) — those remain manual scripts for now.
+- **S22 (auth), S23 (OAuth/vault), S24 (job infra) — implemented.**
 
 **Untouched invariant:** the recipient package view reads **only package-local
 snapshot rows** (S18 §7, S19 §5). Jobs are a **creator/operator-side** mechanism;

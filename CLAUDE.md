@@ -105,6 +105,11 @@ Key docs:
   token-vault minimal slice (`services/oauth/`, `services/api/routers/oauth_gmail.py`,
   migration 0011). App DB stores only a `vault_ref` + safe provider metadata; the
   shipped `DevTokenVault` is dev/test-only. Recipient access stays snapshot-only.
+- **S24 ✓ implemented.** Background job infrastructure (implements S21):
+  `services/jobs/` + `services/api/routers/jobs.py` + migration 0012 — tenant-scoped
+  `job` table, enqueue/status/list/cancel APIs (S22-guarded), Postgres
+  `FOR UPDATE SKIP LOCKED` worker (lease/heartbeat, idempotency, safe metadata),
+  a `noop` validation job. Infra only; recipients never touch jobs.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

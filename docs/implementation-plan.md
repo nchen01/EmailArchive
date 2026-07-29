@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S23):**
+**Implemented (S22–S24):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -319,6 +319,14 @@ components of the handoff-package experience.
   rules, and a vault-backed production credential resolver. The shipped
   `DevTokenVault` is **dev/test-only**; a production KMS/secrets-manager vault, real
   Google app verification, and moving ingest onto the resolver are deferred.
+- **S24 ✓** Background job infrastructure (implements S21 §2/§3/§8/§11):
+  `services/jobs/` + `services/api/routers/jobs.py` + migration 0012 — a
+  tenant-scoped `job` table with the six states (queued/running/succeeded/failed/
+  canceled/partially_succeeded), enqueue/status/list/cancel APIs (S22
+  owner/tenant-guarded), a Postgres `FOR UPDATE SKIP LOCKED` worker claim with
+  lease/heartbeat + expired-lease reclaim, idempotency dedupe, safe-metadata
+  sanitization, and a harmless `noop` job for validation. Infra only — no ingest/
+  enrichment/backfill is moved into jobs yet. Recipients never touch jobs.
 
 **Specs shipped as docs/spec-only plans — not implemented in code (S18–S21):**
 _Authoritative implementation sequence: S21 §14 — S22 auth → S23 OAuth/vault → S24

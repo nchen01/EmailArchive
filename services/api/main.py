@@ -16,6 +16,7 @@ from .routers import (
     gmail_ingest,
     handoff,
     handoff_recipient,
+    jobs,
     network_map,
     oauth_gmail,
     preflight,
@@ -43,6 +44,7 @@ app.include_router(gmail_ingest.router, prefix="/api")
 app.include_router(handoff.router, prefix="/api")
 app.include_router(handoff_recipient.router, prefix="/api")
 app.include_router(oauth_gmail.router, prefix="/api")
+app.include_router(jobs.router, prefix="/api")
 
 
 @app.get("/healthz")

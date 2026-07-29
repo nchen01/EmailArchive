@@ -145,6 +145,14 @@ def require_owner_mailbox(
     return mbx
 
 
+def owned_mailbox_or_none(db: Session, principal: Principal, mailbox_id: str | None) -> orm.Mailbox | None:
+    """Public ownership check for callers that resolve the mailbox id themselves
+    (e.g. jobs: job → mailbox). Returns the mailbox iff the principal owns it."""
+    if mailbox_id is None:
+        return None
+    return _resolve_owned_mailbox(db, principal, mailbox_id)
+
+
 def require_owner_package(
     package_id: str,
     principal: Principal = Depends(get_principal),
