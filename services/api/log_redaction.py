@@ -73,3 +73,11 @@ def install_access_log_redaction() -> None:
     logger = logging.getLogger("uvicorn.access")
     if not any(isinstance(f, AccessLogQueryRedactionFilter) for f in logger.filters):
         logger.addFilter(AccessLogQueryRedactionFilter())
+
+
+def is_redaction_installed() -> bool:
+    """True iff the OAuth-callback access-log redaction filter is on the
+    ``uvicorn.access`` logger. Read by the S27 hosted-readiness guard so a hosted
+    process that lost redaction fails startup/readiness instead of serving."""
+    logger = logging.getLogger("uvicorn.access")
+    return any(isinstance(f, AccessLogQueryRedactionFilter) for f in logger.filters)

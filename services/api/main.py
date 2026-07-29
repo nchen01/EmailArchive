@@ -1,7 +1,12 @@
 """FastAPI application entrypoint (spec 05)."""
 from __future__ import annotations
 
+import logging
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 # Load .env before any service module reads environment variables.
 # This mirrors the pattern in CLI scripts (scripts/_env.py) so that running
@@ -37,7 +42,46 @@ install_access_log_redaction()
 # can enqueue them and the type check passes (S24/S25).
 import services.jobs.handlers  # noqa: E402,F401
 
-app = FastAPI(title="Email Knowledge Continuity API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """S27 hosted-readiness startup guard. No-op unless EKC_DEPLOY_ENV=production
+    (so local dev and tests never trip it). In a hosted deployment, refuse to start
+    on unsafe config (dev auth/vault, un-migrated DB, missing/localhost OAuth,
+    missing log redaction, wildcard CORS, unreachable queue, recipient regression).
+    The banner is safe metadata only — never a secret, token, or DB URL."""
+    from services.hosted_readiness import HostedReadinessError, run_startup_guard
+
+    try:
+        run_startup_guard(component="api")
+    except HostedReadinessError as exc:
+        logging.getLogger("ekc.hosted").error(
+            "HOSTED READINESS GUARD FAILED — refusing to start the API:\n  %s",
+            exc.safe_summary(),
+        )
+        raise
+    yield
+
+
+app = FastAPI(title="Email Knowledge Continuity API", lifespan=lifespan)
+
+# Cross-origin CORS is opt-in and never wildcard (S27 §9.4). Same-origin is the
+# preferred default and installs no middleware. A wildcard (*) value is deliberately
+# NOT honored here — the hosted-readiness check fails it instead.
+_allowed_origins = [
+    o.strip() for o in os.environ.get("EKC_ALLOWED_ORIGINS", "").split(",")
+    if o.strip() and o.strip() != "*"
+]
+if _allowed_origins:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 app.include_router(network_map.router, prefix="/api")
 app.include_router(project_view.router, prefix="/api")
 app.include_router(synthesis.router, prefix="/api")
@@ -65,3 +109,32 @@ async def healthz() -> dict[str, str]:
 @app.get("/api/health")
 async def api_health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# S27 readiness probe. Liveness stays /healthz (process up); /readyz reflects
+# hosted READINESS (DB reachable + at migration head + auth-mode production +
+# production vault + log redaction, in a hosted context). The public body is a
+# BARE status string — no check names, config, secrets, tokens, DB URL, or counts —
+# so an unauthenticated probe is not an info-leak. The detailed report is available
+# only via `scripts/preflight.py --hosted`. In local dev it always reports ready.
+async def _readyz_impl() -> JSONResponse:
+    from services.hosted_readiness import evaluate_readiness
+
+    try:
+        ready, _ = evaluate_readiness()
+    except Exception:  # never leak; an evaluation error is itself not-ready
+        logging.getLogger("ekc.hosted").exception("readiness evaluation error")
+        return JSONResponse(status_code=503, content={"status": "degraded"})
+    if ready:
+        return JSONResponse(status_code=200, content={"status": "ready"})
+    return JSONResponse(status_code=503, content={"status": "degraded"})
+
+
+@app.get("/readyz")
+async def readyz() -> JSONResponse:
+    return await _readyz_impl()
+
+
+@app.get("/api/readyz")
+async def api_readyz() -> JSONResponse:
+    return await _readyz_impl()
