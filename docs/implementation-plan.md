@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S25):**
+**Implemented (S22–S26):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -333,6 +333,15 @@ components of the handoff-package experience.
   worker runs the fetch/normalize/persist. Preview stays synchronous. Only
   date-range ingest is moved — enrichment / embedding backfill / project
   materialization stay manual scripts (S26).
+- **S26 ✓** Enrichment / event extraction / embedding backfill / project
+  materialization moved onto the S24 runner (`services/jobs/handlers/pipeline.py` +
+  `services/api/routers/pipeline_jobs.py`): the job types `l1_enrichment`,
+  `event_extraction`, `embedding_backfill` (cost-gated — a dry-run estimate unless
+  the operator confirms; no live Voyage call otherwise), and
+  `project_materialization` (S9 embeddings precheck), each wrapping the existing
+  core logic so the CLI scripts (`embed_backfill.py`, `materialize_projects.py`)
+  still work. Owner/tenant-guarded enqueue endpoints + a minimal Status pipeline
+  panel + a worker (`scripts/run_worker.py`). Recipients never touch jobs.
 
 **Specs shipped as docs/spec-only plans — not implemented in code (S18–S21):**
 _Authoritative implementation sequence: S21 §14 — S22 auth → S23 OAuth/vault → S24

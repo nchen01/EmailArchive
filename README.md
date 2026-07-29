@@ -36,8 +36,13 @@ onto that runner: the confirm endpoint validates + verifies the account
 request-time (S16.0 confirm / `replace_snapshot` / account-guard preserved) then
 enqueues an idempotent `gmail_ingest_window` job that `scripts/run_worker.py`
 executes; preview stays synchronous. Only date-range ingest is moved (enrichment /
-backfill / materialization stay scripts — S26). Recipient package access remains
-package-local snapshot only and never touches jobs.
+backfill / materialization stay scripts — S26). **S26 (implements S21 §4)** moves the
+post-ingest pipeline onto the runner too — `l1_enrichment`, `event_extraction`,
+`embedding_backfill` (cost-gated: a dry-run estimate unless the operator confirms;
+no live Voyage call otherwise), and `project_materialization` (S9 embeddings
+precheck) — each wrapping the existing core logic so the CLI scripts still work.
+Recipient package access remains package-local snapshot only and never touches
+jobs.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 

@@ -311,6 +311,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   fetch/normalize/persist. Preview stays synchronous. Only date-range ingest is
   moved — enrichment / embedding backfill / project materialization stay manual
   scripts (S26). Recipients never touch jobs.
+- **S26 ✓ implemented.** The post-ingest pipeline runs as jobs too
+  (`services/jobs/handlers/pipeline.py`, `services/api/routers/pipeline_jobs.py`):
+  `l1_enrichment`, `event_extraction`, `embedding_backfill` (cost-gated — dry-run
+  estimate unless the operator confirms; no live Voyage call otherwise, consistent
+  with the standing Voyage-key rule), and `project_materialization` (S9 embeddings
+  precheck). Each wraps the existing core logic so `scripts/embed_backfill.py` +
+  `scripts/materialize_projects.py` still work. Owner/tenant-guarded; safe metadata
+  only; recipients never touch jobs.
 
 ## 6. Known gaps — flag, don't fake
 

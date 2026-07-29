@@ -581,3 +581,42 @@ export async function disconnectGmail(mailboxId: string): Promise<{ disconnected
     `${API_BASE}/api/mailbox/${encodeURIComponent(mailboxId)}/gmail/disconnect`,
   );
 }
+
+// ── Post-ingest pipeline jobs (S26) ──────────────────────────────────────────
+export interface EnqueuedJob {
+  job_id: string;
+  status: string;
+  job_type: string;
+}
+export interface EmbedEstimate {
+  needs_confirm: boolean;
+  to_embed: number;
+  already_embedded: number;
+  total_messages: number;
+  est_tokens: number;
+  est_cost_usd: number;
+  model: string;
+}
+
+export async function enqueueEnrich(mailboxId: string): Promise<EnqueuedJob> {
+  return postJson<EnqueuedJob>(`${API_BASE}/api/mailbox/${encodeURIComponent(mailboxId)}/pipeline/enrich`);
+}
+export async function enqueueExtractEvents(mailboxId: string): Promise<EnqueuedJob> {
+  return postJson<EnqueuedJob>(`${API_BASE}/api/mailbox/${encodeURIComponent(mailboxId)}/pipeline/extract-events`);
+}
+/** No `confirm` returns a cost estimate; `confirm: true` enqueues the backfill. */
+export async function embedBackfill(
+  mailboxId: string,
+  confirm: boolean,
+): Promise<EnqueuedJob | EmbedEstimate> {
+  return postJsonBody<EnqueuedJob | EmbedEstimate>(
+    `${API_BASE}/api/mailbox/${encodeURIComponent(mailboxId)}/pipeline/embed-backfill`,
+    { confirm },
+  );
+}
+export async function enqueueMaterialize(mailboxId: string): Promise<EnqueuedJob> {
+  return postJsonBody<EnqueuedJob>(
+    `${API_BASE}/api/mailbox/${encodeURIComponent(mailboxId)}/pipeline/materialize`,
+    {},
+  );
+}

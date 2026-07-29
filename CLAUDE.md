@@ -115,6 +115,11 @@ Key docs:
   endpoint enqueues an idempotent `gmail_ingest_window` job (S16.0 confirm/
   replace_snapshot/account-guard preserved; preview stays synchronous). Only
   date-range ingest is moved — enrichment/backfill/materialization are S26.
+- **S26 ✓ implemented.** Post-ingest pipeline as jobs
+  (`services/jobs/handlers/pipeline.py`, `services/api/routers/pipeline_jobs.py`):
+  `l1_enrichment`, `event_extraction`, `embedding_backfill` (cost-gated — no live
+  Voyage call without an explicit operator confirm), `project_materialization`
+  (S9 embeddings precheck). Wraps existing core so the CLI scripts still work.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
