@@ -42,7 +42,11 @@ post-ingest pipeline onto the runner too — `l1_enrichment`, `event_extraction`
 no live Voyage call otherwise), and `project_materialization` (S9 embeddings
 precheck) — each wrapping the existing core logic so the CLI scripts still work.
 Recipient package access remains package-local snapshot only and never touches
-jobs.
+jobs. **S27 (hosted deployment readiness) is planned as a docs-only spec, not yet
+implemented** — a safety-gated runbook + fail-closed startup guardrails (dev
+auth/vault refused in production, DB-migration/worker/OAuth-redaction/recipient
+snapshot-only checks) rather than a broad hosted migration; see
+`docs/s27-hosted-deploy-readiness-plan.md`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 
