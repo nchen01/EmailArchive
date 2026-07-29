@@ -165,3 +165,20 @@ def require_owner_package(
     if _resolve_owned_mailbox(db, principal, str(pkg.mailbox_id)) is None:
         raise HTTPException(status_code=404, detail="Not found.")
     return pkg
+
+
+# ── Governance role guards (S29 — admin/audit viewer, docs/s28-admin-audit-ops-plan.md) ─
+# Read-only admin surface roles. These gate the /api/admin/* routes; they do NOT
+# grant mailbox-content access — the admin read models expose safe metadata only,
+# tenant-scoped by principal.tenant_id (cross-tenant rows are simply absent / 404).
+# A wrong in-tenant role → 403; unauthenticated (production) → 401 via get_principal.
+def require_admin(principal: Principal = Depends(get_principal)) -> Principal:
+    if "admin" in principal.roles:
+        return principal
+    raise HTTPException(status_code=403, detail="Admin role required.")
+
+
+def require_admin_or_reviewer(principal: Principal = Depends(get_principal)) -> Principal:
+    if principal.roles & {"admin", "security_reviewer"}:
+        return principal
+    raise HTTPException(status_code=403, detail="Admin or security-reviewer role required.")

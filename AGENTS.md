@@ -355,6 +355,24 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   `/api/admin/*` endpoints + allow-list DTOs. **No migration** for the read-only viewer
   (reads existing rows; a product `operator` role would be one later constraint
   widening). Implementation is S29 (read-only viewer) then S30 (actions).
+- **S29 ✓ implemented.** Read-only Admin / Audit Viewer (`services/admin/` read-service
+  + `services/api/routers/admin.py`, tests `tests/test_s29_admin_viewer.py`), implementing
+  the read set of the S28 spec. `GET /api/admin/*`: `overview`, `packages`,
+  `packages/{id}`, `packages/{id}/audit`, `provider-accounts`, `jobs`, `jobs/{id}`,
+  `audit`, `exclusions/summary`, `readiness`. Guarded by new `require_admin` /
+  `require_admin_or_reviewer` deps on the S22 `Principal.roles`; tenant-scoped
+  (cross-tenant → 404), unauthenticated in production → 401, wrong in-tenant role → 403.
+  **Allow-list DTOs (`services/admin/contracts.py`) — safe metadata only:** package
+  lifecycle (incl. `reason_category`, the safe enum, never free text), provider-connection
+  metadata, safe job fields, `AuditLog`/`HandoffAuditEvent` (whitelisted metadata
+  projection), and **aggregate exclusion counts only**. Security reviewers see a
+  domain/masked recipient email and no provider email/scopes (§18.3/§18.5). **No field
+  leaks** evidence bodies, claim text, scope detail, source headers, raw `Job.params`/
+  `error_message`/`worker_id`, `sync_token`, `vault_ref`, tokens, or DB URLs (a
+  sentinel-seeded test asserts absence). Sensitive package-detail reads write an
+  `admin.package.viewed` audit event. **No mutations** (revoke/disconnect are S30),
+  **no migration** (head `0012_job_infra`), recipient routes untouched and package-local
+  snapshot-only.
 
 ## 6. Known gaps — flag, don't fake
 
