@@ -130,6 +130,16 @@ Key docs:
   regression. Safe `GET /readyz` (bare status, no leak), migration-free worker
   readiness off the `job` table, and `scripts/preflight.py --hosted`. No migration
   (head `0012_job_infra`); recipient access stays snapshot-only.
+- **S28 planned — docs/spec-only, not implemented.** Admin / Audit Viewer + Operations
+  Console (`docs/s28-admin-audit-ops-plan.md`): governance + ops visibility over **safe
+  metadata only** (package lifecycle, provider-connection, jobs, audit trails, aggregate
+  exclusion counts, readiness) + two audited admin actions (revoke package, disconnect
+  provider account, each with a mandatory reason). Hard rule: **no admin route is a
+  content backdoor** — no mailbox/evidence bodies, excluded content, Gmail/source links,
+  OAuth tokens/codes/vault refs, provider responses, raw job params, or tracebacks;
+  admin package access is metadata-only; recipients stay package-local snapshot-only.
+  Implementation is S29 (read-only viewer) then S30 (actions); no migration for the
+  read-only viewer.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

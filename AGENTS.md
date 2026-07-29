@@ -340,6 +340,21 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   package access stays package-local snapshot-only. Non-goals unchanged: no infra
   provisioning, admin UI, telemetry vendor, M365, production IdP, recipient auth, or
   retention enforcement.
+- **S28 — planned, docs/spec-only (not implemented).** Admin / Audit Viewer +
+  Operations Console (`docs/s28-admin-audit-ops-plan.md`): a governance + operational
+  visibility surface over **safe metadata only** — package lifecycle, provider-account
+  connection metadata, job status, audit trails, aggregate exclusion counts, and
+  readiness/ops health — plus exactly two audited admin actions (**revoke package**,
+  **disconnect provider account**, each with a mandatory reason). Roles reuse the
+  shipped `TenantMembership` enum (`admin`, `security_reviewer`) plus an `operator`
+  concept (S19 §6 keeps operator infra-level; §15.1 open question). Hard rule: **no
+  admin route is a content backdoor** — no mailbox bodies/subjects/snippets, package
+  evidence bodies, excluded content, Gmail/source links, OAuth tokens/codes/vault
+  refs, provider/LLM responses, raw `Job.params`, or tracebacks; admin package access
+  is metadata-only; recipients stay package-local snapshot-only and unchanged. Proposed
+  `/api/admin/*` endpoints + allow-list DTOs. **No migration** for the read-only viewer
+  (reads existing rows; a product `operator` role would be one later constraint
+  widening). Implementation is S29 (read-only viewer) then S30 (actions).
 
 ## 6. Known gaps — flag, don't fake
 

@@ -363,6 +363,29 @@ components of the handoff-package experience.
   guard, recipient accounts, manager approval, multi-recipient, rich recipient
   trees, retention enforcement, external security review.
 
+**Planned — docs/spec-only, not implemented (S28):**
+- **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):
+  a governance + operational visibility surface over **safe metadata only** — package
+  lifecycle, provider-account connection metadata, job status, audit trails, aggregate
+  exclusion counts, and readiness/ops health — plus exactly two audited admin actions
+  (**revoke package**, **disconnect provider account**, each requiring a mandatory
+  reason and writing an audit event). Roles reuse the shipped `TenantMembership` enum
+  (`admin`, `security_reviewer`) plus an `operator` concept (operator kept infra-level
+  per S19 §6; open question §15.1). Overriding invariant: **no admin route is a content
+  backdoor** — no mailbox bodies/subjects/snippets, `HandoffEvidence` bodies,
+  `HandoffClaim.text`, scope detail, excluded content, Gmail/source links, OAuth
+  tokens/codes/`state`/`code_verifier`/`vault_ref`, provider/LLM responses, raw
+  `Job.params`/`error_message`, or tracebacks; admin package access is metadata-only;
+  recipient routes stay package-local snapshot-only and unchanged. Proposed
+  `/api/admin/*` GET endpoints + allow-list DTOs + `require_admin`/`require_security_reviewer`
+  dependencies. **No migration** for the read-only viewer (reads existing
+  `HandoffPackage`/`MailboxProviderAccount`/`Job`/`AuditLog`/`HandoffAuditEvent`/
+  `HandoffExclusion` rows); a product `operator` role would be one later
+  `ck_tenant_membership_role` widening. Implementation sequence: **S29 read-only viewer
+  → S30 admin actions**. Non-goals: no content backdoor, no recipient impersonation, no
+  admin edit/generate/publish/prune, no token viewing/silent reconnect, no legal-hold
+  content access, no M365/new provider/new auth provider, no retention-enforcement engine.
+
 **Specs shipped as docs/spec-only plans — not implemented in code (S18–S21):**
 _Authoritative implementation sequence: S21 §14 — S22 auth → S23 OAuth/vault → S24
 job infra → S25 ingest→jobs → S26 enrichment→jobs → S27 hosted deploy (admin/audit
