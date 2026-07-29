@@ -515,16 +515,42 @@ export async function previewGmailWindow(
   return postJsonBody<GmailWindowResponse>(url, req);
 }
 
+/** S25: a date-windowed Gmail ingest now enqueues a background job. */
+export interface GmailIngestJobRef {
+  job_id: string;
+  status: string;
+  mode: string;
+}
+
+/** Safe job view (S24) — no tokens/content, only status + safe progress. */
+export interface JobView {
+  id: string;
+  status: string;
+  progress: Record<string, unknown>;
+  summary: string | null;
+  error_category: string | null;
+}
+
+const JOB_TERMINAL = new Set(["succeeded", "failed", "canceled", "partially_succeeded"]);
+export function isJobTerminal(status: string): boolean {
+  return JOB_TERMINAL.has(status);
+}
+
 /**
- * Run a date-windowed Gmail ingest (S16.0). A scoped snapshot: no sync token is
- * saved. Requires `confirm: true`.
+ * Start a date-windowed Gmail ingest (S16.0 safeguards preserved; S25). Validation
+ * + account verify happen request-time; the fetch/persist runs in a
+ * `gmail_ingest_window` job. Poll `getJob(job_id)` for status/progress.
  */
 export async function ingestGmailWindow(
   mailboxId: string,
   req: GmailIngestRequest,
-): Promise<GmailWindowResponse> {
+): Promise<GmailIngestJobRef> {
   const url = `${API_BASE}/api/gmail-ingest/${encodeURIComponent(mailboxId)}/ingest`;
-  return postJsonBody<GmailWindowResponse>(url, req);
+  return postJsonBody<GmailIngestJobRef>(url, req);
+}
+
+export async function getJob(jobId: string): Promise<JobView> {
+  return getJson<JobView>(`${API_BASE}/api/jobs/${encodeURIComponent(jobId)}`);
 }
 
 // ── Gmail OAuth connect (S23) ────────────────────────────────────────────────

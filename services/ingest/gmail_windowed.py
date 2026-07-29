@@ -76,12 +76,30 @@ def build_gmail_provider(token_mailbox_id: str, params: IngestParams | None = No
 
     The token is read by ``get_token`` (``GMAIL_TOKEN_<id>`` or ``GMAIL_TOKEN``)
     and never logged or returned. Kept as a seam so tests can inject a fake
-    provider instead.
+    provider instead. Used by the CLI smoke path.
     """
     from .providers.gmail import GmailProvider
 
     provider = GmailProvider(params or IngestParams(), token_mailbox_id)
     provider.authorize({})  # env token via get_token; never logged
+    return provider
+
+
+def authorized_gmail_provider(db, mailbox_id: str, params: IngestParams | None = None):
+    """Construct + authorize a GmailProvider via the S23 credential resolver.
+
+    Resolves the grant through ``resolve_gmail_grant``: the **vault-backed
+    connected account** in production (a short-lived access token, never a stored
+    token), or the D6 env token in ``AUTH_MODE=dev``. Raises ``ProviderNotConnected``
+    when production has no connected account. The token/grant is never logged.
+    """
+    from services.oauth.resolver import resolve_gmail_grant
+
+    from .providers.gmail import GmailProvider
+
+    grant = resolve_gmail_grant(db, mailbox_id)  # vault (prod) or env (dev)
+    provider = GmailProvider(params or IngestParams(), mailbox_id)
+    provider.authorize(grant)
     return provider
 
 

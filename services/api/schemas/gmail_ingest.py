@@ -29,6 +29,14 @@ class IngestConfirmRequest(DateWindowRequest):
     internal_domains: list[str] | None = None
 
 
+class IngestJobResponse(BaseModel):
+    """S25: a live ingest now enqueues a `gmail_ingest_window` job on the S24
+    runner. Poll `GET /api/jobs/{job_id}` for status/progress. No tokens/content."""
+    job_id: str
+    status: str
+    mode: str  # "replace" or "append_upsert"
+
+
 class IngestWindowResponse(BaseModel):
     date_from: str | None
     date_to: str | None

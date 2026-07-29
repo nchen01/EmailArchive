@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S24):**
+**Implemented (S22–S25):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -325,8 +325,14 @@ components of the handoff-package experience.
   canceled/partially_succeeded), enqueue/status/list/cancel APIs (S22
   owner/tenant-guarded), a Postgres `FOR UPDATE SKIP LOCKED` worker claim with
   lease/heartbeat + expired-lease reclaim, idempotency dedupe, safe-metadata
-  sanitization, and a harmless `noop` job for validation. Infra only — no ingest/
-  enrichment/backfill is moved into jobs yet. Recipients never touch jobs.
+  sanitization, and a harmless `noop` job for validation. Recipients never touch jobs.
+- **S25 ✓** Gmail date-range ingest moved onto the S24 job runner
+  (`gmail_ingest_window` handler, `scripts/run_worker.py`): the confirm endpoint
+  validates + verifies the account request-time (S16.0 confirm / `replace_snapshot`
+  / account-guard safeguards preserved), then enqueues an idempotent ingest job; a
+  worker runs the fetch/normalize/persist. Preview stays synchronous. Only
+  date-range ingest is moved — enrichment / embedding backfill / project
+  materialization stay manual scripts (S26).
 
 **Specs shipped as docs/spec-only plans — not implemented in code (S18–S21):**
 _Authoritative implementation sequence: S21 §14 — S22 auth → S23 OAuth/vault → S24

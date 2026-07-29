@@ -303,6 +303,14 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   sanitization (params/progress/summary/errors never carry content/tokens/
   traces), and a harmless `noop` job. Infra only — no ingest/enrichment/backfill
   moved into jobs yet. Recipients have no principal and cannot reach job routes.
+- **S25 ✓ implemented.** Gmail date-range ingest moved onto the S24 runner
+  (`services/jobs/handlers/gmail_ingest.py` = `gmail_ingest_window`,
+  `scripts/run_worker.py`): the confirm endpoint validates + verifies the account
+  request-time (S16.0 confirm / `replace_snapshot` / account-guard safeguards
+  preserved), then enqueues an idempotent job; a worker runs the
+  fetch/normalize/persist. Preview stays synchronous. Only date-range ingest is
+  moved — enrichment / embedding backfill / project materialization stay manual
+  scripts (S26). Recipients never touch jobs.
 
 ## 6. Known gaps — flag, don't fake
 
