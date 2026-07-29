@@ -235,13 +235,19 @@ async def ingest_window(
     if requested_domains is not None:
         params["internal_domains"] = requested_domains
 
+    # Dedupe repeated clicks of the SAME work into one active job. The key covers
+    # every parameter that changes the work: mailbox, window, replace_snapshot,
+    # the cap, and the effective internal_domains — so changing any of them starts
+    # a new job rather than colliding with the previous one.
+    domains_key = ",".join(sorted(requested_domains)) if requested_domains is not None else ""
+    idem = (
+        f"gmail_ingest:{mailbox_id}:{body.date_from}:{body.date_to}:"
+        f"{int(bool(body.replace_snapshot))}:{body.max_messages}:{domains_key}"
+    )
     job = service.enqueue(
         db, tenant_id=principal.tenant_id, job_type="gmail_ingest_window",
         mailbox_id=mailbox_id, requested_by=principal.user_id, params=params,
-        # Dedupe repeated clicks of the same window/replace into one active job.
-        idempotency_key=(
-            f"gmail_ingest:{mailbox_id}:{body.date_from}:{body.date_to}:{int(bool(body.replace_snapshot))}"
-        ),
+        idempotency_key=idem,
     )
     return IngestJobResponse(
         job_id=str(job.id), status=job.status,
