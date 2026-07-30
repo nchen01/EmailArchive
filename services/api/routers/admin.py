@@ -1,29 +1,48 @@
-"""S29 — read-only Admin / Audit Viewer + Operations metadata
-(implements docs/s28-admin-audit-ops-plan.md, read set of §5).
+"""Admin / Audit Viewer + audited admin actions (implements docs/s28-admin-audit-ops-plan.md).
 
-All routes are under /api/admin/*, tenant-scoped by the caller's principal, and
-guarded by the S22 governance role dependencies (require_admin /
-require_admin_or_reviewer). They return SAFE METADATA ONLY — never mailbox/package
-content, tokens, vault refs, raw job params, DB URLs, or tracebacks (§8/§9). There
-are NO mutation routes in S29 (revoke/disconnect are S30). Recipients have no
-principal and cannot reach these routes; the recipient package surface is
-unchanged and package-local snapshot-only.
+Two layers live here:
+  - **S29 read-only viewer** — the GET /api/admin/* routes (§5 read set) returning
+    SAFE METADATA ONLY (never mailbox/package content, tokens, vault refs, raw job
+    params, DB URLs, or tracebacks; §8/§9).
+  - **S30 audited admin actions** — exactly two POST mutations (§7): revoke a
+    package and disconnect a provider account. Both are tenant-admin-only, require a
+    mandatory non-empty reason (422 otherwise), write a safe audit event, and reuse
+    the shipped creator-revoke / vault-disconnect paths. There are no other
+    mutations (no edit/generate/publish/prune, no reconnect, no connect-on-behalf).
+
+All routes are tenant-scoped by the caller's principal; cross-tenant / malformed
+ids return 404 (no existence oracle, S19 §4). Provider disconnect **fails closed**:
+if the vault is unavailable or the token revoke fails, it returns 503 and leaves the
+account (status + vault_ref) unchanged with no success audit. Recipients have no
+principal and cannot reach these routes; the recipient package surface is unchanged
+and package-local snapshot-only.
 
 Masking: an `admin` sees full metadata; a `security_reviewer` (without admin) sees
-a domain/masked recipient email and no provider email/scopes (§18.3/§18.5).
-Cross-tenant lookups return 404 (no existence oracle, S19 §4).
+a domain/masked recipient email and provider status/timestamps only (§18.3/§18.5).
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from services.admin import contracts, read_service
+from services.db import models as orm
 
 from ..auth import Principal, require_admin, require_admin_or_reviewer
 from ..deps import get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+class ReasonRequest(BaseModel):
+    """Mandatory governance reason for an admin action (S30). Bounded; treated as
+    safe governance metadata, never mailbox content."""
+    reason: str = Field(..., max_length=500)
+
+
 
 
 def _full_access(principal: Principal) -> bool:
@@ -145,3 +164,98 @@ async def readiness(
     principal: Principal = Depends(require_admin),
 ) -> contracts.ReadinessSummaryView:
     return read_service.readiness_summary()
+
+
+# ── Admin actions (S30) — tenant-admin only, mandatory reason, audited ─────────
+
+@router.post("/packages/{package_id}/revoke", response_model=contracts.PackageAdminDetail)
+async def revoke_package(
+    package_id: str,
+    body: ReasonRequest,
+    principal: Principal = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> contracts.PackageAdminDetail:
+    """Governance revoke of a published package (S28 §7). Same lifecycle semantics
+    as creator revoke — blocks recipient access + kills live sessions — plus an
+    `package.revoked_by_admin` audit event carrying the mandatory reason. Metadata
+    only; never touches package content."""
+    reason = body.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason is required")
+    pkg = read_service.resolve_package(db, tenant_id=principal.tenant_id, package_id=package_id)
+    if pkg is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    if pkg.status == "published":
+        from services.handoff.lifecycle import revoke_package as _revoke
+        _revoke(
+            db, pkg, actor=f"admin:{principal.user_id}", action="package.revoked_by_admin",
+            extra_metadata={
+                "reason": reason, "admin_user_id": principal.user_id, "prior_status": "published",
+            },
+        )
+    elif pkg.status != "revoked":
+        # draft / superseded → not revokable (matches creator lifecycle). Already
+        # 'revoked' is an idempotent no-op success (no duplicate audit).
+        raise HTTPException(
+            status_code=409,
+            detail=f"only a published package can be revoked (status '{pkg.status}')",
+        )
+
+    detail = read_service.get_package(
+        db, tenant_id=principal.tenant_id, package_id=package_id, full_access=True
+    )
+    if detail is None:  # pragma: no cover - resolved above
+        raise HTTPException(status_code=404, detail="Not found.")
+    return detail
+
+
+@router.post("/provider-accounts/{account_id}/disconnect", response_model=contracts.ProviderAccountAdminView)
+async def disconnect_provider_account(
+    account_id: str,
+    body: ReasonRequest,
+    principal: Principal = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> contracts.ProviderAccountAdminView:
+    """Governance disconnect of a provider account (S28 §7): provider-side revoke +
+    vault purge, mark disconnected, and an audit event carrying the mandatory reason.
+    Never exposes a token/vault_ref; no silent reconnect, no connect-on-behalf."""
+    reason = body.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason is required")
+    acct = read_service.resolve_provider_account(db, tenant_id=principal.tenant_id, account_id=account_id)
+    if acct is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    # Idempotent no-op for an account that is not live (already disconnected/revoked):
+    # nothing to revoke, so no vault is required and no audit is written.
+    if acct.status not in ("connected", "refresh_failed"):
+        return read_service._provider_view(acct, full_access=True)
+
+    from services.oauth import flow
+    from services.oauth.vault import VaultError, get_vault
+
+    # Fail closed: a real vault is required to revoke the token BEFORE we mark the
+    # account disconnected. No _NullVault fallback — if the vault is unavailable or
+    # the revoke fails, we return 503 and leave the account untouched (no mutation,
+    # no vault_ref clear, no success audit) so a live token is never orphaned.
+    try:
+        vault = get_vault()
+    except VaultError:
+        raise HTTPException(status_code=503, detail="Provider vault unavailable.")
+    try:
+        did_disconnect = flow.disconnect_account(db, account=acct, vault=vault)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Provider disconnect failed.")
+
+    if did_disconnect:
+        # Safe audit: actor=admin, action, mailbox_id, timestamp, reason (in scope).
+        # provider is implicit (gmail). No token/vault_ref/provider response recorded.
+        db.add(orm.AuditLog(
+            mailbox_id=str(acct.mailbox_id), actor=principal.user_id,
+            action="provider_account_disconnected_by_admin", scope=reason,
+            started_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    return read_service._provider_view(acct, full_access=True)

@@ -200,6 +200,28 @@ def get_connected_account(db, *, tenant_id: str, mailbox_id: str) -> orm.Mailbox
     return acct if (acct and acct.status == "connected") else None
 
 
+def disconnect_account(db, *, account: orm.MailboxProviderAccount | None, vault: TokenVault) -> bool:
+    """Core provider-disconnect transition (S30): provider-side revoke + delete the
+    vault entry, THEN mark the account disconnected and drop the vault_ref. Does NOT
+    audit — the caller writes its own audit (owner vs. admin actor).
+
+    **Fail closed:** the vault revoke happens *before* any DB mutation and its
+    exceptions are **not** swallowed. If ``vault.revoke`` raises, this function
+    raises before touching the account, so the caller can roll back and surface a
+    safe error — we never mark an account disconnected / clear its ``vault_ref``
+    while its token may still live in the vault. Returns whether a live account was
+    disconnected (idempotent no-op → False)."""
+    if account is None or account.status not in ("connected", "refresh_failed"):
+        return False
+    if account.vault_ref:
+        vault.revoke(account.vault_ref)  # provider-side revoke + delete vault entry; may raise → caller fails closed
+    account.status = "disconnected"
+    account.disconnected_at = _now()
+    account.vault_ref = None
+    db.commit()
+    return True
+
+
 def disconnect(db, *, principal, mailbox, vault: TokenVault) -> bool:
     acct = db.execute(
         select(orm.MailboxProviderAccount).where(
@@ -208,17 +230,8 @@ def disconnect(db, *, principal, mailbox, vault: TokenVault) -> bool:
             orm.MailboxProviderAccount.provider == "gmail",
         )
     ).scalar_one_or_none()
-    if acct is None or acct.status not in ("connected", "refresh_failed"):
+    if not disconnect_account(db, account=acct, vault=vault):
         return False
-    if acct.vault_ref:
-        try:
-            vault.revoke(acct.vault_ref)  # provider-side revoke + delete vault entry
-        except Exception:
-            pass
-    acct.status = "disconnected"
-    acct.disconnected_at = _now()
-    acct.vault_ref = None
-    db.commit()
     _audit(db, mailbox_id=str(mailbox.id), actor=principal.user_id,
            action="provider_account_disconnected", scope="gmail")
     return True

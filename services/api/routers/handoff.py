@@ -360,32 +360,9 @@ async def revoke_handoff(
             detail=f"only a published package can be revoked (status '{pkg.status}')",
         )
 
-    now = datetime.now(timezone.utc)
-    pkg.status = "revoked"
-    pkg.revoked_at = now
-    pkg.updated_at = now
-
-    recipient = db.execute(
-        select(orm.HandoffRecipient).where(orm.HandoffRecipient.package_id == pkg.id)
-    ).scalar_one_or_none()
-    if recipient is not None and recipient.revoked_at is None:
-        recipient.revoked_at = now
-    # Kill any live sessions so an already-issued bearer cannot outlive the revoke.
-    db.execute(
-        orm.HandoffRecipientSession.__table__.update()
-        .where(
-            orm.HandoffRecipientSession.package_id == pkg.id,
-            orm.HandoffRecipientSession.revoked_at.is_(None),
-        )
-        .values(revoked_at=now)
-    )
-    db.commit()
-
-    write_handoff_audit(
-        db, package_id=pkg.id, lineage_id=pkg.lineage_id,
-        actor=f"owner:{pkg.creator_email}", action="package_revoked",
-        metadata={"revoked_at": now.isoformat()},
-    )
+    # Shared revoke transition (also used by admin governance revoke, S30).
+    from services.handoff.lifecycle import revoke_package
+    revoke_package(db, pkg, actor=f"owner:{pkg.creator_email}", action="package_revoked")
     return _package_out(db, pkg)
 
 

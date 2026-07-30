@@ -23,9 +23,20 @@ and `README.md`/`AGENTS.md` for shipped status. Where they disagree, that order 
 - **S18 / S19 / S20 / S21 — shipped as docs-only specs.**
 - **S22 (auth+tenant), S23 (Gmail OAuth + dev token vault), S24 (job infra), S25
   (ingest→jobs), S26 (pipeline→jobs), S27 (hosted readiness guardrails) — implemented.**
-- **S28 — this spec.** Admin/Audit Viewer + Operations Console. **Not implemented
-  in code by this document** — every role, DTO, endpoint, and event below is
-  *proposed for the S29+ build*.
+- **S28 — this spec.** Admin/Audit Viewer + Operations Console. This document is the
+  spec; it shipped no code itself.
+- **S29 ✓ + S30 ✓ — implemented.** **S29** built the read-only Admin/Audit Viewer
+  (the §5 GET routes, allow-list DTOs, role guards). **S30** built the two audited
+  admin actions (§7): `POST /api/admin/packages/{id}/revoke` and
+  `POST /api/admin/provider-accounts/{id}/disconnect`, tenant-admin-only, reason-gated,
+  audited, reusing the creator-revoke and vault-disconnect paths (disconnect **fails
+  closed** if the vault is unavailable or revoke fails). The roles, DTOs, endpoints,
+  events, and actions described below are therefore **now built** — read this doc as
+  a historical spec realized by S29/S30, not as unbuilt design.
+
+> **Note:** the sections below are written in the original *proposed* tense; where a
+> line says something is "proposed for the S29+ build" or "not implemented," read it
+> as **implemented by S29 (read set) / S30 (actions)** per the status above.
 
 **Untouched invariant:** the recipient package view reads **only package-local
 snapshot rows** (S18 §7, S19 §5). S28 adds a **creator/operator-side governance
@@ -471,8 +482,10 @@ not public.
   **pointer/status lines only** — S28 is **planned / docs-only / spec-only, not
   implemented**.
 - `git diff --check` clean.
-- **S28 is clearly not implemented** — every role, DTO, endpoint, event, and action
-  above is *proposed for the S29+ build*; none exist yet.
+- *(Historical, at the time of the S28 spec sprint:)* S28 shipped no code — every
+  role, DTO, endpoint, event, and action above was *proposed for the S29+ build*.
+  **Since then S29 (read set) and S30 (actions) have implemented them** — see the
+  status block at the top of this doc.
 - **S17.2–S17.20 shipped; S18–S21 docs-only specs; S22–S27 implemented; S28
   docs-only** — stated in the status block.
 - **Migration expectation:** the read-only viewer (S29) needs **no migration** — it
