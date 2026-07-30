@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27):**
+**Implemented (S22–S27, S29):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -362,8 +362,23 @@ components of the handoff-package experience.
   admin/audit UI, telemetry vendor, M365, a production IdP beyond the fail-closed
   guard, recipient accounts, manager approval, multi-recipient, rich recipient
   trees, retention enforcement, external security review.
+- **S29 ✓** Read-only Admin / Audit Viewer (`services/admin/` read-service +
+  `services/api/routers/admin.py`, `tests/test_s29_admin_viewer.py`) — the read set of
+  the S28 spec. `GET /api/admin/{overview,packages,packages/{id},packages/{id}/audit,
+  provider-accounts,jobs,jobs/{id},audit,exclusions/summary,readiness}`, guarded by new
+  `require_admin`/`require_admin_or_reviewer` deps on `Principal.roles`; tenant-scoped
+  (cross-tenant → 404, unauthenticated-in-production → 401, wrong role → 403). Allow-list
+  DTOs (`services/admin/contracts.py`) expose **safe metadata only** — package lifecycle
+  (with `reason_category`, the safe enum), provider-connection metadata, safe job fields,
+  audit events (whitelisted metadata projection), and **aggregate exclusion counts only**.
+  Security reviewers get a masked recipient email and no provider email/scopes. **No
+  leak** of evidence bodies, claim text, scope detail, source headers, raw `Job.params`/
+  `error_message`/`worker_id`, `sync_token`, `vault_ref`, tokens, or DB URLs (sentinel
+  test asserts absence). Sensitive package-detail reads write an `admin.package.viewed`
+  audit event. **No mutations** (revoke/disconnect are S30), **no migration** (head stays
+  `0012_job_infra`), recipient routes untouched and package-local snapshot-only.
 
-**Planned — docs/spec-only, not implemented (S28):**
+**Planned — docs/spec-only, not implemented (S28 spec; S30 next):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):
   a governance + operational visibility surface over **safe metadata only** — package
   lifecycle, provider-account connection metadata, job status, audit trails, aggregate

@@ -59,7 +59,15 @@ lifecycle, provider-connection, jobs, audit trails, aggregate exclusion counts,
 readiness) plus two audited admin actions (revoke package, disconnect provider,
 each with a mandatory reason), designed so **no admin route becomes a content
 backdoor**; metadata-only, recipient snapshot-only invariant untouched. See
-`docs/s28-admin-audit-ops-plan.md`.
+`docs/s28-admin-audit-ops-plan.md`. **S29 implements the read-only slice of that
+spec** — `services/admin/` read-service + `services/api/routers/admin.py` with
+`GET /api/admin/{overview,packages,packages/{id},packages/{id}/audit,provider-accounts,jobs,jobs/{id},audit,exclusions/summary,readiness}`,
+guarded by tenant `admin` / `security_reviewer` roles, returning allow-list DTOs
+(safe metadata only). Security reviewers get masked recipient email and, for provider accounts,
+only provider/status/timestamps (no email/scopes/ids); aggregate exclusion counts
+only; no admin mutations yet (revoke/
+disconnect are S30). No migration (head stays `0012_job_infra`); recipient routes
+untouched.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 
