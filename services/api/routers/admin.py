@@ -1,17 +1,24 @@
-"""S29 — read-only Admin / Audit Viewer + Operations metadata
-(implements docs/s28-admin-audit-ops-plan.md, read set of §5).
+"""Admin / Audit Viewer + audited admin actions (implements docs/s28-admin-audit-ops-plan.md).
 
-All routes are under /api/admin/*, tenant-scoped by the caller's principal, and
-guarded by the S22 governance role dependencies (require_admin /
-require_admin_or_reviewer). They return SAFE METADATA ONLY — never mailbox/package
-content, tokens, vault refs, raw job params, DB URLs, or tracebacks (§8/§9). There
-are NO mutation routes in S29 (revoke/disconnect are S30). Recipients have no
-principal and cannot reach these routes; the recipient package surface is
-unchanged and package-local snapshot-only.
+Two layers live here:
+  - **S29 read-only viewer** — the GET /api/admin/* routes (§5 read set) returning
+    SAFE METADATA ONLY (never mailbox/package content, tokens, vault refs, raw job
+    params, DB URLs, or tracebacks; §8/§9).
+  - **S30 audited admin actions** — exactly two POST mutations (§7): revoke a
+    package and disconnect a provider account. Both are tenant-admin-only, require a
+    mandatory non-empty reason (422 otherwise), write a safe audit event, and reuse
+    the shipped creator-revoke / vault-disconnect paths. There are no other
+    mutations (no edit/generate/publish/prune, no reconnect, no connect-on-behalf).
+
+All routes are tenant-scoped by the caller's principal; cross-tenant / malformed
+ids return 404 (no existence oracle, S19 §4). Provider disconnect **fails closed**:
+if the vault is unavailable or the token revoke fails, it returns 503 and leaves the
+account (status + vault_ref) unchanged with no success audit. Recipients have no
+principal and cannot reach these routes; the recipient package surface is unchanged
+and package-local snapshot-only.
 
 Masking: an `admin` sees full metadata; a `security_reviewer` (without admin) sees
-a domain/masked recipient email and no provider email/scopes (§18.3/§18.5).
-Cross-tenant lookups return 404 (no existence oracle, S19 §4).
+a domain/masked recipient email and provider status/timestamps only (§18.3/§18.5).
 """
 from __future__ import annotations
 
@@ -36,21 +43,6 @@ class ReasonRequest(BaseModel):
     reason: str = Field(..., max_length=500)
 
 
-class _NullVault:
-    """Fallback so an admin disconnect still marks the DB row + purges the ref even
-    when no vault is available. Never exposes a token."""
-
-    def revoke(self, vault_ref: str) -> None:  # pragma: no cover - trivial
-        return None
-
-
-def _vault_or_null():
-    from services.oauth.vault import VaultError, get_vault
-
-    try:
-        return get_vault()
-    except VaultError:
-        return _NullVault()
 
 
 def _full_access(principal: Principal) -> bool:
@@ -235,9 +227,28 @@ async def disconnect_provider_account(
     if acct is None:
         raise HTTPException(status_code=404, detail="Not found.")
 
-    from services.oauth import flow
+    # Idempotent no-op for an account that is not live (already disconnected/revoked):
+    # nothing to revoke, so no vault is required and no audit is written.
+    if acct.status not in ("connected", "refresh_failed"):
+        return read_service._provider_view(acct, full_access=True)
 
-    did_disconnect = flow.disconnect_account(db, account=acct, vault=_vault_or_null())
+    from services.oauth import flow
+    from services.oauth.vault import VaultError, get_vault
+
+    # Fail closed: a real vault is required to revoke the token BEFORE we mark the
+    # account disconnected. No _NullVault fallback — if the vault is unavailable or
+    # the revoke fails, we return 503 and leave the account untouched (no mutation,
+    # no vault_ref clear, no success audit) so a live token is never orphaned.
+    try:
+        vault = get_vault()
+    except VaultError:
+        raise HTTPException(status_code=503, detail="Provider vault unavailable.")
+    try:
+        did_disconnect = flow.disconnect_account(db, account=acct, vault=vault)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Provider disconnect failed.")
+
     if did_disconnect:
         # Safe audit: actor=admin, action, mailbox_id, timestamp, reason (in scope).
         # provider is implicit (gmail). No token/vault_ref/provider response recorded.

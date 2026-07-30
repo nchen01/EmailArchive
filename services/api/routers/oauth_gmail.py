@@ -106,11 +106,19 @@ async def disconnect(
     mbx: orm.Mailbox = Depends(require_owner_mailbox),
     db: Session = Depends(get_db),
 ) -> DisconnectResponse:
+    # Fail closed (S30 hardening): require a real vault and a successful provider-side
+    # revoke before marking the account disconnected. If the vault is unavailable or
+    # the revoke fails, return 503 and leave status/vault_ref unchanged — never orphan
+    # a live token by clearing the ref without revoking it.
     try:
         vault = get_vault()
     except VaultError:
-        vault = None  # still mark disconnected in the DB even if no vault
-    done = flow.disconnect(db, principal=principal, mailbox=mbx, vault=_NullVault() if vault is None else vault)
+        raise HTTPException(status_code=503, detail="Provider vault unavailable.")
+    try:
+        done = flow.disconnect(db, principal=principal, mailbox=mbx, vault=vault)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Provider disconnect failed.")
     return DisconnectResponse(disconnected=done)
 
 
@@ -136,10 +144,3 @@ async def gmail_status(
         connected_at=acct.connected_at.isoformat() if acct.connected_at else None,
         last_verified_at=acct.last_verified_at.isoformat() if acct.last_verified_at else None,
     )
-
-
-class _NullVault:
-    """Fallback so disconnect still marks the DB row when no vault is available."""
-
-    def revoke(self, vault_ref: str) -> None:  # pragma: no cover - trivial
-        pass

@@ -269,6 +269,79 @@ def test_admin_disconnect_revokes_vault_and_audits(env):
 
 
 @requires_db
+def test_admin_disconnect_fails_closed_when_vault_unavailable(env, monkeypatch):
+    """If the vault is unavailable, disconnect returns 503 and leaves the account
+    (status + vault_ref) unchanged with no success audit — never orphan a token."""
+    from services.oauth import vault as vaultmod
+
+    def _boom():
+        raise vaultmod.VaultError("vault unavailable")
+
+    monkeypatch.setattr(vaultmod, "get_vault", _boom)
+    _as(env, env.admin)
+    r = env.client.post(f"/api/admin/provider-accounts/{env.aid}/disconnect", json={"reason": "x"})
+    assert r.status_code == 503
+
+    env.session.expire_all()
+    orm = env.orm
+    from sqlalchemy import select
+    acct = env.session.get(orm.MailboxProviderAccount, env.aid)
+    assert acct.status == "connected" and acct.vault_ref == VAULT_REF   # unchanged
+    assert env.fake_vault.revoked == []                                 # no revoke attempted
+    audits = env.session.execute(
+        select(orm.AuditLog).where(
+            orm.AuditLog.mailbox_id == env.mid,
+            orm.AuditLog.action == "provider_account_disconnected_by_admin",
+        )
+    ).scalars().all()
+    assert audits == []                                                 # no success audit
+
+
+@requires_db
+def test_admin_disconnect_fails_closed_when_revoke_raises(env, monkeypatch):
+    """If vault.revoke raises, disconnect returns 503, rolls back, and leaves the
+    account unchanged with no success audit."""
+    def _boom(vault_ref):
+        raise RuntimeError("provider revoke failed")
+
+    monkeypatch.setattr(env.fake_vault, "revoke", _boom)
+    _as(env, env.admin)
+    r = env.client.post(f"/api/admin/provider-accounts/{env.aid}/disconnect", json={"reason": "x"})
+    assert r.status_code == 503
+
+    env.session.expire_all()
+    orm = env.orm
+    from sqlalchemy import select
+    acct = env.session.get(orm.MailboxProviderAccount, env.aid)
+    assert acct.status == "connected" and acct.vault_ref == VAULT_REF   # unchanged
+    audits = env.session.execute(
+        select(orm.AuditLog).where(
+            orm.AuditLog.mailbox_id == env.mid,
+            orm.AuditLog.action == "provider_account_disconnected_by_admin",
+        )
+    ).scalars().all()
+    assert audits == []
+
+
+@requires_db
+def test_owner_disconnect_also_fails_closed_when_revoke_raises(env, monkeypatch):
+    """The creator/owner Gmail disconnect shares the fail-closed semantics after the
+    disconnect_account refactor: a revoke failure → 503, account unchanged."""
+    def _boom(vault_ref):
+        raise RuntimeError("provider revoke failed")
+
+    monkeypatch.setattr(env.fake_vault, "revoke", _boom)
+    _as(env, env.creator)  # the mailbox owner
+    r = env.client.post(f"/api/mailbox/{env.mid}/gmail/disconnect")
+    assert r.status_code == 503
+
+    env.session.expire_all()
+    orm = env.orm
+    acct = env.session.get(orm.MailboxProviderAccount, env.aid)
+    assert acct.status == "connected" and acct.vault_ref == VAULT_REF   # unchanged
+
+
+@requires_db
 def test_disconnect_reason_required(env):
     _as(env, env.admin)
     assert env.client.post(f"/api/admin/provider-accounts/{env.aid}/disconnect", json={}).status_code == 422

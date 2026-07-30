@@ -202,16 +202,19 @@ def get_connected_account(db, *, tenant_id: str, mailbox_id: str) -> orm.Mailbox
 
 def disconnect_account(db, *, account: orm.MailboxProviderAccount | None, vault: TokenVault) -> bool:
     """Core provider-disconnect transition (S30): provider-side revoke + delete the
-    vault entry, then mark the account disconnected and drop the vault_ref. Does NOT
-    audit — the caller writes its own audit (owner vs. admin actor). Returns whether
-    a live account was disconnected (idempotent no-op → False)."""
+    vault entry, THEN mark the account disconnected and drop the vault_ref. Does NOT
+    audit — the caller writes its own audit (owner vs. admin actor).
+
+    **Fail closed:** the vault revoke happens *before* any DB mutation and its
+    exceptions are **not** swallowed. If ``vault.revoke`` raises, this function
+    raises before touching the account, so the caller can roll back and surface a
+    safe error — we never mark an account disconnected / clear its ``vault_ref``
+    while its token may still live in the vault. Returns whether a live account was
+    disconnected (idempotent no-op → False)."""
     if account is None or account.status not in ("connected", "refresh_failed"):
         return False
     if account.vault_ref:
-        try:
-            vault.revoke(account.vault_ref)  # provider-side revoke + delete vault entry
-        except Exception:
-            pass
+        vault.revoke(account.vault_ref)  # provider-side revoke + delete vault entry; may raise → caller fails closed
     account.status = "disconnected"
     account.disconnected_at = _now()
     account.vault_ref = None
