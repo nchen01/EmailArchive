@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
+  ApiError,
   describeError,
   getAdminExclusionSummary,
   getAdminOverview,
@@ -108,15 +109,29 @@ function CountRow({ counts }: { counts: Record<string, number> }) {
 function OverviewPanel() {
   const [ov, setOv] = useState<TenantOpsOverview | null>(null);
   const [readiness, setReadiness] = useState<ReadinessSummaryView | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(true);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setError(null);
     getAdminOverview().then(setOv).catch((e) => setError(describeError(e).message));
-    // Readiness is admin-only; a reviewer gets 403 — treat that as "not available".
+    // Readiness is admin-only. ONLY a 403 means "role-masked" (a reviewer) → show
+    // it as unavailable. Any other failure (backend down, timeout, 500, bad body)
+    // is a real error and must surface, not be hidden as role masking.
     getAdminReadiness()
-      .then(setReadiness)
-      .catch(() => setReadiness(null));
+      .then((r) => {
+        setReadiness(r);
+        setReadinessError(null);
+      })
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 403) {
+          setReadiness(null); // reviewer role: summary not available
+        } else {
+          setReadinessError(describeError(e).message);
+        }
+      })
+      .finally(() => setReadinessLoading(false));
   }, []);
 
   if (error) return <p className="text-xs text-danger">{error}</p>;
@@ -138,13 +153,17 @@ function OverviewPanel() {
       <Card title="Deployment readiness">
         <div className="flex items-center gap-2">
           <StatusChip status={ov.degraded_readiness ? "degraded" : "ready"} />
-          {readiness ? (
+          {readinessLoading ? (
+            <span className="text-[11px] text-faint">checking…</span>
+          ) : readinessError ? null : readiness ? (
             <span className="text-[11px] text-faint">{readiness.checks.length} checks</span>
           ) : (
             <span className="text-[11px] text-faint">summary not available for this role</span>
           )}
         </div>
-        {readiness ? (
+        {readinessError ? (
+          <p className="mt-2 text-xs text-danger">{readinessError}</p>
+        ) : readiness ? (
           <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">
             {readiness.checks.map((c) => (
               <li key={c.name} className="flex items-start justify-between gap-2 text-[11px]">

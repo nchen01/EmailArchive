@@ -159,7 +159,8 @@ Key docs:
   malformed → 404, blank reason → 422. No token/`vault_ref` exposed; no migration;
   recipient snapshot-only untouched.
 - **S31 ✓ implemented.** Admin / Audit Viewer **frontend** only (`frontend/src/components/admin/`,
-  dev-only `/app/admin` tab): a compact tenant-scoped console over `/api/admin/*` —
+  dev-gated `/app/admin` nav + route — route-gated, so production can't render the
+  console via a direct URL): a compact tenant-scoped console over `/api/admin/*` —
   overview/readiness, package list/detail/audit, provider status, jobs, audit log,
   exclusion summary, and the two audited actions behind a typed-reason modal. No
   backend/schema/migration/dependency change; renders only safe metadata (no bodies/

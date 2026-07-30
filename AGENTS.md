@@ -402,8 +402,10 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   returns (a `SafeMeta` renderer collapses any non-scalar so nested blobs can't show;
   no evidence bodies, claim text, tokens, `vault_ref`, `sync_token`, raw job params/
   errors); respects security-reviewer masking (never reconstructs hidden fields). The
-  Admin tab is dev-only (production role-gated sign-in is still S22-unfinished);
-  recipient routes untouched.
+  Admin nav **and route** are **dev-gated** (both the nav link and the `/app/admin`
+  render check `import.meta.env.DEV`, so a production build cannot render the console
+  via a direct URL — it shows the "sign-in required" empty state) until production
+  role-gated sign-in exists (S22); recipient routes untouched.
 
 ## 6. Known gaps — flag, don't fake
 

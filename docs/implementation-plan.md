@@ -407,8 +407,11 @@ components of the handoff-package experience.
   docs changed; head stays `0012_job_infra`). Renders only the safe metadata the API
   returns (`SafeMeta` collapses any non-scalar; no evidence bodies, claim text, tokens,
   `vault_ref`, `sync_token`, or raw job params/errors), respects security-reviewer
-  masking, and never opens the recipient view or impersonates. The Admin tab is dev-only
-  (production role-gated sign-in remains S22-unfinished).
+  masking, and never opens the recipient view or impersonates. The Admin nav **and
+  route** are **dev-gated** (`import.meta.env.DEV` gates both the nav link and the
+  `/app/admin` render, so a production build shows the "sign-in required" empty state
+  instead of the console on a direct URL) until production role-gated sign-in exists
+  (S22).
   Manual smoke (dev, `AUTH_MODE=dev`, backend + worker running): (1) open `/app/admin`;
   (2) view Overview counts + readiness; (3) open Packages, select one, read detail +
   audit; (4) open Providers; (5) open Jobs / Audit log / Exclusions; (6) revoke a
