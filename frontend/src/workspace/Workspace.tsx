@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { errorKindTitle } from "../api/client";
+import { AdminConsole } from "../components/admin/AdminConsole";
 import { ContactPanel } from "../components/ContactPanel";
 import { CoverForMe } from "../components/CoverForMe";
 import { DemoReadinessStrip } from "../components/DemoReadinessStrip";
@@ -35,7 +36,8 @@ type Screen =
   | "projects"
   | "cover"
   | "handoff"
-  | "status";
+  | "status"
+  | "admin";
 
 const NAV: { screen: Screen; label: string; path: string }[] = [
   { screen: "overview", label: "Overview", path: "/app" },
@@ -90,6 +92,7 @@ function screenForPath(pathname: string): Screen {
   if (pathname === "/app/cover") return "cover";
   if (pathname === "/app/handoff" || pathname.startsWith("/app/handoff/")) return "handoff";
   if (pathname === "/app/status") return "status";
+  if (pathname === "/app/admin") return "admin";
   return "overview"; // /app, /app/, or any unknown /app/* path
 }
 
@@ -206,6 +209,17 @@ export function Workspace() {
                 {n.label}
               </Link>
             ))}
+            {/* Admin/Audit is a tenant governance surface, not mailbox-scoped. It is
+                shown only in dev builds — production role-gated access is not yet
+                wired (S22), so we do not imply it is finished. */}
+            {AUTH_DEV ? (
+              <Link
+                to="/app/admin"
+                className={`app-nav-link${screen === "admin" ? " is-active" : ""}`}
+              >
+                Admin
+              </Link>
+            ) : null}
           </nav>
         </div>
 
@@ -269,7 +283,28 @@ export function Workspace() {
       ) : null}
 
       <main className="relative flex-1 overflow-hidden flex">
-        {!mailboxId ? (
+        {screen === "admin" ? (
+          // Tenant-scoped governance surface — renders without a loaded mailbox.
+          // ROUTE-gated (not just nav-gated): in a production build, a direct
+          // /app/admin entry must NOT render the console. The Admin nav/route is
+          // dev-gated until production role-gated sign-in exists (S22).
+          AUTH_DEV ? (
+            <div className="w-full overflow-y-auto bg-app2">
+              <AdminConsole />
+            </div>
+          ) : (
+            <div className="flex h-full w-full items-center justify-center px-6 text-center text-muted">
+              <div>
+                <p className="text-lg font-medium text-ink">Sign-in required.</p>
+                <p className="mt-1 text-sm text-faint">
+                  The Admin / Audit console is role-gated. Production admin sign-in
+                  is not built yet (S22); run locally with <code>AUTH_MODE=dev</code>{" "}
+                  to use it.
+                </p>
+              </div>
+            </div>
+          )
+        ) : !mailboxId ? (
           <div className="flex h-full w-full items-center justify-center px-6 text-center text-muted">
             <div>
               {AUTH_DEV ? (

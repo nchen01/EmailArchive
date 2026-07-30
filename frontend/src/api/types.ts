@@ -483,3 +483,111 @@ export interface RecipientAskResponse {
   claims: RecipientAnswerClaim[];
   evidence: RecipientEvidence[];
 }
+
+// ── S31 Admin / Audit Viewer DTOs (mirror services/admin/contracts.py) ────────
+// Safe metadata only — these types deliberately contain NO evidence body, claim
+// text, scope detail, source headers, raw job params/errors, tokens, or vault_ref.
+
+export interface PackageAdminSummary {
+  id: string;
+  mailbox_id: string;
+  title: string;
+  status: string;
+  version: number;
+  lineage_id: string;
+  creator_email: string;
+  reason_category: string;
+  recipient_email: string | null; // full for admin; domain/masked for reviewer
+  created_at: string | null;
+  published_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface PackageAdminDetail extends PackageAdminSummary {
+  policy_mode: string;
+  supersedes_package_id: string | null;
+  exported_at: string | null;
+  recipient_state: string | null;
+  claim_count: number;
+  evidence_count: number;
+}
+
+export interface PackageAuditEventView {
+  package_id: string;
+  lineage_id: string | null;
+  actor: string;
+  action: string;
+  ts: string | null;
+  safe_metadata: Record<string, unknown>;
+}
+
+export interface ProviderAccountAdminView {
+  id: string | null;
+  mailbox_id: string | null;
+  owner_user_id: string | null;
+  provider: string;
+  provider_account_email: string | null;
+  scopes_granted: string[];
+  status: string;
+  connected_at: string | null;
+  last_verified_at: string | null;
+  disconnected_at: string | null;
+  mismatch_reason: string | null;
+}
+
+export interface JobAdminView {
+  id: string;
+  job_type: string;
+  status: string;
+  tenant_id: string;
+  mailbox_id: string | null;
+  attempt: number;
+  max_attempts: number;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  next_retry_at: string | null;
+  progress_safe: Record<string, unknown>;
+  summary: string | null;
+  error_category: string | null;
+}
+
+export interface AuditEventView {
+  actor: string;
+  action: string;
+  scope: string | null;
+  ts: string | null;
+  finished_at: string | null;
+  message_count: number | null;
+  mailbox_id: string;
+}
+
+export interface ExclusionSummaryItem {
+  exclusion_type: string;
+  aggregate_label: string;
+  count: number;
+}
+
+export interface ExclusionSummaryView {
+  by_type: ExclusionSummaryItem[];
+  total_excluded: number;
+}
+
+export interface ReadinessCheckView {
+  name: string;
+  status: string;
+  message: string;
+}
+
+export interface ReadinessSummaryView {
+  ready: boolean;
+  checks: ReadinessCheckView[];
+}
+
+export interface TenantOpsOverview {
+  package_counts_by_status: Record<string, number>;
+  active_provider_accounts: number;
+  job_counts_by_status: Record<string, number>;
+  degraded_readiness: boolean;
+}

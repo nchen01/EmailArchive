@@ -73,7 +73,16 @@ revoke lifecycle (blocks recipient access + kills live sessions) and audits
 `package.revoked_by_admin` with the reason; disconnect reuses the S23 vault-revoke
 path (provider revoke + vault purge, mark disconnected) and audits
 `provider_account_disconnected_by_admin`. No token/`vault_ref` is ever exposed, no
-migration, recipient snapshot-only invariant untouched.
+migration, recipient snapshot-only invariant untouched. **S31 adds the Admin / Audit
+Viewer frontend** (`frontend/src/components/admin/`, a **dev-gated** `/app/admin`
+nav *and route* — route-gated, so a production build cannot render the console via a
+direct URL until production role-gated sign-in exists) — a
+compact, tenant-scoped governance console over the existing `/api/admin/*` endpoints:
+overview + readiness, package lifecycle list/detail/audit, provider-account status,
+jobs, audit log, exclusion summary, and the two audited actions (revoke package,
+disconnect provider) behind a mandatory typed-reason confirmation modal. Frontend
+only — no backend/schema/migration change; it renders only the safe metadata the API
+returns (no bodies, tokens, or vault refs) and respects security-reviewer masking.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 
