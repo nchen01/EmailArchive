@@ -146,7 +146,8 @@ Key docs:
   by tenant `admin`/`security_reviewer` roles, tenant-scoped (cross-tenant → 404).
   Allow-list DTOs, safe metadata only — no evidence/claim bodies, scope detail, raw job
   params/errors, sync tokens, vault refs, tokens, or DB URLs; reviewers get masked
-  recipient email + no provider email/scopes; aggregate exclusion counts only. No
+  recipient email + provider accounts limited to provider/status/timestamps
+  (no email/scopes/ids); aggregate exclusion counts only. No
   mutations (S30), no migration; recipient routes untouched.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the

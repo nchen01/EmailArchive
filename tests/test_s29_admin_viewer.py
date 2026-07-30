@@ -39,7 +39,10 @@ requires_db = pytest.mark.skipif(
 
 # Sentinel values that must NEVER appear in an admin response.
 EVIDENCE_BODY = "SENTINEL-evidence-body-zzz"
+EVIDENCE_SUBJECT = "SENTINEL-evidence-subject"
+EVIDENCE_MSGID = "SENTINEL-evidence-msgid-header"
 CLAIM_TEXT = "SENTINEL-claim-text-zzz"
+CLAIM_SOURCE_HEADER = "SENTINEL-claim-source-header"
 JOB_PARAM_SECRET = "SENTINEL-job-param-secret"
 JOB_ERR_MSG = "SENTINEL-raw-error-message"
 SYNC_TOKEN = "SENTINEL-sync-token"
@@ -50,8 +53,8 @@ AUDIT_BLOCKED_BODY = "SENTINEL-audit-metadata-body"
 EXCL_TARGET_REF = "SENTINEL-excluded-thread-id"
 
 _ALL_SENTINELS = [
-    EVIDENCE_BODY, CLAIM_TEXT, JOB_PARAM_SECRET, JOB_ERR_MSG,
-    SYNC_TOKEN, VAULT_REF, AUDIT_BLOCKED_BODY, EXCL_TARGET_REF,
+    EVIDENCE_BODY, EVIDENCE_SUBJECT, EVIDENCE_MSGID, CLAIM_TEXT, CLAIM_SOURCE_HEADER,
+    JOB_PARAM_SECRET, JOB_ERR_MSG, SYNC_TOKEN, VAULT_REF, AUDIT_BLOCKED_BODY, EXCL_TARGET_REF,
 ]
 
 
@@ -119,12 +122,12 @@ def env():
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     ))
     s.add(orm.HandoffEvidence(
-        package_id=pid, message_id_header="SENTINEL-msgid", subject="SENTINEL-subject",
+        package_id=pid, message_id_header=EVIDENCE_MSGID, subject=EVIDENCE_SUBJECT,
         sender_display="Someone", sender_domain="acme.corp", body_snapshot=EVIDENCE_BODY,
     ))
     s.add(orm.HandoffClaim(
         package_id=pid, kind="briefing", text=CLAIM_TEXT,
-        source_message_id_headers=["SENTINEL-source-header"], confidence=0.9,
+        source_message_id_headers=[CLAIM_SOURCE_HEADER], confidence=0.9,
     ))
     s.add(orm.HandoffExclusion(
         package_id=pid, exclusion_type="sensitivity", target_type="thread",
@@ -247,6 +250,20 @@ def test_cross_tenant_isolation(env):
     assert c.get(f"/api/admin/jobs/{env.jid}").status_code == 404
 
 
+@requires_db
+def test_malformed_detail_ids_return_404_not_500(env):
+    """A non-UUID id must resolve to a safe 404 (no DB DataError → 500)."""
+    _as(env, env.admin)
+    c = env.client
+    for path in ("/api/admin/packages/not-a-uuid",
+                 "/api/admin/packages/not-a-uuid/audit",
+                 "/api/admin/jobs/not-a-uuid"):
+        r = c.get(path)
+        assert r.status_code == 404, f"{path} -> {r.status_code}"
+        # never expose a DB/driver error
+        assert "DataError" not in r.text and "invalid input syntax" not in r.text
+
+
 # ── Security-reviewer masking ─────────────────────────────────────────────────
 
 @requires_db
@@ -262,19 +279,25 @@ def test_admin_sees_full_recipient_email_reviewer_sees_masked(env):
 
 
 @requires_db
-def test_reviewer_provider_view_hides_email_and_scopes(env):
+def test_reviewer_provider_view_is_status_and_timestamps_only(env):
+    """Option A (S28 §18.5): reviewer sees provider/status/timestamps only —
+    identity fields (ids, email, scopes, mismatch) are null."""
     _as(env, env.reviewer)
     accts = env.client.get("/api/admin/provider-accounts").json()
-    a = next(x for x in accts if x["mailbox_id"] == env.mid)
+    assert len(accts) == 1
+    a = accts[0]
+    assert a["provider"] == "gmail" and a["status"] == "connected"
+    assert a["connected_at"] is not None            # timestamps visible
     assert a["provider_account_email"] is None
     assert a["scopes_granted"] == []
-    assert a["status"] == "connected"  # status/timestamps still visible
+    assert a["id"] is None and a["mailbox_id"] is None and a["owner_user_id"] is None
+    assert a["mismatch_reason"] is None
 
     _as(env, env.admin)
-    accts = env.client.get("/api/admin/provider-accounts").json()
-    a = next(x for x in accts if x["mailbox_id"] == env.mid)
+    a = next(x for x in env.client.get("/api/admin/provider-accounts").json() if x["mailbox_id"] == env.mid)
     assert a["provider_account_email"] == PROVIDER_EMAIL
-    assert a["scopes_granted"]  # admin sees scopes
+    assert a["scopes_granted"]                       # admin sees scopes
+    assert a["id"] is not None and a["owner_user_id"] is not None
 
 
 # ── No forbidden fields / no leakage (the core suite) ─────────────────────────

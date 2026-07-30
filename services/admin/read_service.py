@@ -9,6 +9,7 @@ scopes (docs/s28-admin-audit-ops-plan.md §18.3/§18.5).
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -38,6 +39,19 @@ _BLOCKED_KEY_FRAGMENTS = (
     "prompt", "response", "content",
 )
 _SCALAR = (str, int, float, bool, type(None))
+
+
+def _is_uuid(value: str | None) -> bool:
+    """Guard before any UUID-column query so a malformed id resolves to a safe
+    404 (None) instead of raising a DB DataError → 500 (matches the router
+    hardening elsewhere). Never lets a driver error surface."""
+    if not value:
+        return False
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 def _iso(dt) -> str | None:
@@ -136,6 +150,8 @@ def list_packages(db: Session, *, tenant_id: str, full_access: bool) -> list[Pac
 
 
 def _package_in_tenant(db: Session, *, tenant_id: str, package_id: str) -> orm.HandoffPackage | None:
+    if not _is_uuid(package_id):
+        return None
     return db.execute(
         select(orm.HandoffPackage)
         .join(orm.Mailbox, orm.Mailbox.id == orm.HandoffPackage.mailbox_id)
@@ -191,16 +207,22 @@ def list_provider_accounts(db: Session, *, tenant_id: str, full_access: bool) ->
         .where(orm.MailboxProviderAccount.tenant_id == tenant_id)
         .order_by(orm.MailboxProviderAccount.connected_at.desc())
     ).scalars().all()
+    # S28 §18.5 (Option A): a security-reviewer-only principal sees provider +
+    # connection status + timestamps ONLY. Account/mailbox/owner ids, provider
+    # email, scopes, and the mismatch category are omitted (null) — governance
+    # posture without provider identity. Tenant admin sees the full metadata.
     return [
         ProviderAccountAdminView(
-            id=str(a.id), mailbox_id=str(a.mailbox_id), owner_user_id=str(a.owner_user_id),
+            id=(str(a.id) if full_access else None),
+            mailbox_id=(str(a.mailbox_id) if full_access else None),
+            owner_user_id=(str(a.owner_user_id) if full_access else None),
             provider=a.provider,
             provider_account_email=(a.provider_account_email if full_access else None),
             scopes_granted=(list(a.scopes_granted or []) if full_access else []),
             status=a.status,
             connected_at=_iso(a.connected_at), last_verified_at=_iso(a.last_verified_at),
             disconnected_at=_iso(a.disconnected_at),
-            mismatch_reason=a.mismatch_reason,  # safe category text only
+            mismatch_reason=(a.mismatch_reason if full_access else None),
         )
         for a in rows
     ]
@@ -229,6 +251,8 @@ def list_jobs(db: Session, *, tenant_id: str, limit: int = 100) -> list[JobAdmin
 
 
 def get_job(db: Session, *, tenant_id: str, job_id: str) -> JobAdminView | None:
+    if not _is_uuid(job_id):
+        return None
     j = db.get(orm.Job, job_id)
     if j is None or str(j.tenant_id) != tenant_id:
         return None

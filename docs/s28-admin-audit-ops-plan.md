@@ -523,10 +523,15 @@ requires an explicit decision.
    role, and any cross-tenant operator console, is **deferred** (and would carry the
    later single `ck_tenant_membership_role` widening, S30+).
 
-2. **Package `reason` visibility (resolves §15.2).** **Exclude** the creator-authored
-   free-text `HandoffPackage.reason` from the admin list/detail DTOs in S29 because it
-   can hint at content. Expose a `reason_category` **only if** a structured safe enum
-   exists; since `reason` is currently free text, **omit it entirely** in S29.
+2. **Package `reason` visibility (resolves §15.2).** `HandoffPackage.reason` is
+   **DB-constrained to a safe enum** by migration `0007_handoff_package_tables`
+   (`vacation` / `leave` / `transfer` / `delegation` / `other`) — it is not free
+   text and cannot carry content. It is therefore **exposed as `reason_category`**
+   in the admin list/detail DTOs (a structured safe enum, per the "expose a
+   `reason_category` only if a structured safe enum exists" rule). **If** a
+   free-text reason field is ever added later, that raw free-text value remains
+   **forbidden** from admin DTOs (expose only the structured category). *(Shipped
+   this way in S29: `reason_category = pkg.reason`.)*
 
 3. **Recipient email visibility (resolves §15.3).** **Tenant admin** may see
    `recipient_email` as package metadata. **Security reviewer** sees the recipient
@@ -538,10 +543,16 @@ requires an explicit decision.
    Add **throttling / rate-limiting** on list-view endpoints (and coalesce any
    list-read audit into a throttled/aggregated event) to avoid audit spam.
 
-5. **Security-reviewer provider visibility (resolves §15.5).** Security reviewer sees
-   provider **connection status and timestamps only**. **No** provider email (unless
-   approved), **no** `vault_ref`, **no** raw `scopes_granted` beyond safe high-level
-   labels, and **no** token metadata.
+5. **Security-reviewer provider visibility (resolves §15.5) — Option A (stricter).**
+   A security-reviewer-only principal sees **provider + connection status +
+   timestamps only** (`provider`, `status`, `connected_at`, `last_verified_at`,
+   `disconnected_at`). The account/mailbox/owner **ids**, `provider_account_email`,
+   `scopes_granted`, `mismatch_reason`, `vault_ref`, and any token metadata are
+   **omitted (null)** — governance posture without provider identity. Tenant
+   **admin** sees the full connection metadata (email, scopes, ids, mismatch
+   category) but still **never** `vault_ref` or any token. *(Shipped this way in
+   S29: `ProviderAccountAdminView` nulls the identity fields when
+   `full_access=False`.)*
 
 6. **Operator / system-wide visibility (resolves §15.6).** **No cross-tenant customer
    metadata in S29.** Operator sees **deployment / readiness / job-system health at

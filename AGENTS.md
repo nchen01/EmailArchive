@@ -366,7 +366,8 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   lifecycle (incl. `reason_category`, the safe enum, never free text), provider-connection
   metadata, safe job fields, `AuditLog`/`HandoffAuditEvent` (whitelisted metadata
   projection), and **aggregate exclusion counts only**. Security reviewers see a
-  domain/masked recipient email and no provider email/scopes (§18.3/§18.5). **No field
+  domain/masked recipient email and, for provider accounts, only provider/status/
+  timestamps — no email/scopes/ids/mismatch (§18.3/§18.5, Option A). **No field
   leaks** evidence bodies, claim text, scope detail, source headers, raw `Job.params`/
   `error_message`/`worker_id`, `sync_token`, `vault_ref`, tokens, or DB URLs (a
   sentinel-seeded test asserts absence). Sensitive package-detail reads write an

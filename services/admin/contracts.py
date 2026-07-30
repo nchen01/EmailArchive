@@ -45,9 +45,11 @@ class PackageAuditEventView(BaseModel):
 
 
 class ProviderAccountAdminView(BaseModel):
-    id: str
-    mailbox_id: str
-    owner_user_id: str
+    # For a security-reviewer-only principal, identity fields are null: only
+    # provider + status + timestamps are returned (S28 §18.5, Option A).
+    id: str | None
+    mailbox_id: str | None
+    owner_user_id: str | None
     provider: str
     provider_account_email: str | None  # None for security reviewer
     scopes_granted: list[str]           # [] for security reviewer
@@ -55,7 +57,7 @@ class ProviderAccountAdminView(BaseModel):
     connected_at: str | None
     last_verified_at: str | None
     disconnected_at: str | None
-    mismatch_reason: str | None
+    mismatch_reason: str | None         # None for security reviewer
 
 
 class JobAdminView(BaseModel):
