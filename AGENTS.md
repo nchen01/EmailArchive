@@ -389,6 +389,21 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   returned or logged; no migration** (head `0012_job_infra`); recipient snapshot-only
   invariant untouched. Non-goals hold: no edit/generate/publish/prune, no recipient
   impersonation, no silent reconnect, no connect-on-behalf, no content access.
+- **S31 ✓ implemented.** Admin / Audit Viewer **frontend** (`frontend/src/components/admin/`:
+  `AdminConsole.tsx`, `AdminPackages.tsx`, `AdminProviders.tsx`, `ui.tsx`; client +
+  DTOs appended to `frontend/src/api/client.ts` + `types.ts`; a **dev-only** `/app/admin`
+  tab wired into `workspace/Workspace.tsx`, tenant-scoped so it renders without a
+  loaded mailbox). A compact console over the S29/S30 `/api/admin/*` endpoints: overview
+  + readiness summary, package lifecycle list/detail/audit, provider-account status,
+  jobs list/detail, audit log, exclusion summary, and the two audited actions (revoke
+  package, disconnect provider) behind a mandatory typed-reason `ConfirmReasonModal`
+  that refreshes state and shows a success/error result. **Frontend only — no backend,
+  schema, migration, or dependency change.** Renders only the safe metadata the API
+  returns (a `SafeMeta` renderer collapses any non-scalar so nested blobs can't show;
+  no evidence bodies, claim text, tokens, `vault_ref`, `sync_token`, raw job params/
+  errors); respects security-reviewer masking (never reconstructs hidden fields). The
+  Admin tab is dev-only (production role-gated sign-in is still S22-unfinished);
+  recipient routes untouched.
 
 ## 6. Known gaps — flag, don't fake
 

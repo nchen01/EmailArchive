@@ -620,3 +620,73 @@ export async function enqueueMaterialize(mailboxId: string): Promise<EnqueuedJob
     {},
   );
 }
+
+// ── S31 Admin / Audit Viewer (read-only) + S30 admin actions ─────────────────
+// Tenant-scoped governance surface. Safe metadata only; the two mutations require
+// a mandatory reason and are audited server-side. Cross-tenant/malformed → 404;
+// wrong role → 403; disconnect fails closed → 503. Nothing here carries a token,
+// vault_ref, mailbox body, or evidence content.
+import type {
+  AuditEventView,
+  ExclusionSummaryView,
+  JobAdminView,
+  PackageAdminDetail,
+  PackageAdminSummary,
+  PackageAuditEventView,
+  ProviderAccountAdminView,
+  ReadinessSummaryView,
+  TenantOpsOverview,
+} from "./types";
+
+export function getAdminOverview(): Promise<TenantOpsOverview> {
+  return getJson<TenantOpsOverview>(`${API_BASE}/api/admin/overview`);
+}
+export function getAdminReadiness(): Promise<ReadinessSummaryView> {
+  return getJson<ReadinessSummaryView>(`${API_BASE}/api/admin/readiness`);
+}
+export function listAdminPackages(): Promise<PackageAdminSummary[]> {
+  return getJson<PackageAdminSummary[]>(`${API_BASE}/api/admin/packages`);
+}
+export function getAdminPackage(packageId: string): Promise<PackageAdminDetail> {
+  return getJson<PackageAdminDetail>(`${API_BASE}/api/admin/packages/${encodeURIComponent(packageId)}`);
+}
+export function getAdminPackageAudit(packageId: string): Promise<PackageAuditEventView[]> {
+  return getJson<PackageAuditEventView[]>(
+    `${API_BASE}/api/admin/packages/${encodeURIComponent(packageId)}/audit`,
+  );
+}
+export function listAdminProviderAccounts(): Promise<ProviderAccountAdminView[]> {
+  return getJson<ProviderAccountAdminView[]>(`${API_BASE}/api/admin/provider-accounts`);
+}
+export function listAdminJobs(): Promise<JobAdminView[]> {
+  return getJson<JobAdminView[]>(`${API_BASE}/api/admin/jobs`);
+}
+export function getAdminJob(jobId: string): Promise<JobAdminView> {
+  return getJson<JobAdminView>(`${API_BASE}/api/admin/jobs/${encodeURIComponent(jobId)}`);
+}
+export function listAdminAudit(): Promise<AuditEventView[]> {
+  return getJson<AuditEventView[]>(`${API_BASE}/api/admin/audit`);
+}
+export function getAdminExclusionSummary(): Promise<ExclusionSummaryView> {
+  return getJson<ExclusionSummaryView>(`${API_BASE}/api/admin/exclusions/summary`);
+}
+
+/** Admin governance revoke (S30). Requires a non-empty reason; returns the updated detail. */
+export function adminRevokePackage(packageId: string, reason: string): Promise<PackageAdminDetail> {
+  return sendJsonBody<PackageAdminDetail>(
+    "POST",
+    `${API_BASE}/api/admin/packages/${encodeURIComponent(packageId)}/revoke`,
+    { reason },
+  );
+}
+/** Admin governance disconnect (S30). Fails closed (503) if the vault/revoke fails. */
+export function adminDisconnectProviderAccount(
+  accountId: string,
+  reason: string,
+): Promise<ProviderAccountAdminView> {
+  return sendJsonBody<ProviderAccountAdminView>(
+    "POST",
+    `${API_BASE}/api/admin/provider-accounts/${encodeURIComponent(accountId)}/disconnect`,
+    { reason },
+  );
+}

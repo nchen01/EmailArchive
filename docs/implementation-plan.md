@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29, S30):**
+**Implemented (S22–S27, S29–S31):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -393,6 +393,29 @@ components of the handoff-package experience.
   recipient snapshot-only invariant untouched. Non-goals hold (no edit/generate/publish/
   prune, no recipient impersonation, no silent reconnect, no connect-on-behalf, no
   content access).
+
+- **S31 ✓** Admin / Audit Viewer **frontend** (`frontend/src/components/admin/AdminConsole.tsx`,
+  `AdminPackages.tsx`, `AdminProviders.tsx`, `ui.tsx`; admin client + DTOs appended to
+  `frontend/src/api/client.ts` + `types.ts`; a **dev-only** `/app/admin` tab in
+  `workspace/Workspace.tsx`, tenant-scoped so it renders without a loaded mailbox). A
+  compact governance console over the S29/S30 `/api/admin/*` endpoints — overview +
+  readiness, package lifecycle list/detail/audit, provider-account status, jobs
+  list/detail, audit log, exclusion summary — plus the two audited actions (revoke
+  package, disconnect provider) behind a mandatory typed-reason `ConfirmReasonModal`
+  that refreshes the affected state and shows success/error. **Frontend only — no
+  backend / schema / migration / dependency change** (verified: only `frontend/**` +
+  docs changed; head stays `0012_job_infra`). Renders only the safe metadata the API
+  returns (`SafeMeta` collapses any non-scalar; no evidence bodies, claim text, tokens,
+  `vault_ref`, `sync_token`, or raw job params/errors), respects security-reviewer
+  masking, and never opens the recipient view or impersonates. The Admin tab is dev-only
+  (production role-gated sign-in remains S22-unfinished).
+  Manual smoke (dev, `AUTH_MODE=dev`, backend + worker running): (1) open `/app/admin`;
+  (2) view Overview counts + readiness; (3) open Packages, select one, read detail +
+  audit; (4) open Providers; (5) open Jobs / Audit log / Exclusions; (6) revoke a
+  published package with a reason → status flips to `revoked` and the recipient link
+  returns the neutral "unavailable"; (7) disconnect a connected provider account with a
+  reason → status flips to `disconnected`; (8) confirm no body/subject/snippet, token,
+  `vault_ref`, or DB URL appears anywhere.
 
 **Planned — docs/spec-only, not implemented (S28 spec fully implemented by S29+S30):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):

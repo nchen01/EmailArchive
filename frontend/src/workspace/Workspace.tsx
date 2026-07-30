@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { errorKindTitle } from "../api/client";
+import { AdminConsole } from "../components/admin/AdminConsole";
 import { ContactPanel } from "../components/ContactPanel";
 import { CoverForMe } from "../components/CoverForMe";
 import { DemoReadinessStrip } from "../components/DemoReadinessStrip";
@@ -35,7 +36,8 @@ type Screen =
   | "projects"
   | "cover"
   | "handoff"
-  | "status";
+  | "status"
+  | "admin";
 
 const NAV: { screen: Screen; label: string; path: string }[] = [
   { screen: "overview", label: "Overview", path: "/app" },
@@ -90,6 +92,7 @@ function screenForPath(pathname: string): Screen {
   if (pathname === "/app/cover") return "cover";
   if (pathname === "/app/handoff" || pathname.startsWith("/app/handoff/")) return "handoff";
   if (pathname === "/app/status") return "status";
+  if (pathname === "/app/admin") return "admin";
   return "overview"; // /app, /app/, or any unknown /app/* path
 }
 
@@ -206,6 +209,17 @@ export function Workspace() {
                 {n.label}
               </Link>
             ))}
+            {/* Admin/Audit is a tenant governance surface, not mailbox-scoped. It is
+                shown only in dev builds — production role-gated access is not yet
+                wired (S22), so we do not imply it is finished. */}
+            {AUTH_DEV ? (
+              <Link
+                to="/app/admin"
+                className={`app-nav-link${screen === "admin" ? " is-active" : ""}`}
+              >
+                Admin
+              </Link>
+            ) : null}
           </nav>
         </div>
 
@@ -269,7 +283,12 @@ export function Workspace() {
       ) : null}
 
       <main className="relative flex-1 overflow-hidden flex">
-        {!mailboxId ? (
+        {screen === "admin" ? (
+          // Tenant-scoped governance surface — renders without a loaded mailbox.
+          <div className="w-full overflow-y-auto bg-app2">
+            <AdminConsole />
+          </div>
+        ) : !mailboxId ? (
           <div className="flex h-full w-full items-center justify-center px-6 text-center text-muted">
             <div>
               {AUTH_DEV ? (

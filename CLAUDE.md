@@ -158,6 +158,12 @@ Key docs:
   `provider_account_disconnected_by_admin`). Reviewer/creator → 403, cross-tenant/
   malformed → 404, blank reason → 422. No token/`vault_ref` exposed; no migration;
   recipient snapshot-only untouched.
+- **S31 ✓ implemented.** Admin / Audit Viewer **frontend** only (`frontend/src/components/admin/`,
+  dev-only `/app/admin` tab): a compact tenant-scoped console over `/api/admin/*` —
+  overview/readiness, package list/detail/audit, provider status, jobs, audit log,
+  exclusion summary, and the two audited actions behind a typed-reason modal. No
+  backend/schema/migration/dependency change; renders only safe metadata (no bodies/
+  tokens/vault_ref); respects reviewer masking; recipient routes untouched.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
