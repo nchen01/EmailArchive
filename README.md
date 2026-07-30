@@ -83,6 +83,10 @@ jobs, audit log, exclusion summary, and the two audited actions (revoke package,
 disconnect provider) behind a mandatory typed-reason confirmation modal. Frontend
 only — no backend/schema/migration change; it renders only the safe metadata the API
 returns (no bodies, tokens, or vault refs) and respects security-reviewer masking.
+**S32 records the S31 manual validation pass and polishes the Admin UI**:
+clear expected-empty copy for Providers/Jobs in the seeded dev tenant, and a more
+visible package-revoked success state after the audited revoke action. Frontend/docs
+only — no backend/schema/migration/dependency change.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 

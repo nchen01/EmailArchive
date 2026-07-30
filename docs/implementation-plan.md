@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29–S31):**
+**Implemented (S22–S27, S29–S32):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -419,6 +419,11 @@ components of the handoff-package experience.
   returns the neutral "unavailable"; (7) disconnect a connected provider account with a
   reason → status flips to `disconnected`; (8) confirm no body/subject/snippet, token,
   `vault_ref`, or DB URL appears anywhere.
+- **S32 ✓** Admin UI validation polish (`docs/s32-admin-ui-validation-polish.md`):
+  records the S31 manual validation pass, clarifies expected-empty Providers and Jobs
+  tabs in the seeded handoff-demo tenant, and makes package revoke success easier to
+  notice after the S30 audited action. **Frontend/docs only — no backend, schema,
+  migration, or dependency change.**
 
 **Planned — docs/spec-only, not implemented (S28 spec fully implemented by S29+S30):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):

@@ -59,7 +59,14 @@ export function AdminProviders() {
       ) : rows === null ? (
         <p className="text-xs text-muted">Loading provider accounts…</p>
       ) : rows.length === 0 ? (
-        <p className="text-xs text-muted">No provider accounts in this tenant.</p>
+        <div className="max-w-xl rounded-md border border-line bg-surface p-4 text-xs text-muted">
+          <p className="font-medium text-ink">No provider accounts in this tenant.</p>
+          <p className="mt-1">
+            This is expected for the seeded Handoff demo unless a Gmail OAuth
+            account has been connected. Provider disconnect should only be tested
+            with a throwaway connected provider account.
+          </p>
+        </div>
       ) : (
         <table className="w-full text-left text-xs">
           <thead className="text-faint">

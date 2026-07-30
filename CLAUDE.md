@@ -165,6 +165,11 @@ Key docs:
   exclusion summary, and the two audited actions behind a typed-reason modal. No
   backend/schema/migration/dependency change; renders only safe metadata (no bodies/
   tokens/vault_ref); respects reviewer masking; recipient routes untouched.
+- **S32 ✓ implemented.** Admin UI validation polish
+  (`docs/s32-admin-ui-validation-polish.md`): records the S31 manual pass, explains
+  expected-empty Providers/Jobs tabs for the seeded handoff-demo tenant, and makes
+  package revoke success prominent. Frontend/docs only; no backend/schema/migration/
+  dependency change.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

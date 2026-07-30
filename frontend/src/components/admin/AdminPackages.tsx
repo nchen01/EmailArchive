@@ -124,7 +124,13 @@ export function AdminPackages() {
         ) : (
           <div className="space-y-4">
             {flash ? (
-              <p className="rounded-md border border-jade bg-jade-soft px-3 py-2 text-xs text-jade">{flash}</p>
+              <div
+                role="status"
+                className="rounded-md border border-jade bg-jade-soft px-3 py-2 text-xs text-jade shadow-sm"
+              >
+                <div className="font-semibold">Package revoked</div>
+                <div>{flash} The audit trail has been refreshed below.</div>
+              </div>
             ) : null}
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-ink">{detail.title || "(untitled)"}</h3>

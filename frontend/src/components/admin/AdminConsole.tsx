@@ -191,7 +191,18 @@ function JobsPanel() {
 
   if (error) return <p className="text-xs text-danger">{error}</p>;
   if (rows === null) return <p className="text-xs text-muted">Loading jobs…</p>;
-  if (rows.length === 0) return <p className="text-xs text-muted">No jobs in this tenant.</p>;
+  if (rows.length === 0) {
+    return (
+      <div className="max-w-xl rounded-md border border-line bg-surface p-4 text-xs text-muted">
+        <p className="font-medium text-ink">No jobs in this tenant.</p>
+        <p className="mt-1">
+          This is expected for the seeded Handoff demo unless Gmail date-range
+          ingest or a post-ingest pipeline step has been run. The seeded Handoff
+          package flow itself does not enqueue background jobs.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full gap-4">

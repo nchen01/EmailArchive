@@ -406,6 +406,12 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   render check `import.meta.env.DEV`, so a production build cannot render the console
   via a direct URL — it shows the "sign-in required" empty state) until production
   role-gated sign-in exists (S22); recipient routes untouched.
+- **S32 ✓ implemented.** Admin UI validation polish
+  (`docs/s32-admin-ui-validation-polish.md`): records the S31 manual smoke pass,
+  clarifies that the seeded handoff demo tenant may legitimately show empty
+  Providers/Jobs tabs unless Gmail OAuth or background jobs were exercised, and makes
+  package revoke success prominent in the Admin package detail surface. **Frontend +
+  docs only — no backend, schema, migration, or dependency change.**
 
 ## 6. Known gaps — flag, don't fake
 
