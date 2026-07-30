@@ -159,6 +159,11 @@ def _package_in_tenant(db: Session, *, tenant_id: str, package_id: str) -> orm.H
     ).scalar_one_or_none()
 
 
+def resolve_package(db: Session, *, tenant_id: str, package_id: str) -> orm.HandoffPackage | None:
+    """Tenant-scoped, uuid-guarded package row lookup for admin actions (S30)."""
+    return _package_in_tenant(db, tenant_id=tenant_id, package_id=package_id)
+
+
 def get_package(db: Session, *, tenant_id: str, package_id: str, full_access: bool) -> PackageAdminDetail | None:
     pkg = _package_in_tenant(db, tenant_id=tenant_id, package_id=package_id)
     if pkg is None:
@@ -201,31 +206,45 @@ def get_package_audit(db: Session, *, tenant_id: str, package_id: str) -> list[P
 
 # ── Provider accounts ───────────────────────────────────────────────────────
 
+def _provider_view(a: orm.MailboxProviderAccount, full_access: bool) -> ProviderAccountAdminView:
+    # S28 §18.5 (Option A): a security-reviewer-only principal sees provider +
+    # connection status + timestamps ONLY. Account/mailbox/owner ids, provider
+    # email, scopes, and the mismatch category are omitted (null) — governance
+    # posture without provider identity. Tenant admin sees the full metadata.
+    # vault_ref / tokens are NEVER a field, for any role.
+    return ProviderAccountAdminView(
+        id=(str(a.id) if full_access else None),
+        mailbox_id=(str(a.mailbox_id) if full_access else None),
+        owner_user_id=(str(a.owner_user_id) if full_access else None),
+        provider=a.provider,
+        provider_account_email=(a.provider_account_email if full_access else None),
+        scopes_granted=(list(a.scopes_granted or []) if full_access else []),
+        status=a.status,
+        connected_at=_iso(a.connected_at), last_verified_at=_iso(a.last_verified_at),
+        disconnected_at=_iso(a.disconnected_at),
+        mismatch_reason=(a.mismatch_reason if full_access else None),
+    )
+
+
+def resolve_provider_account(db: Session, *, tenant_id: str, account_id: str) -> orm.MailboxProviderAccount | None:
+    """Tenant-scoped, uuid-guarded provider-account row lookup for admin actions (S30)."""
+    if not _is_uuid(account_id):
+        return None
+    return db.execute(
+        select(orm.MailboxProviderAccount).where(
+            orm.MailboxProviderAccount.id == account_id,
+            orm.MailboxProviderAccount.tenant_id == tenant_id,
+        )
+    ).scalar_one_or_none()
+
+
 def list_provider_accounts(db: Session, *, tenant_id: str, full_access: bool) -> list[ProviderAccountAdminView]:
     rows = db.execute(
         select(orm.MailboxProviderAccount)
         .where(orm.MailboxProviderAccount.tenant_id == tenant_id)
         .order_by(orm.MailboxProviderAccount.connected_at.desc())
     ).scalars().all()
-    # S28 §18.5 (Option A): a security-reviewer-only principal sees provider +
-    # connection status + timestamps ONLY. Account/mailbox/owner ids, provider
-    # email, scopes, and the mismatch category are omitted (null) — governance
-    # posture without provider identity. Tenant admin sees the full metadata.
-    return [
-        ProviderAccountAdminView(
-            id=(str(a.id) if full_access else None),
-            mailbox_id=(str(a.mailbox_id) if full_access else None),
-            owner_user_id=(str(a.owner_user_id) if full_access else None),
-            provider=a.provider,
-            provider_account_email=(a.provider_account_email if full_access else None),
-            scopes_granted=(list(a.scopes_granted or []) if full_access else []),
-            status=a.status,
-            connected_at=_iso(a.connected_at), last_verified_at=_iso(a.last_verified_at),
-            disconnected_at=_iso(a.disconnected_at),
-            mismatch_reason=(a.mismatch_reason if full_access else None),
-        )
-        for a in rows
-    ]
+    return [_provider_view(a, full_access) for a in rows]
 
 
 # ── Jobs ────────────────────────────────────────────────────────────────────

@@ -149,6 +149,15 @@ Key docs:
   recipient email + provider accounts limited to provider/status/timestamps
   (no email/scopes/ids); aggregate exclusion counts only. No
   mutations (S30), no migration; recipient routes untouched.
+- **S30 ✓ implemented.** Audited admin actions: two tenant-admin-only, reason-gated
+  mutations — `POST /api/admin/packages/{id}/revoke` (reuses the shared S17 revoke
+  lifecycle `services/handoff/lifecycle.py`; blocks recipient access + kills sessions;
+  audits `package.revoked_by_admin` with the reason) and
+  `POST /api/admin/provider-accounts/{id}/disconnect` (reuses the S23 vault path
+  `services/oauth/flow.py::disconnect_account`; provider revoke + vault purge; audits
+  `provider_account_disconnected_by_admin`). Reviewer/creator → 403, cross-tenant/
+  malformed → 404, blank reason → 422. No token/`vault_ref` exposed; no migration;
+  recipient snapshot-only untouched.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

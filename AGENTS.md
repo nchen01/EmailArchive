@@ -374,6 +374,21 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   `admin.package.viewed` audit event. **No mutations** (revoke/disconnect are S30),
   **no migration** (head `0012_job_infra`), recipient routes untouched and package-local
   snapshot-only.
+- **S30 ✓ implemented.** Audited admin actions — exactly two tenant-admin-only,
+  reason-gated mutations under `/api/admin/*` (`services/api/routers/admin.py`, tests
+  `tests/test_s30_admin_actions.py`). `POST /packages/{id}/revoke` reuses the shared
+  S17 revoke lifecycle (`services/handoff/lifecycle.py::revoke_package`, also now used
+  by the creator route): marks the package revoked, revokes the recipient grant, kills
+  live sessions, and writes `package.revoked_by_admin` with `{reason, admin_user_id,
+  prior_status, revoked_at}` in `HandoffAuditEvent.metadata_`. `POST /provider-accounts/{id}/disconnect`
+  reuses the S23 vault path (`services/oauth/flow.py::disconnect_account`): provider-side
+  revoke + vault purge, mark `disconnected`, drop `vault_ref`, and writes an `AuditLog`
+  `provider_account_disconnected_by_admin` row carrying the reason (in `scope`). Both:
+  tenant-admin only (reviewer/creator → 403), cross-tenant/malformed id → 404, blank
+  reason → 422, idempotent. **No token/`vault_ref`/OAuth code/provider response ever
+  returned or logged; no migration** (head `0012_job_infra`); recipient snapshot-only
+  invariant untouched. Non-goals hold: no edit/generate/publish/prune, no recipient
+  impersonation, no silent reconnect, no connect-on-behalf, no content access.
 
 ## 6. Known gaps — flag, don't fake
 

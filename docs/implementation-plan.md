@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29):**
+**Implemented (S22–S27, S29, S30):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -377,8 +377,24 @@ components of the handoff-package experience.
   test asserts absence). Sensitive package-detail reads write an `admin.package.viewed`
   audit event. **No mutations** (revoke/disconnect are S30), **no migration** (head stays
   `0012_job_infra`), recipient routes untouched and package-local snapshot-only.
+- **S30 ✓** Audited admin actions (`services/api/routers/admin.py`,
+  `services/handoff/lifecycle.py`, `services/oauth/flow.py::disconnect_account`,
+  `tests/test_s30_admin_actions.py`) — exactly two tenant-admin-only, reason-gated
+  mutations. `POST /api/admin/packages/{id}/revoke` reuses the shared S17 revoke
+  lifecycle (`revoke_package`, now called by both the creator route and admin): marks
+  the package revoked, revokes the recipient grant, kills live sessions, and writes
+  `package.revoked_by_admin` with `{reason, admin_user_id, prior_status, revoked_at}`.
+  `POST /api/admin/provider-accounts/{id}/disconnect` reuses the S23 vault path
+  (`disconnect_account`): provider-side revoke + vault purge, mark `disconnected`, drop
+  `vault_ref`, and writes an `AuditLog` `provider_account_disconnected_by_admin` row
+  with the reason. Both: tenant-admin only (reviewer/creator → 403), cross-tenant/
+  malformed id → 404, blank reason → 422, idempotent. **No token/`vault_ref`/OAuth
+  code/provider response returned or logged; no migration** (head `0012_job_infra`);
+  recipient snapshot-only invariant untouched. Non-goals hold (no edit/generate/publish/
+  prune, no recipient impersonation, no silent reconnect, no connect-on-behalf, no
+  content access).
 
-**Planned — docs/spec-only, not implemented (S28 spec; S30 next):**
+**Planned — docs/spec-only, not implemented (S28 spec fully implemented by S29+S30):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):
   a governance + operational visibility surface over **safe metadata only** — package
   lifecycle, provider-account connection metadata, job status, audit trails, aggregate
