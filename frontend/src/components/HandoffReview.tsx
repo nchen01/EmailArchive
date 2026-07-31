@@ -121,6 +121,12 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   const routeId = pathname.startsWith(`${HANDOFF_BASE}/`)
     ? decodeURIComponent(pathname.slice(HANDOFF_BASE.length + 1))
     : null;
+  // S34: routed from the recipient view's "Create return handoff" via
+  // /app/handoff?return_from=<original_package_id>. Recomputed on navigation
+  // (usePathname re-renders); used only to seed the return-create panel.
+  const returnFrom = pathname === HANDOFF_BASE
+    ? new URLSearchParams(window.location.search).get("return_from")
+    : null;
 
   const [pkg, setPkg] = useState<HandoffPackage | null>(null);
   const [returnCtx, setReturnCtx] = useState<ReturnContext | null>(null);
@@ -397,7 +403,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               {busy === "create" ? "Creating…" : "Create draft"}
             </button>
           </div>
-          <ReturnCreatePanel mailboxId={mailboxId} />
+          <ReturnCreatePanel mailboxId={mailboxId} initialOriginalId={returnFrom ?? undefined} />
         </section>
       ) : (
         <>

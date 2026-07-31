@@ -11,18 +11,27 @@ const HANDOFF_BASE = "/app/handoff";
  * source mailbox is the coverer's own loaded mailbox; the recipient defaults to
  * the original covered employee. The original package only seeds scope.
  */
-export function ReturnCreatePanel({ mailboxId }: { mailboxId: string }) {
+export function ReturnCreatePanel({
+  mailboxId,
+  initialOriginalId,
+}: {
+  mailboxId: string;
+  /** When present (routed from the package you were handed via ?return_from=…), the
+   * original id is carried automatically — no id to find or paste. */
+  initialOriginalId?: string;
+}) {
+  const linked = !!initialOriginalId?.trim();
   const [originalId, setOriginalId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const create = async () => {
-    const id = originalId.trim();
-    if (!id) return;
+  const create = async (id: string) => {
+    const oid = id.trim();
+    if (!oid) return;
     setBusy(true);
     setError(null);
     try {
-      const pkg: HandoffPackage = await createReturnDraft(id, { coverer_mailbox_id: mailboxId });
+      const pkg: HandoffPackage = await createReturnDraft(oid, { coverer_mailbox_id: mailboxId });
       navigate(`${HANDOFF_BASE}/${pkg.id}`);
     } catch (e) {
       setError(describeError(e).message);
@@ -31,14 +40,40 @@ export function ReturnCreatePanel({ mailboxId }: { mailboxId: string }) {
     }
   };
 
+  // Linked mode: the original package is carried in from the recipient view. The id
+  // is used only for the create call — it is NOT shown as user-facing copy.
+  if (linked) {
+    return (
+      <section className="mt-4 rounded-md border border-brass bg-brass-soft p-4">
+        <h3 className="text-sm font-semibold text-ink">Create return handoff from the package you were handed</h3>
+        <p className="mt-1 text-xs text-muted">
+          The original coverage package is linked — its coverage areas are picked up automatically.
+          The return handoff is created from <strong>your own mailbox</strong> (loaded above) and
+          sent back to the original employee. It is a reciprocal package, not a revised version.
+        </p>
+        <button
+          type="button"
+          className="mt-3 rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
+          onClick={() => create(initialOriginalId as string)}
+          disabled={busy}
+        >
+          {busy ? "Creating…" : "Create return handoff"}
+        </button>
+        {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
+      </section>
+    );
+  }
+
+  // Manual mode (dev/debug fallback): paste an original package id.
   return (
     <section className="mt-4 rounded-md border border-line bg-surface p-4">
       <h3 className="text-sm font-semibold text-ink">Create a return handoff</h3>
       <p className="mt-1 text-xs text-muted">
         Covered someone while they were away? A <strong>return handoff</strong> is created from
         <strong> your own mailbox</strong> and sent back to the original employee — it is a
-        reciprocal package, not a revised version. Paste the original coverage package id you were
-        given; its coverage areas are picked up automatically.
+        reciprocal package, not a revised version. The usual way to start one is the
+        <em> “Create return handoff”</em> button on the package you were handed; you can also paste
+        an original coverage package id here.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="flex flex-1 flex-col text-xs text-muted">
@@ -54,7 +89,7 @@ export function ReturnCreatePanel({ mailboxId }: { mailboxId: string }) {
         <button
           type="button"
           className="rounded-md border border-line2 bg-app2 px-4 py-2 text-sm font-medium text-ink hover:bg-app disabled:opacity-50"
-          onClick={create}
+          onClick={() => create(originalId)}
           disabled={busy || !originalId.trim()}
         >
           {busy ? "Creating…" : "Create return handoff"}

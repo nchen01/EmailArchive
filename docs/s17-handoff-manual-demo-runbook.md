@@ -228,6 +228,16 @@ rotation, SOC2 MFA closure, wiki-migration open loop, Northwind SSO), with **1
 sensitive + 1 noise item excluded** (both inside a carried Nexus Auth area, so the
 gates are demonstrably at work).
 
+> **Date-window note (important):** the return's default coverage window is the
+> original package's `published_at` date → **today**, and the coverer's activity is
+> dated the **day you seed**. So **seed and run the return demo on the same day.** If
+> you demo on a later day, publishing the original (dated that later day) yields a
+> window that no longer contains the coverer activity and the return **Generate will
+> come back empty** — just **re-run the seed** and try again. Note that
+> `--verify` dry-runs generation with an *empty* scope (no date window), so a green
+> `--verify` does **not** rule out an aged-out return window; an empty return Generate
+> is the signal to re-seed.
+
 **Manual steps:**
 
 1. **Publish the original.** Load Dana's mailbox id → **Handoff** → *Create draft* →

@@ -11,6 +11,7 @@ import type {
   RecipientPackage as RecipientPackageData,
   RecipientSession,
 } from "../api/types";
+import { navigate } from "../router";
 import {
   buildCoverageAreas,
   peopleDetailForEvidence,
@@ -327,6 +328,27 @@ function PackageDocument({
           <div className="font-medium">Scope-limited · Sensitive content excluded</div>
           <p className="mt-1 leading-relaxed text-jade">{pkg.privacy_posture.note}</p>
         </aside>
+
+        {/* S34: covered this while they were away? Start a return handoff. This does
+            NOT create anything from the recipient session — it routes into the
+            authenticated workspace carrying only the (opaque) original package id;
+            the coverer signs in / loads their own mailbox and creates it there. */}
+        {pkg.package_type !== "return_delta" ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-app2 px-4 py-3">
+            <span className="text-sm text-muted">
+              Covered this while {pkg.creator_email} was away?
+            </span>
+            <button
+              type="button"
+              className="rounded-md border border-line2 bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-app"
+              onClick={() =>
+                navigate(`/app/handoff?return_from=${encodeURIComponent(pkg.package_id)}`)
+              }
+            >
+              Create return handoff
+            </button>
+          </div>
+        ) : null}
 
         {/* Workspace tabs — Ask sits at the top, alongside the coverage brief. */}
         <div className="mt-6 flex gap-1 border-b border-line" role="tablist">
