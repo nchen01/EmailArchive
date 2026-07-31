@@ -83,6 +83,11 @@ jobs, audit log, exclusion summary, and the two audited actions (revoke package,
 disconnect provider) behind a mandatory typed-reason confirmation modal. Frontend
 only — no backend/schema/migration change; it renders only the safe metadata the API
 returns (no bodies, tokens, or vault refs) and respects security-reviewer masking.
+**S33 is drafted as a docs-only return-handoff / coverage-delta spec**:
+after coverage ends, the coverer can create a reciprocal package back to the
+original employee, automatically seeded from the original package's projects /
+coverage areas, while still using the coverer's mailbox as the source and
+preserving package-local snapshot access. Not implemented in code.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 

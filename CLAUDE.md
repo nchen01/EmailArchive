@@ -165,6 +165,11 @@ Key docs:
   exclusion summary, and the two audited actions behind a typed-reason modal. No
   backend/schema/migration/dependency change; renders only safe metadata (no bodies/
   tokens/vault_ref); respects reviewer masking; recipient routes untouched.
+- **S33 planned / docs-only, not implemented.** Return Handoff / Coverage Delta
+  (`docs/s33-return-handoff-coverage-delta-plan.md`, D15): a reciprocal package
+  created by the coverer after coverage ends, sourced from the coverer's mailbox
+  and automatically seeded from the original package's projects / coverage areas,
+  without treating it as a `new-version` or opening a mailbox backdoor.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
