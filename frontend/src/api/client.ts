@@ -5,6 +5,7 @@ import type {
   GmailWindowRequest,
   GmailWindowResponse,
   HandoffPackage,
+  ReturnContext,
   NetworkMapData,
   PreflightResponse,
   ScopeRequestBody,
@@ -688,5 +689,29 @@ export function adminDisconnectProviderAccount(
     "POST",
     `${API_BASE}/api/admin/provider-accounts/${encodeURIComponent(accountId)}/disconnect`,
     { reason },
+  );
+}
+
+// ── S34 return handoff (creator) ──────────────────────────────────────────────
+
+/**
+ * Create a return handoff draft from a PUBLISHED original coverage package, using
+ * the coverer's OWN mailbox as the source. The original only seeds scope; it never
+ * authorizes mailbox access. Returns the new return draft (package_type=return_delta).
+ */
+export async function createReturnDraft(
+  originalPackageId: string,
+  body: { coverer_mailbox_id: string; date_from?: string | null; date_to?: string | null },
+): Promise<HandoffPackage> {
+  return postJsonBody<HandoffPackage>(
+    `${API_BASE}/api/handoff/${encodeURIComponent(originalPackageId)}/return-draft`,
+    body,
+  );
+}
+
+/** Creator view of how a return draft was seeded (safe metadata only). */
+export async function getReturnContext(packageId: string): Promise<ReturnContext> {
+  return getJson<ReturnContext>(
+    `${API_BASE}/api/handoff/${encodeURIComponent(packageId)}/return-context`,
   );
 }

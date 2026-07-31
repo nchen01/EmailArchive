@@ -11,6 +11,7 @@ import type {
   RecipientPackage as RecipientPackageData,
   RecipientSession,
 } from "../api/types";
+import { navigate } from "../router";
 import {
   buildCoverageAreas,
   peopleDetailForEvidence,
@@ -292,18 +293,29 @@ function PackageDocument({
 
   return (
     <article className="overflow-hidden rounded-lg bg-surface shadow-sm ring-1 ring-line">
-      {/* Document header band — the delivered-package identity. */}
+      {/* Document header band — the delivered-package identity. S34: a return
+          handoff reads as "what changed while you were away". */}
       <header className="bg-band px-6 py-6 text-onband sm:px-8 sm:py-7">
-        <div className="text-xs font-semibold uppercase tracking-widest text-onband">
-          Handoff package · Read-only
-        </div>
-        <h1 className="mt-2 text-2xl font-semibold leading-tight">
-          {pkg.title || "Coverage handoff"}
-        </h1>
-        <div className="mt-3 text-sm text-onband">
-          Prepared for you by <span className="font-medium text-onband">{pkg.creator_email}</span>
-          {pkg.reason ? <> · {pkg.reason}</> : null}
-        </div>
+        {(() => {
+          const isReturn = pkg.package_type === "return_delta";
+          return (
+            <>
+              <div className="text-xs font-semibold uppercase tracking-widest text-onband">
+                {isReturn ? "Return handoff · Read-only" : "Handoff package · Read-only"}
+              </div>
+              <h1 className="mt-2 text-2xl font-semibold leading-tight">
+                {pkg.title || (isReturn ? "What changed while you were away" : "Coverage handoff")}
+              </h1>
+              {isReturn ? (
+                <div className="mt-1 text-sm text-onband">What changed while you were away.</div>
+              ) : null}
+              <div className="mt-3 text-sm text-onband">
+                Prepared for you by <span className="font-medium text-onband">{pkg.creator_email}</span>
+                {!isReturn && pkg.reason ? <> · {pkg.reason}</> : null}
+              </div>
+            </>
+          );
+        })()}
         <div className="mt-1 text-xs text-onband">
           Shared {fmtDate(pkg.published_at)}
           {pkg.expires_at ? <> · access expires {fmtDate(pkg.expires_at)}</> : null}
@@ -316,6 +328,27 @@ function PackageDocument({
           <div className="font-medium">Scope-limited · Sensitive content excluded</div>
           <p className="mt-1 leading-relaxed text-jade">{pkg.privacy_posture.note}</p>
         </aside>
+
+        {/* S34: covered this while they were away? Start a return handoff. This does
+            NOT create anything from the recipient session — it routes into the
+            authenticated workspace carrying only the (opaque) original package id;
+            the coverer signs in / loads their own mailbox and creates it there. */}
+        {pkg.package_type !== "return_delta" ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-app2 px-4 py-3">
+            <span className="text-sm text-muted">
+              Covered this while {pkg.creator_email} was away?
+            </span>
+            <button
+              type="button"
+              className="rounded-md border border-line2 bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-app"
+              onClick={() =>
+                navigate(`/app/handoff?return_from=${encodeURIComponent(pkg.package_id)}`)
+              }
+            >
+              Create return handoff
+            </button>
+          </div>
+        ) : null}
 
         {/* Workspace tabs — Ask sits at the top, alongside the coverage brief. */}
         <div className="mt-6 flex gap-1 border-b border-line" role="tablist">

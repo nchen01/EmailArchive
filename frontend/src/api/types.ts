@@ -374,6 +374,7 @@ export interface HandoffPackage {
   status: string; // draft | generated | published | revoked | ...
   reason: string;
   title: string;
+  package_type: string; // 'coverage' | 'return_delta' (S34)
   version: number;
   created_at: string;
   updated_at: string;
@@ -457,6 +458,7 @@ export interface RecipientPackage {
   title: string;
   reason: string;
   creator_email: string;
+  package_type: string; // 'coverage' | 'return_delta' — drives return framing (S34)
   published_at: string | null;
   expires_at: string | null;
   claims: RecipientClaim[];
@@ -590,4 +592,25 @@ export interface TenantOpsOverview {
   active_provider_accounts: number;
   job_counts_by_status: Record<string, number>;
   degraded_readiness: boolean;
+}
+
+// ── S34 return handoff (creator) ──────────────────────────────────────────────
+// Mirrors ReturnContextOut (services/api/routers/handoff.py). Safe metadata only —
+// seed provenance + carried coverage-area labels/domains + resolved counts. No
+// mailbox content, no source headers, no tokens.
+export interface ReturnContext {
+  package_id: string;
+  original_package_id: string;
+  original_creator_email: string; // the returning employee (default return recipient)
+  original_recipient_email: string;
+  return_date_from: string | null;
+  return_date_to: string | null;
+  seed_method: string; // structured | snapshot_hints | mixed
+  carried_area_labels: string[];
+  carried_domains: string[];
+  carried_project_count: number;
+  carried_person_count: number;
+  resolved_project_count: number;
+  resolved_person_count: number;
+  suggested_recipient_email: string;
 }

@@ -202,3 +202,61 @@ Vite serves on `http://localhost:5173` (strictPort). Leave this window running.
 - For a real mailbox, Handoff generation requires running L1 event extraction
   first (Anthropic-LLM `services/enrich/events_llm.py`, needs `ANTHROPIC_API_KEY`)
   — out of scope for this demo and not required for the seeded mailbox.
+
+---
+
+## Return handoff / coverage delta demo (S34)
+
+A **return handoff** is reciprocal: after coverage ends, the coverer (Alex) hands
+work back to the original employee (Dana) from **Alex's own mailbox** — it is not a
+new version of Dana's package. The seed script now creates **two** mailboxes.
+
+**Seed (same day you demo — the coverer activity is dated "today" so it falls in the
+default return window):**
+
+```powershell
+$env:DATABASE_URL='postgresql+psycopg2://ekc:...@localhost:5432/ekc_dev'
+.\.venv\Scripts\python.exe -m scripts.seed_handoff_demo --verify
+```
+
+The output prints both ids:
+- **original (Dana / covered)** → `handoff-demo@example.com`
+- **coverer (Alex / return)** → `coverer-demo@example.com`
+
+Expected: original ~7 claims / 7 evidence; return **~4 claims** (Nexus Auth key
+rotation, SOC2 MFA closure, wiki-migration open loop, Northwind SSO), with **1
+sensitive + 1 noise item excluded** (both inside a carried Nexus Auth area, so the
+gates are demonstrably at work).
+
+> **Date-window note (important):** the return's default coverage window is the
+> original package's `published_at` date → **today**, and the coverer's activity is
+> dated the **day you seed**. So **seed and run the return demo on the same day.** If
+> you demo on a later day, publishing the original (dated that later day) yields a
+> window that no longer contains the coverer activity and the return **Generate will
+> come back empty** — just **re-run the seed** and try again. Note that
+> `--verify` dry-runs generation with an *empty* scope (no date window), so a green
+> `--verify` does **not** rule out an aged-out return window; an empty return Generate
+> is the signal to re-seed.
+
+**Manual steps:**
+
+1. **Publish the original.** Load Dana's mailbox id → **Handoff** → *Create draft* →
+   *Generate* → *Publish* to `coverer-demo@example.com`. Copy the **original package
+   id** (it is in the `/app/handoff/<id>` URL).
+2. **Create the return.** Load Alex's mailbox id (paste the coverer id) → **Handoff**
+   → **"Create a return handoff"** panel → paste the original package id → *Create
+   return handoff*. (This is reciprocal, distinct from "Create a revised version".)
+3. **Review.** The **Return handoff** banner shows the carried coverage areas
+   (Nexus Auth, Security Audit) preselected automatically, the coverage window
+   (Dana's publish date → today), and that claims come from **your mailbox only**.
+   Copy reads *"what changed while Dana was away / remove anything that should not
+   travel back."* Click *Generate* → review the ~4 delta claims → *Publish* (the
+   recipient defaults to `handoff-demo@example.com`, the original creator).
+4. **Open the return link.** It reads **"Return handoff — what changed while you were
+   away."** The package-local **Ask** still works, evidence is attached to claims, and
+   there are no live mailbox / Gmail / source links. Sensitive + noise content is
+   absent from the recipient payload.
+
+**Mailbox roles:** `handoff-demo@example.com` = Dana / original covered employee;
+`coverer-demo@example.com` = Alex / coverer who returns the delta. The original
+outbound package is **never** revoked, superseded, or mutated by publishing the return.

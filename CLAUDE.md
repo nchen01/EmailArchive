@@ -165,7 +165,7 @@ Key docs:
   exclusion summary, and the two audited actions behind a typed-reason modal. No
   backend/schema/migration/dependency change; renders only safe metadata (no bodies/
   tokens/vault_ref); respects reviewer masking; recipient routes untouched.
-- **S34 ⌛ backend implemented (UI pending).** Return handoff / coverage delta (D15;
+- **S34 ✓ implemented (backend + UI + demo).** Return handoff / coverage delta (D15;
   docs/s33-return-handoff-coverage-delta-plan.md). Reciprocal package
   (`package_type=return_delta`, new lineage) from the coverer's mailbox back to the
   original employee — not a `new-version`. **Migration 0013** (`package_type`, safe
@@ -173,9 +173,12 @@ Key docs:
   `0013_return_handoff`**. Auto scope-seed resolves original coverage-area labels →
   coverer-side project ids (original UUIDs are provenance only, never cross-mailbox
   filters). Endpoints `POST /api/handoff/{original}/return-draft` +
-  `GET .../return-context`; generation reuses `generate_candidate`. Creator/recipient
-  UI + demo-seed script are the pending S34 follow-up. Recipient routes stay
-  snapshot-only; original package untouched by a return publish.
+  `GET .../return-context`; generation reuses `generate_candidate`. **Part 2 shipped:**
+  creator "Create a return handoff" entry + return-mode framing (`HandoffReview.tsx`,
+  `ReturnHandoff.tsx`), recipient "what changed while you were away" framing
+  (`RecipientPackage.tsx`, via a safe `package_type` DTO field), and a two-mailbox demo
+  seed (`scripts/seed_handoff_demo.py`: Dana + `coverer-demo`) + runbook. Recipient
+  routes stay snapshot-only; original package untouched by a return publish.
 - **S33 planned / docs-only, not implemented.** Return Handoff / Coverage Delta
   (`docs/s33-return-handoff-coverage-delta-plan.md`, D15): a reciprocal package
   created by the coverer after coverage ends, sourced from the coverer's mailbox

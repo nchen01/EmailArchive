@@ -73,6 +73,7 @@ class HandoffPackageOut(BaseModel):
     status: str
     reason: str
     title: str
+    package_type: str = "coverage"  # 'coverage' | 'return_delta' (S34)
     version: int
     created_at: str
     updated_at: str
@@ -162,6 +163,7 @@ class RecipientPackageOut(BaseModel):
     title: str
     reason: str
     creator_email: str
+    package_type: str = "coverage"  # 'coverage' | 'return_delta' — drives recipient framing (S34)
     published_at: str | None
     expires_at: str | None
     claims: list[RecipientClaimOut]

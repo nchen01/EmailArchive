@@ -419,7 +419,7 @@ components of the handoff-package experience.
   returns the neutral "unavailable"; (7) disconnect a connected provider account with a
   reason → status flips to `disconnected`; (8) confirm no body/subject/snippet, token,
   `vault_ref`, or DB URL appears anywhere.
-- **S34 ⌛ (backend implemented; creator/recipient UI pending)** Return handoff /
+- **S34 ✓ (backend + UI + two-mailbox demo)** Return handoff /
   coverage delta (implements `docs/s33-return-handoff-coverage-delta-plan.md` / D15).
   A reciprocal package (`package_type=return_delta`, new lineage) created from the
   **coverer's** mailbox back to the original employee — never a `new-version`.
@@ -436,9 +436,15 @@ components of the handoff-package experience.
   unchanged (sensitivity/noise/exclusion gates, no-citation-no-claim). S29 admin DTOs
   gain `package_type` + return→original linkage (metadata only). Tests
   `tests/test_s34_return_handoff.py` (5); full DB-gated suite 829 passed / 2 skipped.
-  **Pending S34 follow-up:** creator UI setup/review, recipient return framing, and
-  the two-mailbox demo-seed script. Recipient routes stay snapshot-only; the original
-  outbound package is never revoked/superseded/mutated by a return publish.
+  **Part 2 (UI + demo) shipped:** creator "Create a return handoff" entry + return-mode
+  banner/copy (`frontend/src/components/HandoffReview.tsx`, `ReturnHandoff.tsx`),
+  recipient "what changed while you were away" framing (`RecipientPackage.tsx`) driven
+  by a safe `package_type` field added to the package-out DTOs, client
+  `createReturnDraft`/`getReturnContext`, and a two-mailbox demo seed
+  (`scripts/seed_handoff_demo.py` seeds Dana + a `coverer-demo` mailbox with matching
+  projects, coverage-delta events, and a sensitive+noise item) plus the return runbook
+  section. Recipient routes stay snapshot-only; the original outbound package is never
+  revoked/superseded/mutated by a return publish.
 
 **Planned — docs/spec-only, not implemented (S28 spec fully implemented by S29+S30):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):
