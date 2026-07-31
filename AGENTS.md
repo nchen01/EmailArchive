@@ -406,6 +406,13 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   render check `import.meta.env.DEV`, so a production build cannot render the console
   via a direct URL — it shows the "sign-in required" empty state) until production
   role-gated sign-in exists (S22); recipient routes untouched.
+- **S33 planned / docs-only, not implemented.** Return Handoff / Coverage Delta
+  (`docs/s33-return-handoff-coverage-delta-plan.md`, D15): after coverage ends,
+  the coverer creates a reciprocal package from their own mailbox back to the
+  original employee. The return draft is automatically seeded from the original
+  package's projects / coverage areas where possible, but it is not a
+  `new-version` of the original package and it never gives the returning employee
+  live access to the coverer's mailbox.
 
 ## 6. Known gaps — flag, don't fake
 

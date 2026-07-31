@@ -338,3 +338,40 @@ in narrative form. **Affects.** `README.md`, `docs/implementation-plan.md`,
 `docs/s17-handoff-package-mvp-plan.md`, future schema/API/UI work for
 `HandoffPackage`, `HandoffScope`, `HandoffRecipient`, `HandoffEvidence`,
 `HandoffExclusion`, and `HandoffAuditEvent`.
+
+## D15 - Return handoff is a reciprocal package, not a revised version
+
+**Decision.** When coverage ends, the product should support a **return handoff**
+or **coverage delta**: the coverage employee creates a new handoff package from
+their own mailbox and publishes it back to the original covered employee. This is
+linked to the original coverage package, but it is **not** a `new-version` of
+that package.
+
+**Why.** A revised version keeps the same creator/source mailbox and answers
+"what should I share with the coverer?" A return handoff flips the direction:
+the original recipient becomes the creator, the source mailbox becomes the
+coverer's mailbox, and the recipient becomes the original covered employee. That
+artifact answers "what changed while you were away?" Treating it as a separate
+reciprocal package keeps mailbox custody, audit, and product language clear.
+
+**Scope seed.** The return package should automatically carry forward the
+original package's projects / coverage areas where possible. Structured scope
+(`included_project_ids`, people, domains, claim `project_id`s) is preferred.
+When true project ids are unavailable or mailbox-local, the system may use safe
+snapshot-derived coverage-area hints, clearly labeled as hints rather than a
+fabricated cross-mailbox project identity.
+
+**Compliance boundary.** The returning employee never gets direct access to the
+coverer's mailbox. The coverer must initiate, review, prune, and publish the
+return package. The recipient of the return package reads only package-local
+snapshot rows, with the same no-citation/no-claim, sensitivity/noise exclusion,
+revocation, expiry, and audit posture as the original handoff package.
+
+**Trade-off considered.** Reusing `new-version` would reduce schema/API work,
+but it would blur the meaning of package lineage and imply the same source
+mailbox. A separate reciprocal package requires a new link/context model, but it
+is safer and easier to explain.
+
+**Affects.** `docs/s33-return-handoff-coverage-delta-plan.md`, future
+return-handoff schema/API/UI work, and any package lifecycle copy that explains
+coverage ending / work returning.

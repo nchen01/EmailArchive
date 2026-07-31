@@ -443,6 +443,17 @@ components of the handoff-package experience.
   admin edit/generate/publish/prune, no token viewing/silent reconnect, no legal-hold
   content access, no M365/new provider/new auth provider, no retention-enforcement engine.
 
+**Planned — docs/spec-only, not implemented (S33):**
+- **S33 — Return Handoff / Coverage Delta**
+  (`docs/s33-return-handoff-coverage-delta-plan.md`, D15): designs the reciprocal
+  handoff after a coverage period ends. The coverer creates a new package from
+  their own mailbox back to the original employee; the return draft is automatically
+  seeded from the original package's projects / coverage areas where possible; and
+  the returning employee receives only the published return package snapshot, never
+  live access to the coverer's mailbox. The spec proposes a future `package_type =
+  return_delta` plus `handoff_return_context`, return-scope seeding, a return draft
+  endpoint, return-specific generation/copy, and a two-mailbox demo seed.
+
 **Specs shipped as docs/spec-only plans — not implemented in code (S18–S21):**
 _Authoritative implementation sequence: S21 §14 — S22 auth → S23 OAuth/vault → S24
 job infra → S25 ingest→jobs → S26 enrichment→jobs → S27 hosted deploy (admin/audit
