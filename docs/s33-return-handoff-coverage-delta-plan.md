@@ -488,20 +488,33 @@ Suggested sequence after this spec is approved:
 These are not blockers for the spec, but should be answered before S34
 implementation is locked.
 
+> **Update — several of these are now resolved.** Questions 1, 2, 3, 4, and 6
+> have been answered by product and are **locked as accepted defaults in
+> §21** (they are annotated **RESOLVED → §21.N** below). Questions 5, 7, and 8
+> remain genuinely open. The §21 defaults govern S34 implementation unless a
+> later product decision overrides them.
+
 1. Should the return handoff require the coverer to be a tenant user, or can the
    original recipient capability session be upgraded into a return-creation flow?
    Recommendation: require tenant sign-in / mailbox ownership for the coverer.
+   **RESOLVED → §21.1** (coverer auth required; a capability session alone is not enough).
 2. Should `HandoffPackage.reason` get a new enum value (`return` or
    `coverage_return`), or should return packages use `delegation` plus
    `package_type=return_delta`?
    Recommendation: add a new safe enum value if the migration already touches
    package constraints.
+   **RESOLVED → §21.2** (add `coverage_return` if S34 touches package constraints;
+   otherwise `package_type=return_delta` is the primary discriminator).
 3. Should the return package default date end be "today" or the original package
    `expires_at` when it is still in the future?
    Recommendation: default to today; never overload expiry as coverage period.
+   **RESOLVED → §21.3** (`date_from` = original `published_at`, `date_to` = today;
+   `expires_at` is never the coverage-window endpoint).
 4. Should Alex be allowed to add a brand-new coverage area not present in the
    original package?
    Recommendation: yes, but only via explicit action and audit.
+   **RESOLVED → §21.4** (scope defaults to the original; a new area may be added
+   only via an explicit UI action, and any expansion is audited).
 5. Should the original employee see "closed loops" as a distinct UI group even if
    the backend stores them as `decision` claims?
    Recommendation: yes in UI if deterministic classification can be done from
@@ -509,6 +522,8 @@ implementation is locked.
 6. Should return handoff publication revoke or supersede the original outbound
    package?
    Recommendation: no. They are linked artifacts with separate lifecycles.
+   **RESOLVED → §21.5** (publishing a return never revokes/supersedes/mutates the
+   original; `new-version` stays scoped to same-creator/same-mailbox revisions).
 7. Should Admin/Audit Viewer show that a return package is linked to an original
    package?
    Recommendation: yes, metadata only: package ids, type, seed method, dates,
@@ -516,3 +531,78 @@ implementation is locked.
 8. How long should return packages live by default?
    Recommendation: same default as coverage packages (30 days) unless customer
    policy says otherwise.
+
+---
+
+## 21. Resolved defaults for S34 implementation
+
+These are the **accepted defaults** for building S34. They are locked
+implementation guidance, not informal answers: an S34 implementer should build to
+them directly, and any deviation requires an explicit, later product decision that
+supersedes this section (record such a change here and in `docs/decisions.md`).
+They resolve §20 questions 1, 2, 3, 4, and 6; §20 questions 5, 7, and 8 remain
+open.
+
+### 21.1 Coverer authentication is required
+
+Creating a return handoff requires the coverer to be **signed in** and to
+**own/connect the source mailbox** used to generate the return package. A
+recipient **capability session alone is not sufficient** to create a return
+handoff. The original package may **seed scope** (§8) but **cannot authorize
+access** to the coverer's mailbox — mailbox access derives solely from the
+coverer's own authenticated ownership/connection.
+
+*Rationale:* the return package is generated from the coverer's mailbox, so its
+authority must come from the coverer owning that mailbox, never from possession of
+the original package's capability link. This keeps mailbox custody unambiguous and
+fails closed in production. (Implements §7; dev mode may relax sign-in for
+localhost testing only.)
+
+### 21.2 Reason enum
+
+If the S34 migration **touches `handoff_package` constraints** (it does — §10.1
+adds `package_type`), add a safe `reason` enum value **`coverage_return`** in the
+same migration. If for some reason package constraints are **not** touched,
+`package_type=return_delta` remains the **primary discriminator** and the return
+package reuses an existing safe `reason` value (`delegation`).
+
+*Rationale:* `package_type` is the authoritative return/coverage discriminator
+regardless; a dedicated `coverage_return` reason is a low-cost readability win
+that is nearly free to add while the constraint is already being altered, and is
+not worth a standalone migration otherwise. (Refines §10.3.)
+
+### 21.3 Default coverage date window
+
+- `date_from` = the original package's **`published_at`** date.
+- `date_to` = **today** (adjustable by the coverer before generation).
+- **`expires_at` is never** used as the coverage-window endpoint.
+
+*Rationale:* expiry governs recipient **access**; the coverage window governs
+which **evidence is searched** (§9). `expires_at` can be far in the future, so
+reusing it would search the wrong window. A formal planned coverage period, if
+ever needed, uses explicit `coverage_starts_on` / `coverage_ends_on` fields, not
+expiry.
+
+### 21.4 Adding new coverage areas
+
+The return draft's scope **defaults to the areas carried from the original
+package** (§8). The coverer **may add a new area only through an explicit UI
+action** ("add related area"), and **any expansion beyond the original coverage
+scope is audited** (`return_scope_changed`, §15).
+
+*Rationale:* automatic carry-forward gives ease of use without silently widening
+scope; an explicit, audited add keeps the return package from quietly exceeding
+what the coverer was originally asked to cover. (Implements §8.3.)
+
+### 21.5 Original package lifecycle is untouched
+
+Publishing a return handoff **does not revoke, supersede, or mutate the original
+outbound coverage package**. The two are **linked reciprocal artifacts with
+separate lifecycles** (D15). **`new-version` remains only** for revising a package
+within the **same creator / same source-mailbox** lineage — it is never used for
+the return direction.
+
+*Rationale:* revoking or superseding the original would destroy the coverer's own
+record of what they were asked to cover and reintroduce the exact lineage
+confusion D15 exists to avoid. The linkage lives in `handoff_return_context`
+(§10.2), not in shared lineage or lifecycle state. (Implements §4 / D15.)
