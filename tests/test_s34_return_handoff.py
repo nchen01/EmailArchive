@@ -268,6 +268,73 @@ def test_non_owner_cannot_create_return(world, monkeypatch):
 
 
 @requires_db
+def test_cross_tenant_original_is_404_indistinguishable_from_missing(world, monkeypatch):
+    """A different-tenant user with a VALID source mailbox cannot tell an existing
+    (cross-tenant) original apart from a missing id — both return an identical 404,
+    so there is no cross-tenant existence oracle."""
+    from services.api.auth import Principal
+    from services.db import models as orm
+    monkeypatch.setenv("AUTH_MODE", "production")
+
+    tb = orm.Tenant(name="S34B-" + uuid.uuid4().hex[:6])
+    world.session.add(tb)
+    world.session.flush()
+    ub = orm.AppUser(tenant_id=tb.id, idp_subject="s34b-" + uuid.uuid4().hex[:8], email="bob@other.corp")
+    world.session.add(ub)
+    world.session.flush()
+    mb = orm.Mailbox(provider="gmail", owner_email="bob@other.corp", embed_model="deferred",
+                     embed_dim=0, config={}, tenant_id=tb.id, owner_user_id=ub.id)
+    world.session.add(mb)
+    world.session.commit()
+    try:
+        pb = Principal(user_id=str(ub.id), tenant_id=str(tb.id), email="bob@other.corp",
+                       roles=frozenset({"creator"}), is_dev=False)
+        world.app.dependency_overrides[world.get_principal] = lambda: pb
+        # existing original (tenant A) is cross-tenant to Bob → 404
+        r_exist = world.client.post(f"/api/handoff/{world.orig_id}/return-draft",
+                                    json={"coverer_mailbox_id": str(mb.id)})
+        # a missing original id → 404
+        r_missing = world.client.post(f"/api/handoff/{uuid.uuid4()}/return-draft",
+                                      json={"coverer_mailbox_id": str(mb.id)})
+        assert r_exist.status_code == 404 and r_missing.status_code == 404
+        assert r_exist.json() == r_missing.json()  # indistinguishable
+    finally:
+        world.app.dependency_overrides.clear()
+        world.session.execute(orm.Mailbox.__table__.delete().where(orm.Mailbox.id == mb.id))
+        world.session.execute(orm.AppUser.__table__.delete().where(orm.AppUser.id == ub.id))
+        world.session.execute(orm.Tenant.__table__.delete().where(orm.Tenant.id == tb.id))
+        world.session.commit()
+
+
+@requires_db
+def test_capability_session_alone_cannot_create_return(world, monkeypatch):
+    """No creator/tenant Principal (a recipient capability session is not a Principal)
+    → 401 in production. The endpoint requires signed-in creator/source-mailbox auth."""
+    monkeypatch.setenv("AUTH_MODE", "production")
+    world.app.dependency_overrides.clear()  # no principal source → get_principal 401
+    r = world.client.post(f"/api/handoff/{world.orig_id}/return-draft",
+                          json={"coverer_mailbox_id": world.alex_id})
+    assert r.status_code == 401
+
+
+@requires_db
+def test_non_published_original_rejected(world, monkeypatch):
+    """Only a PUBLISHED original can seed a return; a same-tenant non-published
+    original is rejected with 409 (tenant-visible, wrong state)."""
+    from services.db import models as orm
+    monkeypatch.setenv("AUTH_MODE", "dev")
+    orig = world.session.get(orm.HandoffPackage, world.orig_id)
+    for bad in ("draft", "generated", "revoked", "superseded"):
+        orig.status = bad
+        world.session.commit()
+        r = world.client.post(f"/api/handoff/{world.orig_id}/return-draft",
+                              json={"coverer_mailbox_id": world.alex_id})
+        assert r.status_code == 409, f"{bad} -> {r.status_code}"
+    orig.status = "published"
+    world.session.commit()
+
+
+@requires_db
 def test_owner_but_wrong_recipient_email_denied(world, monkeypatch):
     """Owns the coverer mailbox but is not the original recipient → 403."""
     from services.api.auth import Principal

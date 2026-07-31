@@ -295,21 +295,34 @@ async def create_return_handoff(
     production — must be the original package's recipient (verified email match).
     The original package only seeds scope; it never authorizes mailbox access.
     """
-    original = _get_package(db, _uuid_or_404(original_package_id))
+    # 1) The coverer must OWN the source mailbox — this establishes the authenticated
+    #    tenant context for everything below. Not owned → 404.
+    coverer_mbx = owned_mailbox_or_none(db, principal, _uuid_or_404(body.coverer_mailbox_id))
+    if coverer_mbx is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    # 2) Resolve the original ONLY within the coverer's tenant. A missing original
+    #    and a cross-tenant original are INDISTINGUISHABLE (both 404) so this endpoint
+    #    is never a cross-tenant existence oracle (repo-wide posture, S19 §4). Note the
+    #    original still only *seeds scope*; it never authorizes mailbox access.
+    original = db.get(orm.HandoffPackage, _uuid_or_404(original_package_id))
+    orig_mbx = db.get(orm.Mailbox, original.mailbox_id) if original is not None else None
+    if original is None or orig_mbx is None or str(orig_mbx.tenant_id) != str(coverer_mbx.tenant_id):
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    # 3) Only a PUBLISHED original can seed a return. This 409 is only reachable for a
+    #    tenant-visible original (same tenant as the caller), so it leaks nothing
+    #    cross-tenant — draft/generated/revoked/superseded originals are rejected here.
     if original.status != "published":
         raise HTTPException(
             status_code=409,
             detail=f"a return handoff can only be created from a published package (status '{original.status}')",
         )
 
-    # 1) The coverer must OWN the source mailbox used to generate the return.
-    coverer_mbx = owned_mailbox_or_none(db, principal, _uuid_or_404(body.coverer_mailbox_id))
-    if coverer_mbx is None:
-        raise HTTPException(status_code=404, detail="Not found.")
-
-    # 2) The coverer must be the ORIGINAL recipient (verified email match). Dev mode
-    #    relaxes this to preserve localhost testing (get_principal already returns
-    #    the dev principal there); production fails closed.
+    # 4) The coverer must be the ORIGINAL recipient (verified email match). Reachable
+    #    only after tenant-visibility is established, so wrong-recipient → 403 is a
+    #    same-tenant signal only. Dev mode relaxes this to preserve localhost testing
+    #    (get_principal already returns the dev principal there); production fails closed.
     recipient_email = db.execute(
         select(orm.HandoffRecipient.recipient_email).where(
             orm.HandoffRecipient.package_id == original.id
