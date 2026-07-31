@@ -9,6 +9,11 @@ recipient (ask, refresh, consumed-link) → export → new-version/supersede.**
 - **Handoff generation demo → the seeded `handoff-demo` mailbox** (below).
   Real mailboxes only have handoff `Event` rows if the Anthropic-LLM event
   extraction has been run for them.
+- **Investor / full-product demo -> the seeded `rich-handoff-demo` mailbox**
+  (optional richer seed below). It creates a denser, more realistic mailbox with
+  projects, people, relationship edges, threads, messages, and grounded events so
+  the Projects, Relationship Map, Cover-for-me, and Handoff surfaces all have
+  more to show.
 - **`puluo` (`e21c187a-956a-47ee-92aa-b21badd16f4d`) → Cover-for-me /
   Relationship Map / Network smoke only.** It has **zero `Event` rows**, so
   Handoff → Generate on it correctly yields an empty package and shows the
@@ -54,6 +59,32 @@ Copy the printed **`mailbox_id`** — that is what you load in the UI. Expected:
 
 The script is idempotent and only ever touches its own `handoff-demo@example.com`
 mailbox — it never modifies puluo or any other mailbox.
+
+### Optional richer demo mailbox
+
+Use this before an investor/full-product demo when the compact seed feels too
+small. It is deterministic, local-only, and makes **no external API calls**.
+
+```powershell
+$env:DATABASE_URL='postgresql+psycopg2://ekc:ekc_dev_password@localhost:5432/ekc_dev'
+.\.venv\Scripts\python.exe scripts\seed_rich_handoff_demo.py --verify
+```
+
+Copy the printed **`mailbox_id`**. Expected default output:
+
+- **12 projects**
+- **72 threads**
+- **288 messages**
+- **72 grounded events**
+- **~68 claims / ~68 evidence** on verification
+- sensitive and noise threads excluded from generated evidence
+
+This mailbox is owned by `rich-handoff-demo@example.com` and is isolated from
+`handoff-demo@example.com`, `coverer-demo@example.com`, puluo, and any other
+mailbox. Re-running the script resets only the rich demo mailbox. The seeded
+subjects are written like normal workplace threads, while the project name is
+mentioned in the message body so the demo remains realistic without losing
+project grounding.
 
 ---
 
