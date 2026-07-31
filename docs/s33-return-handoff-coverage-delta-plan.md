@@ -488,11 +488,12 @@ Suggested sequence after this spec is approved:
 These are not blockers for the spec, but should be answered before S34
 implementation is locked.
 
-> **Update — several of these are now resolved.** Questions 1, 2, 3, 4, and 6
-> have been answered by product and are **locked as accepted defaults in
-> §21** (they are annotated **RESOLVED → §21.N** below). Questions 5, 7, and 8
-> remain genuinely open. The §21 defaults govern S34 implementation unless a
-> later product decision overrides them.
+> **Update — all of these are now resolved.** Every question below has been
+> answered by product and is **locked as an accepted default in §21** (each is
+> annotated **RESOLVED → §21.N**). Questions 1, 2, 3, 4, and 6 are locked in
+> §21.1–§21.5; questions 5, 7, and 8 are locked in §21.6–§21.8. Nothing here is
+> open. The §21 defaults govern S34 implementation unless a later product decision
+> overrides them.
 
 1. Should the return handoff require the coverer to be a tenant user, or can the
    original recipient capability session be upgraded into a return-creation flow?
@@ -519,6 +520,9 @@ implementation is locked.
    the backend stores them as `decision` claims?
    Recommendation: yes in UI if deterministic classification can be done from
    claim text/event type without adding a claim kind.
+   **RESOLVED → §21.6** (show "Closed loops" as a distinct group when
+   deterministic classification is possible; use existing claim kinds; no new
+   claim kind unless the enum proves insufficient).
 6. Should return handoff publication revoke or supersede the original outbound
    package?
    Recommendation: no. They are linked artifacts with separate lifecycles.
@@ -528,9 +532,14 @@ implementation is locked.
    package?
    Recommendation: yes, metadata only: package ids, type, seed method, dates,
    counts; no content.
+   **RESOLVED → §21.7** (Admin/Audit shows the linkage as metadata only — original
+   + return package ids, `package_type`, `seed_method`, dates, counts; never
+   content, tokens, or live mailbox links).
 8. How long should return packages live by default?
    Recommendation: same default as coverage packages (30 days) unless customer
    policy says otherwise.
+   **RESOLVED → §21.8** (`published_at` + 30 days, same as coverage packages;
+   policy-adjustable later; no separate retention system in S34).
 
 ---
 
@@ -540,8 +549,9 @@ These are the **accepted defaults** for building S34. They are locked
 implementation guidance, not informal answers: an S34 implementer should build to
 them directly, and any deviation requires an explicit, later product decision that
 supersedes this section (record such a change here and in `docs/decisions.md`).
-They resolve §20 questions 1, 2, 3, 4, and 6; §20 questions 5, 7, and 8 remain
-open.
+They resolve **all of §20 (questions 1–8)**: §21.1–§21.5 lock questions 1, 2, 3,
+4, and 6; §21.6–§21.8 lock the remaining questions 5, 7, and 8. **No §20 question
+is open** — the S33 spec is fully locked for S34.
 
 ### 21.1 Coverer authentication is required
 
@@ -606,3 +616,42 @@ the return direction.
 record of what they were asked to cover and reintroduce the exact lineage
 confusion D15 exists to avoid. The linkage lives in `handoff_return_context`
 (§10.2), not in shared lineage or lifecycle state. (Implements §4 / D15.)
+
+### 21.6 Closed-loops UI grouping
+
+The return **recipient** UI **should** show "**Closed loops**" as a distinct
+group **when deterministic classification is possible**. These are stored using
+the **existing claim kinds** for now — most likely `decision`/outcome-backed
+claims (§11) — and grouping is a **display-time** classification derived from
+claim text / event type. **Do not add a new claim kind** unless a later
+implementation review proves the existing enum cannot express it cleanly.
+
+*Rationale:* the returning employee cares specifically about "what got closed
+while I was away," so a distinct group is high-value UX; doing it as a
+deterministic display grouping over existing kinds avoids a schema/enum change and
+keeps the claim model stable. (Resolves §20 Q5; refines §11 / §13.4.)
+
+### 21.7 Admin / Audit linkage visibility
+
+The Admin / Audit Viewer **should** show that a return package is **linked** to an
+original coverage package — **metadata only**: original package id, return package
+id, `package_type`, `seed_method`, dates, and counts. It shows **no** claim text,
+evidence subject/body, source headers, mailbox content, recipient
+capability/session tokens, or live mailbox/Gmail links.
+
+*Rationale:* the linkage is governance-relevant (an auditor should see that a
+return was seeded from a specific coverage package) and is cheaply satisfied from
+`handoff_return_context` (§10.2) within the S29 metadata-only posture — it never
+becomes a content path. (Resolves §20 Q7; extends §15 and the S29 admin surface.)
+
+### 21.8 Return package retention default
+
+A return package uses the **same default retention as a normal coverage package:
+`published_at` + 30 days**. This stays **policy-adjustable later**, but S34 **does
+not** introduce a separate retention system for return packages.
+
+*Rationale:* return and coverage packages carry the same kind of frozen snapshot
+and the same audit/expiry posture (D15), so a divergent retention default would be
+surprising and add avoidable machinery. Any tenant-configurable retention is a
+later, cross-cutting concern, not S34 scope. (Resolves §20 Q8; consistent with the
+shipped 30-day expiry default.)
