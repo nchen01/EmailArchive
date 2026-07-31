@@ -306,7 +306,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29–S31):**
+**Implemented (S22–S27, S29–S31; S34 backend):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -419,6 +419,26 @@ components of the handoff-package experience.
   returns the neutral "unavailable"; (7) disconnect a connected provider account with a
   reason → status flips to `disconnected`; (8) confirm no body/subject/snippet, token,
   `vault_ref`, or DB URL appears anywhere.
+- **S34 ⌛ (backend implemented; creator/recipient UI pending)** Return handoff /
+  coverage delta (implements `docs/s33-return-handoff-coverage-delta-plan.md` / D15).
+  A reciprocal package (`package_type=return_delta`, new lineage) created from the
+  **coverer's** mailbox back to the original employee — never a `new-version`.
+  Migration **0013** (`handoff_package.package_type` coverage|return_delta, safe
+  `coverage_return` reason, `handoff_return_context` provenance table; head
+  `0013_return_handoff`, no ekc_schemas change). Auto scope-seed
+  (`services/handoff/return_scope.py`): original coverage-area **labels → coverer-side
+  project ids**, else domain/person snapshot hints → coverer person ids; original
+  project UUIDs are provenance only, never cross-mailbox filters (§12). Endpoints
+  `POST /api/handoff/{original}/return-draft` + `GET .../return-context`
+  (`services/handoff/return_handoff.py`): coverer owns the source mailbox + (prod) is
+  the original recipient; window = original `published_at` → today; publish defaults
+  the recipient to the original creator; generation reuses `generate_candidate`
+  unchanged (sensitivity/noise/exclusion gates, no-citation-no-claim). S29 admin DTOs
+  gain `package_type` + return→original linkage (metadata only). Tests
+  `tests/test_s34_return_handoff.py` (5); full DB-gated suite 829 passed / 2 skipped.
+  **Pending S34 follow-up:** creator UI setup/review, recipient return framing, and
+  the two-mailbox demo-seed script. Recipient routes stay snapshot-only; the original
+  outbound package is never revoked/superseded/mutated by a return publish.
 
 **Planned — docs/spec-only, not implemented (S28 spec fully implemented by S29+S30):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):

@@ -618,6 +618,9 @@ class HandoffPackage(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     policy_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="standard")
+    # S34: discriminates a normal coverage package from a reciprocal return handoff
+    # (D15). 'coverage' (default; existing rows backfill) | 'return_delta'.
+    package_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="coverage")
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     supersedes_package_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="SET NULL")
@@ -632,6 +635,48 @@ class HandoffPackage(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# S34 — return handoff / coverage delta (docs/s33-return-handoff-coverage-delta-plan.md §10.2).
+# One row per return_delta package: SAFE provenance of the original package + the
+# carried scope descriptors + how the return draft was seeded. Never stores message
+# or evidence bodies, source headers, tokens, or provider data.
+class HandoffReturnContext(Base):
+    __tablename__ = "handoff_return_context"
+
+    package_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("handoff_package.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    original_package_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    original_lineage_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    original_creator_email: Mapped[str] = mapped_column(Text, nullable=False)
+    original_recipient_email: Mapped[str] = mapped_column(Text, nullable=False)
+    return_date_from: Mapped[date | None] = mapped_column(Date)
+    return_date_to: Mapped[date | None] = mapped_column(Date)
+    carried_project_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(UUID(as_uuid=False)), nullable=False, server_default="{}"
+    )
+    carried_person_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(UUID(as_uuid=False)), nullable=False, server_default="{}"
+    )
+    carried_domains: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    carried_area_labels: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    seed_method: Mapped[str] = mapped_column(Text, nullable=False, server_default="snapshot_hints")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "seed_method IN ('structured','snapshot_hints','mixed')",
+            name="ck_return_seed_method",
+        ),
+    )
 
 
 class HandoffScope(Base):

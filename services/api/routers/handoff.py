@@ -30,14 +30,24 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel, Field
+
 from services.db import models as orm
 from services.handoff.audit import write_handoff_audit
 from services.handoff.export_html import render_package_html
 from services.handoff.generator import generate_candidate, generation_diagnostic
+from services.handoff.return_handoff import create_return_draft, default_return_window
 from services.handoff.tokens import actor_hash_prefix, hash_token, new_capability_code
 from services.ingest.list_options import DateWindowError, parse_date_window
 
-from ..auth import require_owner_mailbox, require_owner_package
+from ..auth import (
+    Principal,
+    get_auth_mode,
+    get_principal,
+    owned_mailbox_or_none,
+    require_owner_mailbox,
+    require_owner_package,
+)
 from ..deps import get_db
 from ..schemas.handoff import (
     CreateHandoffRequest,
@@ -247,6 +257,115 @@ async def get_handoff(package_id: str, db: Session = Depends(get_db)) -> Handoff
     return _package_out(db, _get_package(db, package_id))
 
 
+# ── Return handoff / coverage delta (S34) ─────────────────────────────────────
+
+class ReturnDraftRequest(BaseModel):
+    coverer_mailbox_id: str = Field(..., description="the coverer's own source mailbox")
+    date_from: str | None = None  # optional override of the default coverage window
+    date_to: str | None = None
+
+
+class ReturnContextOut(BaseModel):
+    package_id: str
+    original_package_id: str
+    original_creator_email: str  # the returning employee (default return recipient)
+    original_recipient_email: str
+    return_date_from: str | None
+    return_date_to: str | None
+    seed_method: str
+    carried_area_labels: list[str]
+    carried_domains: list[str]
+    carried_project_count: int
+    carried_person_count: int
+    resolved_project_count: int
+    resolved_person_count: int
+    suggested_recipient_email: str  # defaults the return recipient to the original creator
+
+
+@router.post("/handoff/{original_package_id}/return-draft", response_model=HandoffPackageOut)
+async def create_return_handoff(
+    original_package_id: str,
+    body: ReturnDraftRequest,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> HandoffPackageOut:
+    """Create a return draft from a PUBLISHED original coverage package.
+
+    Auth (§7 / §21.1): the caller must own the coverer source mailbox, and — in
+    production — must be the original package's recipient (verified email match).
+    The original package only seeds scope; it never authorizes mailbox access.
+    """
+    original = _get_package(db, _uuid_or_404(original_package_id))
+    if original.status != "published":
+        raise HTTPException(
+            status_code=409,
+            detail=f"a return handoff can only be created from a published package (status '{original.status}')",
+        )
+
+    # 1) The coverer must OWN the source mailbox used to generate the return.
+    coverer_mbx = owned_mailbox_or_none(db, principal, _uuid_or_404(body.coverer_mailbox_id))
+    if coverer_mbx is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    # 2) The coverer must be the ORIGINAL recipient (verified email match). Dev mode
+    #    relaxes this to preserve localhost testing (get_principal already returns
+    #    the dev principal there); production fails closed.
+    recipient_email = db.execute(
+        select(orm.HandoffRecipient.recipient_email).where(
+            orm.HandoffRecipient.package_id == original.id
+        )
+    ).scalar_one_or_none()
+    if get_auth_mode() != "dev":
+        if not recipient_email or (coverer_mbx.owner_email or "").lower() != recipient_email.lower():
+            raise HTTPException(
+                status_code=403,
+                detail="only the original package recipient may create a return handoff.",
+            )
+
+    # 3) Default coverage window (§9): from = original published_at date, to = today.
+    d_from, d_to = default_return_window(original)
+    if body.date_from or body.date_to:
+        try:
+            window = parse_date_window(body.date_from, body.date_to)
+            d_from = window.date_from if body.date_from else d_from
+            d_to = window.date_to if body.date_to else d_to
+        except DateWindowError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    pkg = create_return_draft(
+        db, original_pkg=original, coverer_mailbox=coverer_mbx, date_from=d_from, date_to=d_to
+    )
+    return _package_out(db, pkg)
+
+
+@router.get(
+    "/handoff/{package_id}/return-context", response_model=ReturnContextOut,
+    dependencies=[Depends(require_owner_package)],
+)
+async def get_return_context(package_id: str, db: Session = Depends(get_db)) -> ReturnContextOut:
+    """Creator view of how a return draft was seeded (safe metadata only)."""
+    ctx = db.get(orm.HandoffReturnContext, _uuid_or_404(package_id))
+    if ctx is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    scope = db.get(orm.HandoffScope, ctx.package_id)
+    return ReturnContextOut(
+        package_id=str(ctx.package_id),
+        original_package_id=str(ctx.original_package_id),
+        original_creator_email=ctx.original_creator_email,
+        original_recipient_email=ctx.original_recipient_email,
+        return_date_from=ctx.return_date_from.isoformat() if ctx.return_date_from else None,
+        return_date_to=ctx.return_date_to.isoformat() if ctx.return_date_to else None,
+        seed_method=ctx.seed_method,
+        carried_area_labels=list(ctx.carried_area_labels or []),
+        carried_domains=list(ctx.carried_domains or []),
+        carried_project_count=len(ctx.carried_project_ids or []),
+        carried_person_count=len(ctx.carried_person_ids or []),
+        resolved_project_count=len(scope.included_project_ids or []) if scope else 0,
+        resolved_person_count=len(scope.included_person_ids or []) if scope else 0,
+        suggested_recipient_email=ctx.original_creator_email,
+    )
+
+
 @router.post(
     "/handoff/{package_id}/publish", response_model=PublishResponse,
     dependencies=[Depends(require_owner_package)],
@@ -274,6 +393,12 @@ async def publish_handoff(
         )
 
     recipient_email = body.recipient_email.strip()
+    if not recipient_email and pkg.package_type == "return_delta":
+        # A return handoff defaults its recipient to the original package's creator
+        # (the returning employee) — §10.3 / §21.5.
+        ctx = db.get(orm.HandoffReturnContext, pkg.id)
+        if ctx and ctx.original_creator_email:
+            recipient_email = ctx.original_creator_email.strip()
     if not recipient_email:
         raise HTTPException(status_code=422, detail="recipient_email is required")
 

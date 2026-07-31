@@ -132,7 +132,8 @@ def _summary(pkg: orm.HandoffPackage, recipient_email: str | None, full_access: 
     r_email = recipient_email if full_access else _mask_email(recipient_email)
     return PackageAdminSummary(
         id=str(pkg.id), mailbox_id=str(pkg.mailbox_id), title=pkg.title,
-        status=pkg.status, version=pkg.version, lineage_id=str(pkg.lineage_id),
+        status=pkg.status, package_type=pkg.package_type, version=pkg.version,
+        lineage_id=str(pkg.lineage_id),
         creator_email=pkg.creator_email, reason_category=pkg.reason, recipient_email=r_email,
         created_at=_iso(pkg.created_at), published_at=_iso(pkg.published_at),
         expires_at=_iso(pkg.expires_at), revoked_at=_iso(pkg.revoked_at),
@@ -175,6 +176,7 @@ def get_package(db: Session, *, tenant_id: str, package_id: str, full_access: bo
     evidence_count = db.execute(
         select(func.count()).select_from(orm.HandoffEvidence).where(orm.HandoffEvidence.package_id == pkg.id)
     ).scalar() or 0
+    ctx = db.get(orm.HandoffReturnContext, pkg.id)  # S34 linkage (metadata only)
     return PackageAdminDetail(
         **base.model_dump(),
         policy_mode=pkg.policy_mode,
@@ -182,6 +184,8 @@ def get_package(db: Session, *, tenant_id: str, package_id: str, full_access: bo
         exported_at=_exported_at(db, str(pkg.id)),
         recipient_state=_recipient_state(db, str(pkg.id)),
         claim_count=int(claim_count), evidence_count=int(evidence_count),
+        original_package_id=str(ctx.original_package_id) if ctx else None,
+        return_seed_method=ctx.seed_method if ctx else None,
     )
 
 

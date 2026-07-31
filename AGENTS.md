@@ -406,6 +406,28 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   render check `import.meta.env.DEV`, so a production build cannot render the console
   via a direct URL — it shows the "sign-in required" empty state) until production
   role-gated sign-in exists (S22); recipient routes untouched.
+- **S34 ⌛ backend implemented (creator/recipient UI pending).** Return handoff /
+  coverage delta (implements docs/s33-return-handoff-coverage-delta-plan.md; D15). A
+  return handoff is a **reciprocal** package (new lineage, `package_type=return_delta`),
+  created from the **coverer's** mailbox and sent back to the original employee — not
+  a `new-version`. Migration **0013** adds `handoff_package.package_type`
+  (coverage|return_delta), the safe `coverage_return` reason, and
+  `handoff_return_context` (safe provenance + carried descriptors + seed_method);
+  head is now **`0013_return_handoff`** (no ekc_schemas change). Scope auto-seeds from
+  the original (`services/handoff/return_scope.py`): structured carry-forward matches
+  original **coverage-area labels → the coverer's own project ids**, else domain/person
+  snapshot hints → coverer person ids; **original project UUIDs are never used as
+  filters** (mailbox-local, §12), only carried as provenance. New endpoints
+  `POST /api/handoff/{original}/return-draft` + `GET /api/handoff/{id}/return-context`
+  (`services/handoff/return_handoff.py`): coverer must own the source mailbox and (in
+  production) be the original recipient; default window = original `published_at` →
+  today (never `expires_at`); publish defaults the recipient to the original creator.
+  Generation **reuses** `generate_candidate` unchanged. S29 admin package DTOs gain
+  `package_type` + return→original linkage (metadata only). Tests
+  `tests/test_s34_return_handoff.py` (5). **Pending S34 follow-up:** creator UI
+  setup/review, recipient return framing, and the two-mailbox demo-seed script.
+  Recipient routes stay package-local snapshot-only; the original outbound package is
+  never revoked/superseded/mutated by publishing a return.
 - **S33 planned / docs-only, not implemented.** Return Handoff / Coverage Delta
   (`docs/s33-return-handoff-coverage-delta-plan.md`, D15): after coverage ends,
   the coverer creates a reciprocal package from their own mailbox back to the
