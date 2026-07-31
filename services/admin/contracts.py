@@ -12,6 +12,7 @@ class PackageAdminSummary(BaseModel):
     mailbox_id: str
     title: str
     status: str
+    package_type: str  # 'coverage' | 'return_delta' (S34)
     version: int
     lineage_id: str
     creator_email: str
@@ -33,6 +34,9 @@ class PackageAdminDetail(PackageAdminSummary):
     recipient_state: str | None  # granted/consumed/expired/revoked — derived, no hashes
     claim_count: int
     evidence_count: int
+    # S34 return↔original linkage (metadata only, §21.7): present for return_delta.
+    original_package_id: str | None
+    return_seed_method: str | None
 
 
 class PackageAuditEventView(BaseModel):
