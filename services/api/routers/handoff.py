@@ -134,7 +134,8 @@ def _package_out(db: Session, pkg: orm.HandoffPackage) -> HandoffPackageOut:
 
     return HandoffPackageOut(
         id=pkg.id, mailbox_id=pkg.mailbox_id, creator_email=pkg.creator_email,
-        status=pkg.status, reason=pkg.reason, title=pkg.title, version=pkg.version,
+        status=pkg.status, reason=pkg.reason, title=pkg.title,
+        package_type=pkg.package_type, version=pkg.version,
         created_at=pkg.created_at.isoformat(), updated_at=pkg.updated_at.isoformat(),
         published_at=pkg.published_at.isoformat() if pkg.published_at else None,
         expires_at=pkg.expires_at.isoformat() if pkg.expires_at else None,

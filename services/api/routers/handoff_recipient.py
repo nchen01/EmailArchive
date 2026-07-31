@@ -230,7 +230,7 @@ async def get_recipient_package(
     )
     return RecipientPackageOut(
         package_id=pkg.id, title=pkg.title, reason=pkg.reason,
-        creator_email=pkg.creator_email,
+        creator_email=pkg.creator_email, package_type=pkg.package_type,
         published_at=pkg.published_at.isoformat() if pkg.published_at else None,
         expires_at=pkg.expires_at.isoformat() if pkg.expires_at else None,
         claims=[RecipientClaimOut(

@@ -110,21 +110,78 @@ DEMO_EVENTS: list[tuple[str, str, list[str]]] = [
 ]
 
 
+# ── Coverer (return handoff) dataset ─────────────────────────────────────────
+# A SECOND mailbox: the coverage employee (Alex) who covered Dana's Nexus Auth &
+# Security Audit areas. Thread subjects share tokens with Dana's coverage areas so
+# the return scope-seed resolves them to Alex-side projects (structured). The
+# coverage-delta events cover: a decision, a closed open loop, a new open loop, a
+# project-state/new-person change, plus one sensitive + one noise item (both inside
+# a carried area, so the exclusion gates are demonstrably at work).
+COVERER_OWNER_EMAIL = "coverer-demo@example.com"
+COVERER_INTERNAL_DOMAINS = ["acme.dev"]
+
+COVERER_THREADS: list[tuple[str, list[dict]]] = [
+    ("Nexus Auth key rotation", [
+        {"header": "cov-nexus-1@acme.dev", "sender": "coverer-demo@example.com", "display": "Alex Kim",
+         "subject": "Rotated Nexus Auth service keys",
+         "body": "Rotated the Nexus Auth service account keys and verified every internal app still authenticates."},
+    ]),
+    ("Security Audit — MFA closure", [
+        {"header": "cov-sec-1@acme.dev", "sender": "security@acme.dev", "display": "Security Team",
+         "subject": "SOC2 last item closed",
+         "body": "Enabled MFA on the legacy admin accounts, closing the last SOC2 remediation item Dana had left open."},
+    ]),
+    ("Nexus Auth wiki migration", [
+        {"header": "cov-wiki-1@acme.dev", "sender": "coverer-demo@example.com", "display": "Alex Kim",
+         "subject": "Migrate wiki to Nexus Auth",
+         "body": "Proposing we migrate the internal wiki to Nexus Auth next — it is the last app on the old SSO."},
+    ]),
+    ("Nexus Auth — Northwind SSO", [
+        {"header": "cov-partner-1@northwind.example", "sender": "jordan@northwind.example", "display": "Jordan (Northwind)",
+         "subject": "Northwind SSO integration",
+         "body": "Kicked off the Nexus Auth SSO integration with Northwind; their identity team will send SAML metadata."},
+    ]),
+    # Whole-thread sensitive, but IN a carried Nexus Auth area → excluded by the gate.
+    ("Nexus Auth incident (confidential)", [
+        {"header": "cov-sens-1@acme.dev", "sender": "security@acme.dev", "display": "Security Team",
+         "subject": "Confidential Nexus Auth incident",
+         "body": "Confidential: details of a Nexus Auth security incident under embargo.",
+         "sensitivity": ["legal"]},
+    ]),
+    # Noise, IN a carried Nexus Auth area → filtered by the noise gate.
+    ("Nexus Auth ops digest", [
+        {"header": "cov-noise-1@statuspage.io", "sender": "notifications@statuspage.io", "display": "Statuspage",
+         "subject": "Weekly automated status digest",
+         "body": "Automated weekly uptime digest for the Nexus Auth service.",
+         "noise": True},
+    ]),
+]
+
+COVERER_EVENTS: list[tuple[str, str, list[str]]] = [
+    ("did", "Rotated the Nexus Auth service account keys", ["cov-nexus-1@acme.dev"]),                       # decision
+    ("outcome", "Closed the last SOC2 item — MFA enabled on legacy admin accounts", ["cov-sec-1@acme.dev"]),  # closed loop
+    ("proposed", "Migrate the internal wiki to Nexus Auth (last app on old SSO)", ["cov-wiki-1@acme.dev"]),  # new open loop
+    ("did", "Kicked off the Northwind SSO integration under Nexus Auth", ["cov-partner-1@northwind.example"]),  # project-state + new person/domain
+    ("did", "Handled a confidential Nexus Auth incident", ["cov-sens-1@acme.dev"]),   # excluded (sensitive)
+    ("did", "Received the weekly automated status digest", ["cov-noise-1@statuspage.io"]),  # excluded (noise)
+]
+
+
 def _addresses(display: str) -> dict:
     """Minimal workspace-safe `addresses` blob so evidence shows a display name."""
     return {"sender": {"display_names": [display]}}
 
 
-def get_or_create_mailbox(session) -> tuple[str, str]:
-    """Return (mailbox_id, owner_person_id) for the demo mailbox, creating both."""
+def _get_or_create_mailbox(session, owner_email: str, internal_domains: list[str], display: str) -> tuple[str, str]:
+    """Return (mailbox_id, owner_person_id) for ``owner_email``, creating both."""
     mbx = session.execute(
-        select(orm.Mailbox).where(orm.Mailbox.owner_email == OWNER_EMAIL)
+        select(orm.Mailbox).where(orm.Mailbox.owner_email == owner_email)
     ).scalar_one_or_none()
     if mbx is None:
         mbx = orm.Mailbox(
-            provider="gmail", owner_email=OWNER_EMAIL, status="active",
+            provider="gmail", owner_email=owner_email, status="active",
             embed_model="dev-none", embed_dim=0,
-            config={"internal_domains": INTERNAL_DOMAINS},
+            config={"internal_domains": internal_domains},
         )
         session.add(mbx)
         session.commit()
@@ -133,17 +190,27 @@ def get_or_create_mailbox(session) -> tuple[str, str]:
     owner = session.execute(
         select(orm.Person).where(
             orm.Person.mailbox_id == mailbox_id,
-            orm.Person.canonical_email == OWNER_EMAIL,
+            orm.Person.canonical_email == owner_email,
         )
     ).scalar_one_or_none()
     if owner is None:
-        owner = orm.Person(mailbox_id=mailbox_id, canonical_email=OWNER_EMAIL, names=["Handoff Demo"])
+        owner = orm.Person(mailbox_id=mailbox_id, canonical_email=owner_email, names=[display])
         session.add(owner)
         session.commit()
     if mbx.owner_person_id != owner.id:
         mbx.owner_person_id = owner.id
         session.commit()
     return mailbox_id, str(owner.id)
+
+
+def get_or_create_mailbox(session) -> tuple[str, str]:
+    """Return (mailbox_id, owner_person_id) for the original (Dana) demo mailbox."""
+    return _get_or_create_mailbox(session, OWNER_EMAIL, INTERNAL_DOMAINS, "Handoff Demo")
+
+
+def get_or_create_coverer_mailbox(session) -> tuple[str, str]:
+    """Return (mailbox_id, owner_person_id) for the coverer (Alex) return mailbox."""
+    return _get_or_create_mailbox(session, COVERER_OWNER_EMAIL, COVERER_INTERNAL_DOMAINS, "Coverer Demo")
 
 
 def _reset_content(session, mailbox_id: str) -> None:
@@ -155,32 +222,101 @@ def _reset_content(session, mailbox_id: str) -> None:
     session.commit()
 
 
-def seed_into(session, mailbox_id: str, owner_person_id: str) -> dict:
-    """Seed the DEMO_THREADS / DEMO_EVENTS dataset into ``mailbox_id`` (clearing any
-    prior demo content first). Reusable by the script and by tests. Returns counts.
+def _reset_projects(session, mailbox_id: str) -> None:
+    from sqlalchemy import select as _sel
+    proj_ids = _sel(orm.Project.id).where(orm.Project.mailbox_id == mailbox_id)
+    session.execute(delete(orm.ThreadProjectAssignment).where(
+        orm.ThreadProjectAssignment.project_id.in_(proj_ids)))
+    session.execute(delete(orm.Project).where(orm.Project.mailbox_id == mailbox_id))
+    session.execute(delete(orm.Identity).where(orm.Identity.mailbox_id == mailbox_id))
+    session.commit()
+
+
+def seed_into(
+    session,
+    mailbox_id: str,
+    owner_person_id: str,
+    threads: list[tuple[str, list[dict]]] = DEMO_THREADS,
+    events: list[tuple[str, str, list[str]]] = DEMO_EVENTS,
+    *,
+    with_projects: bool = False,
+    ts: datetime = _TS,
+) -> dict:
+    """Seed the given threads/events dataset into ``mailbox_id`` (clearing any prior
+    demo content first). Reusable by the script and by tests. Returns counts.
+
+    ``with_projects`` (demo/return only) also materializes one Project per thread
+    (label = subject), assigns the thread, and stamps each event's ``project_id``
+    from its first source message's thread — so a return handoff can carry the
+    original coverage-area labels and resolve them to the coverer's own projects.
+    Default False keeps the plain S17 demo/tests byte-for-byte unchanged.
     """
     _reset_content(session, mailbox_id)
+    if with_projects:
+        _reset_projects(session, mailbox_id)
 
-    for subject, messages in DEMO_THREADS:
+    header_to_project: dict[str, str] = {}
+    domains: set[str] = set()
+    for subject, messages in threads:
         tid = str(uuid.uuid4())
         session.add(orm.Thread(
-            id=tid, mailbox_id=mailbox_id, subject_norm=subject, t_start=_TS, t_end=_TS,
+            id=tid, mailbox_id=mailbox_id, subject_norm=subject, t_start=ts, t_end=ts,
         ))
         session.flush()
+        pid = None
+        if with_projects:
+            proj = orm.Project(mailbox_id=mailbox_id, label=subject, label_source="ctfidf",
+                               start=ts, end=ts, confidence=0.9)
+            session.add(proj)
+            session.flush()
+            pid = str(proj.id)
+            session.add(orm.ThreadProjectAssignment(
+                thread_id=tid, project_id=proj.id, weight=1.0, is_primary=True))
         for m in messages:
             session.add(orm.Message(
                 mailbox_id=mailbox_id, message_id_header=m["header"], provider_id=m["header"],
-                thread_id=tid, sender_email=m["sender"], ts=_TS,
+                thread_id=tid, sender_email=m["sender"], ts=ts,
                 subject=m["subject"], clean_text=m["body"],
                 addresses=_addresses(m["display"]),
                 sensitivity=m.get("sensitivity", ["none"]), noise=m.get("noise", False),
             ))
+            if pid:
+                header_to_project[m["header"]] = pid
+            if "@" in m["sender"]:
+                domains.add(m["sender"].rsplit("@", 1)[-1].lower())
     session.commit()
 
-    for etype, summary, headers in DEMO_EVENTS:
+    # Identities (for the return scope-seed's domain/person resolution).
+    if with_projects:
+        seen: set[str] = set()
+        for _s, messages in threads:
+            for m in messages:
+                em = m["sender"].lower()
+                if em in seen:
+                    continue
+                seen.add(em)
+                # Reuse an existing Person (e.g. the mailbox owner, or a prior seed)
+                # so (mailbox_id, canonical_email) stays unique across re-seeds.
+                per = session.execute(
+                    select(orm.Person).where(
+                        orm.Person.mailbox_id == mailbox_id,
+                        orm.Person.canonical_email == em,
+                    )
+                ).scalar_one_or_none()
+                if per is None:
+                    per = orm.Person(mailbox_id=mailbox_id, canonical_email=em,
+                                     names=[m["display"]], role="internal", role_confidence=0.5)
+                    session.add(per)
+                    session.flush()
+                session.add(orm.Identity(mailbox_id=mailbox_id, email=em,
+                                         person_id=per.id, display_names=[m["display"]]))
+        session.commit()
+
+    for etype, summary, headers in events:
         session.add(orm.Event(
             mailbox_id=mailbox_id, actor_person_id=owner_person_id, type=etype,
             summary=summary, source_message_ids=headers, confidence=0.9,
+            project_id=(header_to_project.get(headers[0]) if with_projects and headers else None),
         ))
     session.commit()
 
@@ -193,7 +329,7 @@ def seed_into(session, mailbox_id: str, owner_person_id: str) -> dict:
     return {"threads": len(DEMO_THREADS), "messages": int(n_msgs), "events": int(n_events)}
 
 
-def verify_seed(session, mailbox_id: str) -> dict:
+def verify_seed(session, mailbox_id: str, threads: list[tuple[str, list[dict]]] = DEMO_THREADS) -> dict:
     """Dry-run check that the seeded mailbox WOULD generate a good package, with NO
     lasting side effects: generate a throwaway candidate, inspect it, then delete
     the package + its audit rows. Never publishes, never mints a recipient/session/
@@ -217,8 +353,8 @@ def verify_seed(session, mailbox_id: str) -> dict:
             select(orm.HandoffEvidence.message_id_header)
             .where(orm.HandoffEvidence.package_id == pkg.id)
         ).scalars())
-        sensitive = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs if m.get("sensitivity")}
-        noise = {m["header"] for _s, msgs in DEMO_THREADS for m in msgs if m.get("noise")}
+        sensitive = {m["header"] for _s, msgs in threads for m in msgs if m.get("sensitivity")}
+        noise = {m["header"] for _s, msgs in threads for m in msgs if m.get("noise")}
         excluded_ok = ev_headers.isdisjoint(sensitive | noise)
         return {
             "ok": counts["claims"] > 0 and counts["evidence"] > 0 and excluded_ok,
@@ -255,23 +391,60 @@ def _print_next_steps(mailbox_id: str, counts: dict) -> None:
     print("=" * 68)
 
 
+def _print_return_steps(dana_id: str, alex_id: str) -> None:
+    print("=" * 68)
+    print("  RETURN HANDOFF DEMO (two mailboxes)")
+    print("=" * 68)
+    print(f"  original (Dana / covered)  : {dana_id}   [{OWNER_EMAIL}]")
+    print(f"  coverer  (Alex / return)   : {alex_id}   [{COVERER_OWNER_EMAIL}]")
+    print("  expect  : original ~7 claims; return ~4 claims (rotation, SOC2 close,")
+    print("            wiki migration, Northwind SSO); 1 sensitive + 1 noise excluded")
+    print("-" * 68)
+    print("  1. Load Dana's mailbox -> Handoff -> Create draft -> Generate ->")
+    print(f"     Publish to {COVERER_OWNER_EMAIL}; note the ORIGINAL package id.")
+    print("  2. Load Alex's mailbox (paste the coverer id above) -> Handoff ->")
+    print("     'Create a return handoff' -> paste the original package id -> Create.")
+    print("  3. Coverage areas (Nexus Auth, Security Audit) are preselected; Generate")
+    print("     the return -> review 'what changed while Dana was away' -> Publish")
+    print("     (recipient defaults to Dana).")
+    print("  4. Open the return link: it reads as 'Return handoff / what changed while")
+    print("     you were away', package-local Ask still works, no live mailbox links.")
+    print("=" * 68)
+
+
 def seed(verify: bool = False) -> str:
     from services.db.engine import SessionLocal  # delayed: engine reads DATABASE_URL at construction
 
     session = SessionLocal()
     try:
         mailbox_id, owner_pid = get_or_create_mailbox(session)
-        counts = seed_into(session, mailbox_id, owner_pid)
+        counts = seed_into(session, mailbox_id, owner_pid, with_projects=True)
         _print_next_steps(mailbox_id, counts)
+
+        # Second mailbox: the coverer, for the return-handoff (coverage-delta) demo.
+        # Coverer activity must fall inside the return window (original published_at →
+        # today), so date it to the START OF TODAY: publishing the original today then
+        # creating the return picks it up with the default window (seed + demo same day).
+        coverer_ts = datetime.now(timezone.utc).replace(hour=0, minute=5, second=0, microsecond=0)
+        alex_id, alex_pid = get_or_create_coverer_mailbox(session)
+        cov_counts = seed_into(session, alex_id, alex_pid, COVERER_THREADS, COVERER_EVENTS,
+                               with_projects=True, ts=coverer_ts)
+        _print_return_steps(mailbox_id, alex_id)
+
         if verify:
             result = verify_seed(session, mailbox_id)
             status = "OK" if result["ok"] else "FAILED"
-            print(f"  verify     : {status} "
+            print(f"  verify     : original {status} "
                   f"(claims={result['claims']}, evidence={result['evidence']}, "
-                  f"sensitive/noise excluded={result['excluded_ok']}) "
+                  f"sensitive/noise excluded={result['excluded_ok']})")
+            cov = verify_seed(session, alex_id, COVERER_THREADS)
+            cov_status = "OK" if cov["ok"] else "FAILED"
+            print(f"  verify     : coverer  {cov_status} "
+                  f"(claims={cov['claims']}, evidence={cov['evidence']}, "
+                  f"sensitive/noise excluded={cov['excluded_ok']}) "
                   f"[no package/token side effects]")
             print("=" * 68)
-            if not result["ok"]:
+            if not (result["ok"] and cov["ok"]):
                 raise SystemExit("seed verification failed")
         return mailbox_id
     finally:

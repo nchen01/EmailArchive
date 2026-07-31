@@ -292,18 +292,29 @@ function PackageDocument({
 
   return (
     <article className="overflow-hidden rounded-lg bg-surface shadow-sm ring-1 ring-line">
-      {/* Document header band — the delivered-package identity. */}
+      {/* Document header band — the delivered-package identity. S34: a return
+          handoff reads as "what changed while you were away". */}
       <header className="bg-band px-6 py-6 text-onband sm:px-8 sm:py-7">
-        <div className="text-xs font-semibold uppercase tracking-widest text-onband">
-          Handoff package · Read-only
-        </div>
-        <h1 className="mt-2 text-2xl font-semibold leading-tight">
-          {pkg.title || "Coverage handoff"}
-        </h1>
-        <div className="mt-3 text-sm text-onband">
-          Prepared for you by <span className="font-medium text-onband">{pkg.creator_email}</span>
-          {pkg.reason ? <> · {pkg.reason}</> : null}
-        </div>
+        {(() => {
+          const isReturn = pkg.package_type === "return_delta";
+          return (
+            <>
+              <div className="text-xs font-semibold uppercase tracking-widest text-onband">
+                {isReturn ? "Return handoff · Read-only" : "Handoff package · Read-only"}
+              </div>
+              <h1 className="mt-2 text-2xl font-semibold leading-tight">
+                {pkg.title || (isReturn ? "What changed while you were away" : "Coverage handoff")}
+              </h1>
+              {isReturn ? (
+                <div className="mt-1 text-sm text-onband">What changed while you were away.</div>
+              ) : null}
+              <div className="mt-3 text-sm text-onband">
+                Prepared for you by <span className="font-medium text-onband">{pkg.creator_email}</span>
+                {!isReturn && pkg.reason ? <> · {pkg.reason}</> : null}
+              </div>
+            </>
+          );
+        })()}
         <div className="mt-1 text-xs text-onband">
           Shared {fmtDate(pkg.published_at)}
           {pkg.expires_at ? <> · access expires {fmtDate(pkg.expires_at)}</> : null}

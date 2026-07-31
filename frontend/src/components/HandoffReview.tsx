@@ -4,6 +4,7 @@ import {
   describeError,
   generateHandoff,
   getHandoff,
+  getReturnContext,
   handoffExportUrl,
   newVersionHandoff,
   publishHandoff,
@@ -15,8 +16,10 @@ import type {
   HandoffPackage,
   HandoffScopeData,
   PublishResponse,
+  ReturnContext,
 } from "../api/types";
 import { navigate, usePathname } from "../router";
+import { ReturnBanner, ReturnCreatePanel } from "./ReturnHandoff";
 
 const HANDOFF_BASE = "/app/handoff";
 
@@ -120,6 +123,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
     : null;
 
   const [pkg, setPkg] = useState<HandoffPackage | null>(null);
+  const [returnCtx, setReturnCtx] = useState<ReturnContext | null>(null);
   const [reason, setReason] = useState("vacation");
   const [title, setTitle] = useState("");
   const [from, setFrom] = useState("");
@@ -206,6 +210,18 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       setBusy(null);
     }
   };
+
+  // S34: when the loaded package is a return handoff, fetch its safe return
+  // context (carried coverage areas, seed method, suggested recipient) for framing.
+  useEffect(() => {
+    if (pkg && pkg.package_type === "return_delta") {
+      getReturnContext(pkg.id)
+        .then(setReturnCtx)
+        .catch(() => setReturnCtx(null));
+    } else {
+      setReturnCtx(null);
+    }
+  }, [pkg?.id, pkg?.package_type]);
 
   const create = () =>
     run("create", async () => {
@@ -381,6 +397,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               {busy === "create" ? "Creating…" : "Create draft"}
             </button>
           </div>
+          <ReturnCreatePanel mailboxId={mailboxId} />
         </section>
       ) : (
         <>
@@ -389,6 +406,10 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
             mutable={mutable}
             onStartOver={() => navigate(HANDOFF_BASE)}
           />
+
+          {pkg.package_type === "return_delta" ? (
+            <ReturnBanner ctx={returnCtx} pkg={pkg} />
+          ) : null}
 
           {/* Workspace layout: section nav (wide) · center review · sticky
               action rail. The rail carries every action (scope, generate,
@@ -622,6 +643,11 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                     onPublish={publish}
                     onRevoke={revoke}
                     onNewVersion={newVersion}
+                    defaultRecipientEmail={
+                      pkg.package_type === "return_delta"
+                        ? returnCtx?.suggested_recipient_email
+                        : undefined
+                    }
                   />
                 </div>
               ) : null}
@@ -825,6 +851,7 @@ function PublishControls({
   onPublish,
   onRevoke,
   onNewVersion,
+  defaultRecipientEmail,
 }: {
   pkg: HandoffPackage;
   share: PublishResponse | null;
@@ -832,8 +859,9 @@ function PublishControls({
   onPublish: (recipientEmail: string, expiresInDays: number | null) => void;
   onRevoke: () => void;
   onNewVersion: () => void;
+  defaultRecipientEmail?: string; // S34: prefill return recipient (original creator)
 }) {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(defaultRecipientEmail ?? "");
   const [days, setDays] = useState("30");
   const [copied, setCopied] = useState(false);
 
