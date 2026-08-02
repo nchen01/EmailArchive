@@ -321,11 +321,17 @@ def _slug(text: str) -> str:
     return "".join(ch if ch.isalnum() else "-" for ch in text.lower()).strip("-")
 
 
+def _addr(c: Contact) -> dict:
+    # Full address shape (raw + email + display_names) so mappers.row_to_message
+    # parses it without a KeyError — matches what real ingestion produces.
+    return {"raw": f"{c.name} <{c.email}>", "email": c.email, "display_names": [c.name]}
+
+
 def _addresses(sender: Contact, to_contacts: list[Contact], cc_contacts: list[Contact]) -> dict:
     return {
-        "sender": {"display_names": [sender.name]},
-        "to": [{"email": c.email, "display_names": [c.name]} for c in to_contacts],
-        "cc": [{"email": c.email, "display_names": [c.name]} for c in cc_contacts],
+        "sender": _addr(sender),
+        "to": [_addr(c) for c in to_contacts],
+        "cc": [_addr(c) for c in cc_contacts],
     }
 
 

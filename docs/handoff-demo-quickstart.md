@@ -88,8 +88,15 @@ Use mailbox `5faa306a-61d5-4e63-a270-8c4a0a0eaaca`.
 2. Start on **Overview** and confirm the mailbox feels populated.
 3. Open **Projects** and scan the 12 seeded work areas.
 4. Open **Relationship Map** or **Network** to show people/domain context.
-5. Open **Cover-for-me** and ask a grounded question, for example:
-   `What is happening with Nexus Auth?`
+5. Open **Cover-for-me** and ask about a project **by its full name** — the
+   router matches the whole project label as a phrase, so a partial name will
+   not route. Use one of the seeded labels verbatim, for example:
+   `What's the state of the Atlas Data Pipeline?`,
+   `What is happening with the Nexus Auth Platform?`, or
+   `Summarize the Harbor Billing Migration.` You can also ask about a person by
+   name (for example `What is Mira Patel working on?`).
+   See "Cover-for-me requirements" below — this path needs `ANTHROPIC_API_KEY`,
+   and broad semantic questions additionally need embeddings.
 6. Open **Handoff**, create a draft, and generate.
 7. Expect a much denser package than the compact seed: about 68 claims/evidence
    on verification, with realistic workplace subjects and project names grounded
@@ -98,7 +105,32 @@ Use mailbox `5faa306a-61d5-4e63-a270-8c4a0a0eaaca`.
    too large for the walkthrough.
 
 This is the best mailbox for investor demos because it exercises the broader
-product shape without requiring a real mailbox or external API calls.
+product shape without requiring a real mailbox. Handoff generation, Projects,
+Relationship Map, and Network are fully deterministic and need no external API.
+
+### Cover-for-me requirements
+
+Cover-for-me is the one rich-demo surface that reaches an external API, so plan
+for it before a live walkthrough:
+
+- **Synthesis needs `ANTHROPIC_API_KEY`.** With a key set, asking about a
+  project or person **by full name** (see Flow B step 5) routes through L1 and
+  produces a grounded answer with no embeddings required. Without a key the
+  surface returns a typed "summaries not configured" state (HTTP 503), not a
+  crash.
+- **Broad semantic questions need embeddings.** A question that does not name a
+  project/person falls back to L2 vector retrieval. The rich mailbox ships with
+  **no** embeddings, so those questions return a graceful "run embed_backfill"
+  message rather than an answer. To enable them, backfill embeddings once:
+
+  ```powershell
+  # Costs money and sends message text to Voyage AI. Run only with explicit
+  # authorization for that run. Omit --dry-run to actually embed.
+  .\.venv\Scripts\python.exe scripts\embed_backfill.py --mailbox 5faa306a-61d5-4e63-a270-8c4a0a0eaaca --dry-run
+  ```
+
+For a no-key, fully offline investor walkthrough, favor Handoff generation and
+the project-name Cover-for-me prompts (with a key), and skip broad semantic Ask.
 
 ## Flow C - puluo graph/retrieval demo
 

@@ -45,8 +45,15 @@ def _address_to_dict(a: Address) -> dict:
 
 
 def _dict_to_address(d: dict) -> Address:
+    # Tolerate address blobs that omit `raw`/`email` (older/seed-generated
+    # `addresses` JSONB carried only display_names). Missing keys degrade to
+    # empty strings rather than raising KeyError, which previously bubbled up as
+    # a 502 in Cover-for-me synthesis. Real ingested blobs always carry both.
+    email = d.get("email") or d.get("raw") or ""
     return Address(
-        raw=d["raw"], email=d["email"], display_names=list(d.get("display_names", []))
+        raw=d.get("raw") or email,
+        email=email,
+        display_names=list(d.get("display_names", [])),
     )
 
 

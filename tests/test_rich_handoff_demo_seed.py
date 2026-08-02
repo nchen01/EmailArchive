@@ -54,6 +54,32 @@ def test_rich_demo_dataset_shape_and_subjects_are_realistic():
     assert any(t["noise"] for t in threads)
 
 
+def test_seed_addresses_have_full_shape_for_mapper():
+    # Regression for the Cover-for-me 502 KeyError: the seed's address blobs must
+    # carry raw/email (not just display_names) so mappers._dict_to_address, which
+    # runs when Cover-for-me loads project messages, parses them without raising.
+    from scripts.seed_rich_handoff_demo import build_rich_dataset
+    from services.db import mappers
+
+    threads, _ = build_rich_dataset()
+    sample = threads[0]["messages"][0]["addresses"]
+    for blob in [sample["sender"], *sample["to"], *sample["cc"]]:
+        assert "raw" in blob and "email" in blob
+        addr = mappers._dict_to_address(blob)  # must not raise
+        assert addr.email
+
+
+def test_dict_to_address_tolerates_display_only_blob():
+    # Defense in depth: a legacy/malformed blob missing raw/email degrades to
+    # empty strings rather than bubbling a KeyError up as a synthesis 502.
+    from services.db import mappers
+
+    addr = mappers._dict_to_address({"display_names": ["Only Name"]})
+    assert addr.email == ""
+    assert addr.raw == ""
+    assert addr.display_names == ["Only Name"]
+
+
 @requires_db
 def test_rich_demo_seed_materializes_projects_and_generates_package():
     from sqlalchemy import delete, select
