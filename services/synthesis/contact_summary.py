@@ -98,6 +98,7 @@ def synthesize_contact(
     synth_fn: SynthFn | None = None,
     params: SynthesisParams = PARAMS,
     allowed_message_id_headers: set[str] | None = None,
+    query: str | None = None,
 ) -> SynthesisResult:
     """Synthesize "Ask about this contact" (spec 05 §3.4).
 
@@ -107,12 +108,16 @@ def synthesize_contact(
     ``allowed_message_id_headers``: when supplied, any claim whose
     ``source_message_ids`` are not all within this set is silently dropped
     before the result leaves the synthesis layer (citation hygiene).
+
+    ``query``: the model user-turn text. Defaults to the fixed module ``QUERY``
+    so existing callers are unchanged; Cover-for-me passes the user's real,
+    intent-shaped question.
     """
     if synth_fn is None:
         synth_fn = make_anthropic_synth_fn(params)
 
     context = build_context(person, edge, threads, events, params)
-    result = synth_fn(SYSTEM_PROMPT, context, QUERY)
+    result = synth_fn(SYSTEM_PROMPT, context, query or QUERY)
 
     if allowed_message_id_headers is not None:
         result = result.model_copy(update={

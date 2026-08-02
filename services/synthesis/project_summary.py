@@ -101,6 +101,7 @@ def synthesize_project(
     synth_fn: SynthFn | None = None,
     params: SynthesisParams = PARAMS,
     allowed_message_id_headers: set[str] | None = None,
+    query: str | None = None,
 ) -> SynthesisResult:
     """Synthesize "What's been done" for a project (spec 02 §6).
 
@@ -109,6 +110,10 @@ def synthesize_project(
 
     ``allowed_message_id_headers``: when supplied, claims whose citations are
     not within this set are dropped before the result leaves the synthesis layer.
+
+    ``query``: the model user-turn text. Defaults to the fixed module ``QUERY``
+    (a generic "summarize" prompt) so existing callers are unchanged; Cover-for-me
+    passes an intent-shaped question so the answer addresses what was asked.
     """
     if not events and not threads:
         return SynthesisResult(
@@ -122,7 +127,7 @@ def synthesize_project(
         synth_fn = make_anthropic_synth_fn(params)
 
     context = build_context(project, events, threads, messages_by_thread, params)
-    result = synth_fn(SYSTEM_PROMPT, context, QUERY)
+    result = synth_fn(SYSTEM_PROMPT, context, query or QUERY)
 
     if allowed_message_id_headers is not None:
         result = result.model_copy(update={
