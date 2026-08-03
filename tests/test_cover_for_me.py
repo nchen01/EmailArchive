@@ -554,3 +554,67 @@ def test_call_synthesis_provider_error_becomes_502():
 
     assert exc_info.value.status_code == 502
     assert "check ANTHROPIC_API_KEY" in exc_info.value.detail
+
+
+# ── S35 follow-up C: intent shaping reaches L1 synthesis end-to-end ───────────
+
+def _capture_query_factory(monkeypatch, captured: list[str]):
+    """Patch the synth factory to capture the model user-turn (3rd arg) and
+    return a cited claim on a real fixture header so claims survive the filter."""
+    from services.synthesis.contracts import SynthesisClaim, SynthesisResult
+
+    def _fake_factory(params):
+        def _fn(system, context, query):
+            captured.append(query)
+            return SynthesisResult(
+                claims=[SynthesisClaim(text="A finding.", source_message_ids=["atlas-1@acme.com"])],
+                model="fake", usage={},
+            )
+        return _fn
+
+    monkeypatch.setattr(
+        "services.api.routers.cover_for_me.make_anthropic_synth_fn", _fake_factory
+    )
+
+
+@requires_db
+def test_blocked_query_reaches_l1_synthesis_shaped(seeded, monkeypatch):
+    """A 'blocked' project question must reach L1 synthesis as a blocker-shaped
+    prompt carrying the user's real question — not the old fixed summary prompt."""
+    client, mailbox_id, result, _ = seeded
+    label = _a_project_label(result)
+    captured: list[str] = []
+    _capture_query_factory(monkeypatch, captured)
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": f"What is blocked for {label}?"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["routed_to"] or "").startswith("project:")
+    assert captured, "synth_fn was never called"
+    q = captured[0]
+    assert label in q                      # the user's real question, not a fixed prompt
+    assert "blocker" in q.lower()          # blocker-shaped instruction
+    assert "Summarize what has been done" not in q
+    # Grounding preserved: every returned claim is cited.
+    assert all(c["source_message_id_headers"] for c in body["result"]["claims"])
+
+
+@requires_db
+def test_next_steps_query_reaches_l1_synthesis_shaped(seeded, monkeypatch):
+    """A 'next steps' question must reach L1 synthesis as an action/to-do prompt."""
+    client, mailbox_id, result, _ = seeded
+    label = _a_project_label(result)
+    captured: list[str] = []
+    _capture_query_factory(monkeypatch, captured)
+
+    r = client.post(
+        f"/api/cover-for-me/{mailbox_id}",
+        json={"query": f"What are the next steps for {label}?"},
+    )
+    assert r.status_code == 200
+    assert captured, "synth_fn was never called"
+    q = captured[0].lower()
+    assert "action" in q or "to-do" in q

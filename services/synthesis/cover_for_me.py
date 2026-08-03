@@ -39,6 +39,7 @@ from .contact_summary import (
     synthesize_contact,
 )
 from .contracts import SynthesisClaim, SynthesisResult
+from .intent import shape_query
 from .params import PARAMS, SynthesisParams
 from .project_summary import (
     build_context as _build_project_context,
@@ -100,7 +101,7 @@ def synthesize_cover_for_me(
             result = _project_state(
                 matched_project, db=db, mailbox_id=mailbox_id,
                 synth_fn=synth_fn, params=params,
-                l2_hits=l2_hits,
+                l2_hits=l2_hits, query=query,
             )
         return result, f"project:{matched_project.label}"
 
@@ -108,7 +109,7 @@ def synthesize_cover_for_me(
         result = _who_to_ask(
             matched_person, db=db, mailbox_id=mailbox_id,
             synth_fn=synth_fn, params=params,
-            l2_hits=l2_hits,
+            l2_hits=l2_hits, query=query,
         )
         name = matched_person.names[0] if matched_person.names else matched_person.canonical_email
         return result, f"person:{name}"
@@ -250,7 +251,9 @@ def _project_state(
     synth_fn,
     params: SynthesisParams,
     l2_hits: "list[RetrievalHit] | None" = None,
+    query: str = "",
 ) -> SynthesisResult:
+    shaped_query = shape_query(query, _PROJECT_QUERY)
     event_rows = list(
         db.execute(
             select(orm.Event).where(
@@ -299,6 +302,7 @@ def _project_state(
             synth_fn=synth_fn,
             params=params,
             allowed_message_id_headers=l1_headers,
+            query=shaped_query,
         )
 
     # L2 hits present — build combined context so the model can see and cite L2
@@ -307,7 +311,7 @@ def _project_state(
         synth_fn = make_anthropic_synth_fn(params)
     context = _build_project_context(project, events, threads, messages_by_thread, params)
     context = context + "\n" + _l2_context_block(l2_hits)
-    result = synth_fn(_PROJECT_SYSTEM, context, _PROJECT_QUERY)
+    result = synth_fn(_PROJECT_SYSTEM, context, shaped_query)
     result = result.model_copy(update={
         "claims": [
             c for c in result.claims
@@ -327,7 +331,9 @@ def _who_to_ask(
     synth_fn,
     params: SynthesisParams,
     l2_hits: "list[RetrievalHit] | None" = None,
+    query: str = "",
 ) -> SynthesisResult:
+    shaped_query = shape_query(query, _CONTACT_QUERY)
     edge_row = db.execute(
         select(orm.Edge).where(
             orm.Edge.mailbox_id == mailbox_id, orm.Edge.person_id == person.id
@@ -424,6 +430,7 @@ def _who_to_ask(
             synth_fn=synth_fn,
             params=params,
             allowed_message_id_headers=l1_headers,
+            query=shaped_query,
         )
 
     # L2 hits present — build combined context so the model can see and cite L2
@@ -432,7 +439,7 @@ def _who_to_ask(
         synth_fn = make_anthropic_synth_fn(params)
     context = _build_contact_context(person, edge, threads, events, params)
     context = context + "\n" + _l2_context_block(l2_hits)
-    result = synth_fn(_CONTACT_SYSTEM, context, _CONTACT_QUERY)
+    result = synth_fn(_CONTACT_SYSTEM, context, shaped_query)
     result = result.model_copy(update={
         "claims": [
             c for c in result.claims

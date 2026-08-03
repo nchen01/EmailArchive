@@ -59,10 +59,31 @@ function CitationChips({
 function RetrievalStatusNote({
   status,
   evidenceCount,
+  hasClaims,
 }: {
   status: RetrievalStatus;
   evidenceCount: number;
+  hasClaims: boolean;
 }) {
+  // When L1 already produced a cited answer, the L2 (semantic-retrieval)
+  // operational state must not read as a failure. `retrieval_status` describes
+  // only L2; a degraded L2 state alongside real claims gets a calm, faint note
+  // instead of the warn banner so a successful structured answer never looks
+  // broken (S35 follow-up C). The warn banner is preserved when there is NO L1
+  // answer, so a genuinely empty/failed retrieval still surfaces prominently.
+  const l2Degraded =
+    status === "no_embeddings" ||
+    status === "unavailable" ||
+    status === "degraded_rate_limit" ||
+    status === "disabled_no_key";
+  if (hasClaims && l2Degraded) {
+    return (
+      <p className="mt-2 text-xs text-faint">
+        Answered from structured mailbox evidence. Semantic retrieval is not
+        enabled for broader searches.
+      </p>
+    );
+  }
   switch (status) {
     case "active":
       return evidenceCount > 0 ? (
@@ -292,7 +313,11 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
             </div>
           )}
 
-          <RetrievalStatusNote status={retrieval_status} evidenceCount={evidence.length} />
+          <RetrievalStatusNote
+            status={retrieval_status}
+            evidenceCount={evidence.length}
+            hasClaims={claims.length > 0}
+          />
         </div>
       ) : null}
 
