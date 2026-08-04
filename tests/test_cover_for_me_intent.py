@@ -22,7 +22,7 @@ from ekc_schemas import (
 
 from services.synthesis.contact_summary import QUERY as CONTACT_QUERY, synthesize_contact
 from services.synthesis.contracts import SynthesisClaim, SynthesisResult
-from services.synthesis.intent import detect_intent, shape_query
+from services.synthesis.intent import NEXT_STEP_BUCKETS, detect_intent, shape_query
 from services.synthesis.project_summary import QUERY as PROJECT_QUERY, synthesize_project
 
 TS = datetime(2026, 4, 1, tzinfo=timezone.utc)
@@ -54,6 +54,30 @@ def test_shape_query_includes_question_and_intent_and_citation():
 
     todo = shape_query("What are the next steps for Nexus Auth Platform?", PROJECT_QUERY)
     assert "to-do" in todo.lower() or "action" in todo.lower()
+
+
+def test_next_steps_shaping_requests_timing_buckets():
+    # The next-steps answer must be temporally grouped: the shaped prompt asks the
+    # model to tag each item with one of the four fixed timing buckets, and to use
+    # a dated bucket only when the evidence has explicit timing (never guess).
+    shaped = shape_query("What are the next steps for Nexus Auth Platform?", PROJECT_QUERY)
+    for tag in NEXT_STEP_BUCKETS:
+        assert tag in shaped
+    lower = shaped.lower()
+    assert "never invent" in lower or "never" in lower  # no invented due dates
+    assert "explicit" in lower                            # dates only when explicit
+
+
+def test_non_next_steps_shaping_has_no_timing_buckets():
+    # Blocked/status/summary answers stay flat — no timing tags leak into them.
+    for q in (
+        "What is blocked for Atlas Data Pipeline?",
+        "What's the status of Atlas Data Pipeline?",
+        "Tell me about the Partner API Launch.",
+    ):
+        shaped = shape_query(q, PROJECT_QUERY)
+        assert "[Now / this week]" not in shaped
+        assert "[Upcoming]" not in shaped
 
 
 def test_shape_query_blank_falls_back_to_default():

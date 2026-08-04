@@ -502,3 +502,24 @@ select:disabled {
 .summary-result ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .summary-claim { display: flex; flex-direction: column; gap: 0.25rem; }
 .claim-text { color: var(--text); }
+
+/* ── Cover-for-me progressive evidence disclosure (S35 follow-up) ────── */
+/* Evidence is collapsed by default so the answer reads cleanly; a small
+   grounded-source count stays visible, and a toggle reveals inline cards. */
+.claim-evidence-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.claim-source-count { font-size: 0.65rem; color: var(--muted); background: var(--line); padding: 0.1rem 0.35rem; border-radius: 0.25rem; }
+.evidence-toggle { font-size: 0.7rem; color: var(--brass); background: none; border: none; padding: 0; font: inherit; line-height: 1.2; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.evidence-toggle:hover { color: var(--text); }
+.evidence-toggle:focus-visible { outline: 2px solid var(--muted); outline-offset: 1px; border-radius: 2px; }
+.claim-evidence-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.15rem; }
+.evidence-card { display: flex; flex-direction: column; gap: 0.2rem; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 0.3rem; padding: 0.35rem 0.5rem; font: inherit; cursor: pointer; transition: border-color 0.12s, background-color 0.12s; }
+.evidence-card:hover { border-color: var(--line-2); background: var(--surface-2); }
+.evidence-card:focus-visible { outline: 2px solid var(--muted); outline-offset: 1px; }
+.evidence-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.4rem; }
+.evidence-card-subject { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+.evidence-card-date { flex-shrink: 0; font-size: 0.65rem; color: var(--faint); }
+.evidence-card-snippet { font-size: 0.7rem; line-height: 1.35; color: var(--muted); }
+.evidence-card-snippet-empty { font-style: italic; color: var(--faint); }
+.next-step-group { margin-top: 0.6rem; }
+.next-step-group:first-child { margin-top: 0; }
+.next-step-group-head { margin: 0 0 0.3rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
