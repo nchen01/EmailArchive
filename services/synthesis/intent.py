@@ -27,14 +27,33 @@ _NEXT = re.compile(
 _CHANGED = re.compile(r"\b(changed|changes|what'?s\s+new|new\s+developments?|updates?)\b", re.I)
 _STATUS = re.compile(r"\b(status|state|where\s+(are|do)\s+(we|things)|progress|standing)\b", re.I)
 
+# Timing buckets a next-step claim may be tagged with (S35 follow-up: temporal
+# grouping). The model prefixes each next-step claim with EXACTLY one of these
+# bracketed tags, and the Cover-for-me frontend (CoverForMe.tsx —
+# NEXT_STEP_BUCKETS) parses the leading tag to render Now/Upcoming/Later/undated
+# groups. Keep these strings byte-for-byte in sync with the frontend parser.
+NEXT_STEP_BUCKETS = (
+    "[Now / this week]",
+    "[Upcoming]",
+    "[Later]",
+    "[No explicit date found]",
+)
+
 _INSTRUCTIONS = {
     "blocked": (
         "List the specific blockers or blocked items — one blocker per claim. "
         "If nothing is evidenced as blocked, say that in a single claim."
     ),
     "next_steps": (
-        "List the concrete next steps or open action items as a to-do list — "
-        "one action per claim."
+        "List the concrete next steps or open action items, one action per claim. "
+        "Prefix EACH claim with exactly one timing tag in square brackets, chosen "
+        "only from: [Now / this week], [Upcoming], [Later], [No explicit date found]. "
+        "Assign a dated tag ONLY when the evidence explicitly states timing (a date, "
+        "deadline, or phrase like 'this week' / 'next sprint'); never invent or guess "
+        "a due date. If an item is more than a week out, use [Upcoming] or [Later], "
+        "not [Now / this week]. If the evidence gives no explicit timing for an item, "
+        "tag it [No explicit date found]. If the evidence shows only activity with no "
+        "concrete next action, say that in a single [No explicit date found] claim."
     ),
     "changed": "Summarize what has recently changed — one change per claim.",
     "status": (

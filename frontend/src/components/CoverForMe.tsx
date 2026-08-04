@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useCoverForMe } from "../hooks/useCoverForMe";
 import { errorKindTitle } from "../api/client";
-import type { EvidenceMessage, RetrievalStatus } from "../api/types";
+import type { EvidenceMessage, RetrievalStatus, SynthesisClaim } from "../api/types";
 import type { Suggestion } from "../utils/suggestions";
 import { EvidenceDrawer, type SelectedCitation } from "./EvidenceDrawer";
 
@@ -17,42 +17,173 @@ interface CoverForMeProps {
   suggestions?: Suggestion[];
 }
 
-function CitationChips({
-  ids,
+// ── Temporal grouping for "next steps" answers (S35 follow-up) ──────────────
+//
+// The next-steps intent shaping (services/synthesis/intent.py NEXT_STEP_BUCKETS)
+// asks the model to prefix each next-step claim with exactly one timing tag —
+// "[Now / this week]", "[Upcoming]", "[Later]", or "[No explicit date found]" —
+// using dates only when they are explicit in the evidence. We parse that leading
+// tag here to render the answer as ordered timing groups instead of a flat
+// to-do list, so later work never reads as an immediate task. The claim contract
+// is unchanged (the tag lives inside claim.text); grouping is presentation only.
+type BucketKey = "now" | "upcoming" | "later" | "none";
+
+const BUCKET_ORDER: { key: BucketKey; label: string }[] = [
+  { key: "now", label: "Now / this week" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "later", label: "Later" },
+  { key: "none", label: "No explicit date found" },
+];
+
+/**
+ * Parse a leading timing tag off a next-step claim, e.g.
+ * "[Now / this week] Rotate the remaining service keys." → { key: "now", text:
+ * "Rotate the remaining service keys." }. Returns key=null when the claim has no
+ * recognized tag, so non-next-steps answers (blocked/status/summary) render flat.
+ */
+function parseBucket(text: string): { key: BucketKey | null; text: string } {
+  const m = /^\s*\[([^\]]+)\]\s*(.*)$/s.exec(text);
+  if (!m) return { key: null, text };
+  const tag = m[1].toLowerCase();
+  let key: BucketKey;
+  if (tag.includes("now") || tag.includes("this week")) key = "now";
+  else if (tag.includes("upcoming")) key = "upcoming";
+  else if (tag.includes("later")) key = "later";
+  else if (tag.includes("no explicit") || tag.includes("no date")) key = "none";
+  else return { key: null, text }; // unrecognized bracket — leave text intact
+  return { key, text: m[2] };
+}
+
+interface ParsedClaim {
+  claim: SynthesisClaim;
+  text: string; // display text with any timing tag stripped
+}
+
+/**
+ * Group claims into ordered timing buckets when this is a next-steps answer.
+ * Returns null when no claim carries a recognized timing tag, in which case the
+ * caller renders the flat list unchanged. A tagged answer whose individual items
+ * lack a tag places those items under "No explicit date found" (never invented).
+ */
+function buildTimingGroups(
+  claims: SynthesisClaim[],
+): { key: BucketKey; label: string; items: ParsedClaim[] }[] | null {
+  const parsed = claims.map((c) => {
+    const { key, text } = parseBucket(c.text);
+    return { key, claim: c, text };
+  });
+  if (!parsed.some((p) => p.key !== null)) return null; // not a next-steps answer
+  const byKey = new Map<BucketKey, ParsedClaim[]>();
+  for (const p of parsed) {
+    const k: BucketKey = p.key ?? "none";
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k)!.push({ claim: p.claim, text: p.text });
+  }
+  return BUCKET_ORDER.filter((b) => byKey.has(b.key)).map((b) => ({
+    ...b,
+    items: byKey.get(b.key)!,
+  }));
+}
+
+/** One expandable evidence card: subject · date + snippet, opens the full drawer. */
+function EvidenceCard({
+  id,
   evidence,
-  counts,
+  count,
   onSelect,
 }: {
-  ids: string[];
-  evidence: EvidenceMessage[];
-  /** header → how many claims across the whole answer cite it (S14.4). */
-  counts: Record<string, number>;
+  id: string;
+  evidence: EvidenceMessage | undefined;
+  count: number;
   onSelect: (c: SelectedCitation) => void;
 }) {
-  const byHeader = Object.fromEntries(evidence.map((e) => [e.message_id_header, e]));
-  // Collapse repeated citations: a claim that cites the same message several
-  // times renders one chip. Set preserves first-seen order.
-  const uniqueIds = [...new Set(ids)];
+  const date =
+    evidence?.date ? new Date(evidence.date).toLocaleDateString() : "";
   return (
-    <span className="activity-citations">
-      {uniqueIds.map((id) => {
-        const ev = byHeader[id];
-        const label = ev
-          ? `${ev.subject} · ${new Date(ev.date).toLocaleDateString()}`
-          : id;
-        return (
-          <button
-            type="button"
-            key={id}
-            className="citation-chip citation-chip-button"
-            title={ev ? "Click to inspect this citation" : "Citation detail limited"}
-            onClick={() => onSelect({ id, evidence: ev, citationCount: counts[id] })}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </span>
+    <button
+      type="button"
+      className="evidence-card"
+      title="Click to inspect this citation"
+      onClick={() => onSelect({ id, evidence, citationCount: count })}
+    >
+      <span className="evidence-card-head">
+        <span className="evidence-card-subject">
+          {evidence?.subject || id}
+        </span>
+        {date ? <span className="evidence-card-date">{date}</span> : null}
+      </span>
+      {evidence?.snippet ? (
+        <span className="evidence-card-snippet">{evidence.snippet}</span>
+      ) : (
+        <span className="evidence-card-snippet evidence-card-snippet-empty">
+          No message preview — open for citation detail.
+        </span>
+      )}
+    </button>
+  );
+}
+
+/**
+ * One answer item: the claim text, then a compact grounded-source count and a
+ * toggle, with the supporting evidence progressively disclosed (S35 follow-up).
+ * Evidence is collapsed by default so the answer reads cleanly first; the small
+ * "N sources" count stays visible so the answer still looks grounded. No-citation
+ * -no-claim and the sensitivity/noise gates are enforced upstream (the backend
+ * allow-list), so nothing shown here can leak — it only hides/reveals what the
+ * response already contains.
+ */
+function ClaimItem({
+  claim,
+  displayText,
+  byHeader,
+  counts,
+  open,
+  onToggle,
+  onSelect,
+}: {
+  claim: SynthesisClaim;
+  displayText: string;
+  byHeader: Record<string, EvidenceMessage>;
+  counts: Record<string, number>;
+  open: boolean;
+  onToggle: () => void;
+  onSelect: (c: SelectedCitation) => void;
+}) {
+  // Collapse repeated citations within a claim to unique headers (first-seen).
+  const uniqueIds = [...new Set(claim.source_message_ids)];
+  const n = uniqueIds.length;
+  return (
+    <li className="summary-claim">
+      <span className="claim-text">{displayText}</span>
+      <div className="claim-evidence-controls">
+        <span className="claim-source-count" title="Grounded in cited messages">
+          {n} source{n !== 1 ? "s" : ""}
+        </span>
+        <button
+          type="button"
+          className="evidence-toggle"
+          aria-expanded={open}
+          onClick={onToggle}
+        >
+          {open
+            ? "Hide evidence"
+            : `Show ${n} supporting message${n !== 1 ? "s" : ""}`}
+        </button>
+      </div>
+      {open ? (
+        <div className="claim-evidence-list">
+          {uniqueIds.map((id) => (
+            <EvidenceCard
+              key={id}
+              id={id}
+              evidence={byHeader[id]}
+              count={counts[id] ?? 1}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      ) : null}
+    </li>
   );
 }
 
@@ -143,6 +274,9 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
   const [query, setQuery] = useState("");
   const [selectedCitation, setSelectedCitation] =
     useState<SelectedCitation | null>(null);
+  // Keys of claims whose supporting evidence is currently expanded. Evidence is
+  // collapsed by default (S35 follow-up) — this drives per-claim disclosure.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const { response, loading, error, errorKind, notConfigured, ask, reset } =
     useCoverForMe(mailboxId);
 
@@ -177,6 +311,11 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed?.token]);
 
+  // Every new answer starts with evidence collapsed so it reads cleanly first.
+  useEffect(() => {
+    setExpanded(new Set());
+  }, [response]);
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setSelectedCitation(null);
@@ -201,6 +340,20 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
       citationCounts[id] = (citationCounts[id] ?? 0) + 1;
     }
   }
+  // header → evidence row, for the progressively-disclosed per-claim cards.
+  const byHeader: Record<string, EvidenceMessage> = Object.fromEntries(
+    evidence.map((e) => [e.message_id_header, e]),
+  );
+  // Next-steps answers carry timing tags → render as ordered groups; other
+  // answers (blocked/status/summary/changed) have no tags → flat list (null).
+  const timingGroups = buildTimingGroups(claims);
+  const toggleEvidence = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   // Distinct, human-readable title for a transport/server failure.
   const errorTitle = errorKindTitle(errorKind);
   const isInsufficient =
@@ -295,20 +448,51 @@ export function CoverForMe({ mailboxId, seed, suggestions = [] }: CoverForMeProp
             <div className="rounded-md border border-line bg-app2 px-4 py-3 text-sm text-muted">
               {result.state || "No evidenced answer in email."}
             </div>
+          ) : timingGroups ? (
+            // Next-steps answer — grouped by explicit timing so later work does
+            // not read as urgent. Each item still discloses its own evidence.
+            <div className="summary-result">
+              {timingGroups.map((g) => (
+                <div key={g.key} className="next-step-group">
+                  <h4 className="next-step-group-head">{g.label}</h4>
+                  <ul role="list">
+                    {g.items.map((it, i) => {
+                      const key = `${g.key}-${i}`;
+                      return (
+                        <ClaimItem
+                          key={key}
+                          claim={it.claim}
+                          displayText={it.text}
+                          byHeader={byHeader}
+                          counts={citationCounts}
+                          open={expanded.has(key)}
+                          onToggle={() => toggleEvidence(key)}
+                          onSelect={setSelectedCitation}
+                        />
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="summary-result">
               <ul role="list">
-                {claims.map((c, i) => (
-                  <li key={i} className="summary-claim">
-                    <span className="claim-text">{c.text}</span>
-                    <CitationChips
-                      ids={c.source_message_ids}
-                      evidence={evidence}
+                {claims.map((c, i) => {
+                  const key = `c-${i}`;
+                  return (
+                    <ClaimItem
+                      key={key}
+                      claim={c}
+                      displayText={c.text}
+                      byHeader={byHeader}
                       counts={citationCounts}
+                      open={expanded.has(key)}
+                      onToggle={() => toggleEvidence(key)}
                       onSelect={setSelectedCitation}
                     />
-                  </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           )}
