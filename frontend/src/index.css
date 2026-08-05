@@ -430,6 +430,28 @@ select:disabled {
 .rel-sort-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.7rem; color: var(--faint); margin-bottom: 0.4rem; }
 .rel-sort-select { flex: 1; }
 
+/* ── Organizations collapse panel (S36 readability) ─────────────────── */
+.rel-org-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.rel-org-bulk { display: flex; align-items: center; gap: 0.3rem; font-size: 0.65rem; color: var(--faint); }
+.rel-org-bulk button { background: none; border: none; padding: 0; font: inherit; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.rel-org-bulk button:hover { color: var(--text); }
+.rel-org-list { list-style: none; margin: 0.2rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.rel-org-row { border: 1px solid var(--line); border-radius: 0.375rem; padding: 0.3rem 0.4rem; background: var(--surface-2); }
+.rel-org-toggle { display: flex; align-items: center; gap: 0.4rem; width: 100%; background: none; border: none; padding: 0; font: inherit; cursor: pointer; text-align: left; }
+.rel-org-caret { font-size: 0.65rem; color: var(--faint); width: 0.8rem; flex-shrink: 0; }
+.rel-org-name { flex: 1; font-size: 0.8rem; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 0.35rem; }
+.rel-org-tag { font-size: 0.55rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); background: var(--line); padding: 0.05rem 0.3rem; border-radius: 9999px; }
+.rel-org-count { flex-shrink: 0; font-size: 0.65rem; color: var(--muted); background: var(--line); padding: 0.05rem 0.35rem; border-radius: 0.25rem; }
+.rel-org-members { list-style: none; margin: 0.25rem 0 0; padding: 0 0 0 1.2rem; display: flex; flex-direction: column; gap: 0.1rem; }
+.rel-org-member { font-size: 0.7rem; color: var(--muted); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-org-showmore { margin: 0.2rem 0 0 1.2rem; background: none; border: none; padding: 0; font: inherit; font-size: 0.65rem; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.rel-org-showmore:hover { color: var(--text); }
+
+/* Declutter banner over the canvas when orgs are collapsed by default. */
+.rel-declutter-banner { position: absolute; top: 0.6rem; right: 0.6rem; z-index: 1; display: flex; align-items: center; gap: 0.6rem; background: rgba(255,255,255,0.92); border: 1px solid var(--line); border-radius: 0.4rem; padding: 0.35rem 0.6rem; font-size: 0.7rem; color: var(--muted); max-width: calc(100% - 1.2rem); }
+.rel-declutter-expand { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--brass); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; flex-shrink: 0; }
+.rel-declutter-expand:hover { color: var(--text); }
+
 .rel-canvas { position: relative; flex: 1; overflow: hidden; background: var(--surface-2); }
 .rel-legend { position: absolute; top: 0.6rem; left: 0.6rem; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.92); border: 1px solid var(--line); border-radius: 0.4rem; padding: 0.35rem 0.6rem; font-size: 0.7rem; color: var(--muted); max-width: calc(100% - 1.2rem); }
 .rel-legend-line { display: inline-block; width: 20px; height: 0; vertical-align: middle; margin-right: 0.25rem; border-top-width: 2px; border-top-color: var(--muted); }
