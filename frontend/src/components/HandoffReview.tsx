@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createHandoff,
   describeError,
@@ -19,6 +19,7 @@ import type {
   ReturnContext,
 } from "../api/types";
 import { navigate, usePathname } from "../router";
+import { buildCoverageAreas, type CoverageArea } from "../utils/coverageAreas";
 import { ReturnBanner, ReturnCreatePanel } from "./ReturnHandoff";
 
 const HANDOFF_BASE = "/app/handoff";
@@ -144,6 +145,12 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   // logged. Cleared when the open package changes (see the reset effect below),
   // so a refresh cannot recover it.
   const [share, setShare] = useState<PublishResponse | null>(null);
+  // S37 review ergonomics: a text filter to jump to one coverage area, and per-
+  // area collapse (of the whole area) / evidence-disclosure state so a large
+  // package reads as grouped claims first, with evidence revealed on demand.
+  const [reviewFilter, setReviewFilter] = useState("");
+  const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(() => new Set());
+  const [openEvidence, setOpenEvidence] = useState<Set<string>>(() => new Set());
 
   // Load / validate the package named in the URL for the current mailbox.
   // Runs on route or mailbox change; self-heals a route that points at a
@@ -228,6 +235,32 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       setReturnCtx(null);
     }
   }, [pkg?.id, pkg?.package_type]);
+
+  // S37: honest topic grouping. `buildCoverageAreas` is the SAME package-local
+  // primitive the recipient view uses (utils/coverageAreas) — derived purely from
+  // the snapshot payload, no fetch, and labelled from a representative evidence
+  // subject, never a fabricated project name. Evidence a claim cites is grouped
+  // with that claim; any evidence cited by no claim is surfaced separately below
+  // so the visible total always equals the package's safe evidence count.
+  const areas = useMemo<CoverageArea[]>(
+    () => (pkg && pkg.claims.length > 0 ? buildCoverageAreas(pkg.claims, pkg.evidence) : []),
+    [pkg?.id, pkg?.claims, pkg?.evidence],
+  );
+  const ungroupedEvidence = useMemo<HandoffEvidence[]>(() => {
+    if (!pkg) return [];
+    const inArea = new Set(areas.flatMap((a) => a.evidence.map((e) => e.message_id_header)));
+    return pkg.evidence.filter((e) => !inArea.has(e.message_id_header));
+  }, [pkg, areas]);
+
+  // A new package clears the filter; a changed area set (regenerate, prune)
+  // resets disclosure so stale ids never point at the wrong area.
+  useEffect(() => {
+    setReviewFilter("");
+  }, [pkg?.id]);
+  useEffect(() => {
+    setCollapsedAreas(new Set());
+    setOpenEvidence(new Set());
+  }, [pkg?.id, areas.length, ungroupedEvidence.length]);
 
   const create = () =>
     run("create", async () => {
@@ -322,13 +355,59 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
     navigator.clipboard?.writeText(value).catch(() => window.prompt("Copy this Message-ID:", value));
   };
 
-  const claimsByKind = (kind: string) => (pkg?.claims ?? []).filter((c) => c.kind === kind);
   const excludedHeaders = new Set(pkg?.scope.excluded_message_id_headers ?? []);
   const excludedCount = excludedHeaders.size; // creator manual removals in this scope
   // Only draft/generated packages are editable. Once published (or revoked) the
   // package is immutable: scope edits, regenerate, and evidence removal are all
   // disabled in the UI (§immutability). Backend also rejects these transitions.
   const mutable = !pkg || pkg.status === "draft" || pkg.status === "generated";
+
+  // ── S37 review derivations (filter / jump / expand-collapse) ──────────────
+  const UNGROUPED_ID = "__ungrouped__";
+  const q = reviewFilter.trim().toLowerCase();
+  const areaHaystack = (a: CoverageArea) =>
+    `${a.label} ${a.claims.map((c) => c.text).join(" ")} ${a.evidence
+      .map((e) => `${e.subject} ${e.sender_display} ${e.sender_domain}`)
+      .join(" ")}`.toLowerCase();
+  const visibleAreas = q ? areas.filter((a) => areaHaystack(a).includes(q)) : areas;
+  const ungroupedVisible = q
+    ? ungroupedEvidence.filter((e) =>
+        `${e.subject} ${e.sender_display} ${e.sender_domain}`.toLowerCase().includes(q),
+      )
+    : ungroupedEvidence;
+  const allAreaIds = [
+    ...areas.map((a) => a.id),
+    ...(ungroupedEvidence.length > 0 ? [UNGROUPED_ID] : []),
+  ];
+  const toggleAreaCollapsed = (id: string) =>
+    setCollapsedAreas((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const toggleAreaEvidence = (id: string) =>
+    setOpenEvidence((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const expandAllAreas = () => setCollapsedAreas(new Set());
+  const collapseAllAreas = () => setCollapsedAreas(new Set(allAreaIds));
+  const jumpToArea = (id: string) => {
+    // Expanding first so the target is on-screen before we scroll to it.
+    setCollapsedAreas((p) => {
+      const n = new Set(p);
+      n.delete(id);
+      return n;
+    });
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`handoff-${id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
 
   return (
     <div className="mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6">
@@ -433,8 +512,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               <ul className="mt-2 space-y-1">
                 {([
                   ["actions", "Scope & actions"],
-                  ["claims", `Claims (${pkg.claims.length})`],
-                  ["evidence", `Evidence (${pkg.evidence.length})`],
+                  ["review", `Review · ${pkg.claims.length} claims / ${pkg.evidence.length} evidence`],
                   ...(pkg.status !== "draft"
                     ? [["publish", pkg.status === "generated" ? "Publish" : "Share & revoke"] as [string, string]]
                     : []),
@@ -468,102 +546,151 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                 <>
                   <ExclusionSummary counts={pkg.exclusion_counts} />
 
-                  <section id="claims" className="scroll-mt-4">
-                    <h3 className="text-sm font-semibold text-ink">
-                      Claims ({pkg.claims.length})
-                    </h3>
+                  <section id="review" className="mt-4 scroll-mt-4">
                     {pkg.claims.length === 0 ? (
-                      <div className="mt-1 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
+                      <div className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
                         {generationEmptyMessage(pkg)}
                       </div>
                     ) : (
-                      KIND_ORDER.filter((k) => claimsByKind(k).length > 0).map((kind) => (
-                        <div key={kind} className="mt-3">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-faint">
-                            {KIND_LABEL[kind] ?? kind}
-                          </div>
-                          <ul className="mt-1 space-y-2">
-                            {claimsByKind(kind).map((c) => (
-                              <li
-                                key={c.id}
-                                className="rounded-md border border-line bg-surface px-3 py-2 text-sm"
+                      <>
+                        {/* Filter + jump + bulk collapse: navigate the whole
+                            package without scrolling the evidence wall. */}
+                        <div className="rounded-md border border-line bg-surface p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="text"
+                              value={reviewFilter}
+                              onChange={(e) => setReviewFilter(e.target.value)}
+                              placeholder="Filter by topic, subject, or sender…"
+                              className="min-w-[12rem] flex-1 rounded border border-line2 bg-surface px-2 py-1 text-sm text-ink"
+                              aria-label="Filter coverage areas"
+                            />
+                            <div className="flex items-center gap-2 text-xs">
+                              <button
+                                type="button"
+                                className="text-muted underline underline-offset-2 hover:text-ink"
+                                onClick={expandAllAreas}
                               >
-                                <div className="text-ink">{c.text}</div>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {c.source_message_id_headers.map((h) => (
-                                    <span
-                                      key={h}
-                                      className="rounded bg-app2 px-1.5 py-0.5 font-mono text-[10px] text-muted"
-                                      title="Cited source message"
-                                    >
-                                      {h}
-                                    </span>
-                                  ))}
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))
-                    )}
-                  </section>
-
-                  <section id="evidence" className="mt-6 scroll-mt-4">
-                    <h3 className="text-sm font-semibold text-ink">
-                      Evidence ({pkg.evidence.length})
-                    </h3>
-                    <p className="text-xs text-faint">
-                      {mutable
-                        ? "Snapshotted safe message content. Remove anything that should not travel with the handoff; a claim left without evidence disappears on regenerate. Removed evidence stays excluded when you regenerate or create a revised version."
-                        : "Snapshotted safe message content, frozen at publish. This is exactly what the recipient can read."}
-                    </p>
-
-                    {excludedCount > 0 ? (
-                      <div className="mt-2 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn">
-                        <div className="font-medium">
-                          {excludedCount} evidence item{excludedCount === 1 ? "" : "s"} removed by
-                          you (excluded from this package).
-                        </div>
-                        <p className="mt-1">
-                          Regenerate rebuilds from the current scope, including your removals — the
-                          count stays reduced on purpose. Sensitive/noise content is excluded by
-                          policy separately and is never restored here.
-                        </p>
-                        {mutable ? (
-                          <button
-                            type="button"
-                            className="mt-2 rounded-md border border-warn-line bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-app2 disabled:opacity-50"
-                            onClick={restoreAllEvidence}
-                            disabled={busy !== null}
-                            title="Clear only your manual removals and rebuild from the full safe scope"
-                          >
-                            {busy === "restore" ? "Restoring…" : "Restore all removed evidence"}
-                          </button>
-                        ) : (
-                          <p className="mt-1">
-                            To rebuild from the full safe scope, use{" "}
-                            <strong>Create revised version</strong> (below), then restore there.
+                                Expand all
+                              </button>
+                              <span className="text-faint" aria-hidden>·</span>
+                              <button
+                                type="button"
+                                className="text-muted underline underline-offset-2 hover:text-ink"
+                                onClick={collapseAllAreas}
+                              >
+                                Collapse all
+                              </button>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-[11px] text-faint">
+                            Grouped into {areas.length} coverage area
+                            {areas.length === 1 ? "" : "s"} by topic (labelled from
+                            evidence subjects — not project names). Evidence is
+                            collapsed under each area; expand to inspect or remove.
                           </p>
-                        )}
-                      </div>
-                    ) : null}
+                          {areas.length > 1 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {areas.map((a) => (
+                                <button
+                                  key={a.id}
+                                  type="button"
+                                  onClick={() => jumpToArea(a.id)}
+                                  className="max-w-[16rem] truncate rounded-full border border-line px-2.5 py-1 text-[11px] text-muted hover:bg-app2 hover:text-ink"
+                                  title={a.label}
+                                >
+                                  {a.label} · {a.claims.length}/{a.evidence.length}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
 
-                    <ul className="mt-2 space-y-3">
-                      {pkg.evidence.map((e) => (
-                        <EvidenceCard
-                          key={e.message_id_header}
-                          ev={e}
-                          removing={excludedHeaders.has(e.message_id_header)}
-                          onRemove={() => removeEvidence(e.message_id_header)}
-                          onCopy={() => copyId(e.message_id_header)}
-                          disabled={busy !== null}
-                          canRemove={mutable}
-                        />
-                      ))}
-                      {pkg.evidence.length === 0 ? (
-                        <li className="text-sm text-faint">No evidence in scope.</li>
-                      ) : null}
-                    </ul>
+                        {/* Removed-evidence banner + restore-all — kept near the
+                            pruning it explains. Restores only YOUR manual removals,
+                            never sensitivity/noise exclusions. */}
+                        {excludedCount > 0 ? (
+                          <div className="mt-3 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn">
+                            <div className="font-medium">
+                              {excludedCount} evidence item{excludedCount === 1 ? "" : "s"} removed by
+                              you (excluded from this package).
+                            </div>
+                            <p className="mt-1">
+                              Regenerate rebuilds from the current scope, including your removals — the
+                              count stays reduced on purpose. Sensitive/noise content is excluded by
+                              policy separately and is never restored here.
+                            </p>
+                            {mutable ? (
+                              <button
+                                type="button"
+                                className="mt-2 rounded-md border border-warn-line bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-app2 disabled:opacity-50"
+                                onClick={restoreAllEvidence}
+                                disabled={busy !== null}
+                                title="Clear only your manual removals and rebuild from the full safe scope"
+                              >
+                                {busy === "restore" ? "Restoring…" : "Restore all removed evidence"}
+                              </button>
+                            ) : (
+                              <p className="mt-1">
+                                To rebuild from the full safe scope, use{" "}
+                                <strong>Create revised version</strong> (below), then restore there.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
+
+                        <p className="mt-3 text-xs text-faint">
+                          {mutable
+                            ? "Snapshotted safe message content. Remove anything that should not travel with the handoff; a claim left without evidence disappears on regenerate. Removed evidence stays excluded when you regenerate or create a revised version."
+                            : "Snapshotted safe message content, frozen at publish. This is exactly what the recipient can read."}
+                        </p>
+
+                        <div className="mt-2 space-y-3">
+                          {visibleAreas.map((a) => (
+                            <CoverageAreaSection
+                              key={a.id}
+                              domId={a.id}
+                              title={a.label}
+                              claims={a.claims}
+                              evidence={a.evidence}
+                              collapsed={collapsedAreas.has(a.id)}
+                              evidenceOpen={openEvidence.has(a.id)}
+                              onToggleCollapsed={() => toggleAreaCollapsed(a.id)}
+                              onToggleEvidence={() => toggleAreaEvidence(a.id)}
+                              excludedHeaders={excludedHeaders}
+                              onRemove={removeEvidence}
+                              onCopy={copyId}
+                              busy={busy !== null}
+                              mutable={mutable}
+                            />
+                          ))}
+
+                          {ungroupedVisible.length > 0 ? (
+                            <CoverageAreaSection
+                              domId={UNGROUPED_ID}
+                              title="Other evidence (not cited by a claim)"
+                              claims={[]}
+                              evidence={ungroupedVisible}
+                              collapsed={collapsedAreas.has(UNGROUPED_ID)}
+                              evidenceOpen={openEvidence.has(UNGROUPED_ID)}
+                              onToggleCollapsed={() => toggleAreaCollapsed(UNGROUPED_ID)}
+                              onToggleEvidence={() => toggleAreaEvidence(UNGROUPED_ID)}
+                              excludedHeaders={excludedHeaders}
+                              onRemove={removeEvidence}
+                              onCopy={copyId}
+                              busy={busy !== null}
+                              mutable={mutable}
+                            />
+                          ) : null}
+
+                          {q && visibleAreas.length === 0 && ungroupedVisible.length === 0 ? (
+                            <p className="rounded-md border border-line bg-app2 px-3 py-2 text-sm text-muted">
+                              No coverage areas match “{reviewFilter.trim()}”.
+                            </p>
+                          ) : null}
+                        </div>
+                      </>
+                    )}
                   </section>
                 </>
               )}
@@ -794,6 +921,148 @@ function EvidenceCard({
         </button>
       </div>
     </li>
+  );
+}
+
+/** Minimal claim shape the review needs — satisfied by both HandoffClaim and the
+ * coverage-area's RecipientClaim (structurally identical), so no cast is needed. */
+interface ReviewClaim {
+  id: string;
+  kind: string;
+  text: string;
+  source_message_id_headers: string[];
+}
+
+/**
+ * One collapsible coverage-area section (S37). Claims are shown first, grouped by
+ * kind within the area; the area's evidence is collapsed behind a toggle and
+ * disclosed on demand, where each card keeps the existing Remove/Copy pruning.
+ * This is a pure presentation grouping over the package snapshot — it never
+ * changes which claims/evidence exist, and removal still routes through the same
+ * scope-exclusion + regenerate path.
+ */
+function CoverageAreaSection({
+  domId,
+  title,
+  claims,
+  evidence,
+  collapsed,
+  evidenceOpen,
+  onToggleCollapsed,
+  onToggleEvidence,
+  excludedHeaders,
+  onRemove,
+  onCopy,
+  busy,
+  mutable,
+}: {
+  domId: string;
+  title: string;
+  claims: ReviewClaim[];
+  evidence: HandoffEvidence[];
+  collapsed: boolean;
+  evidenceOpen: boolean;
+  onToggleCollapsed: () => void;
+  onToggleEvidence: () => void;
+  excludedHeaders: Set<string>;
+  onRemove: (header: string) => void;
+  onCopy: (header: string) => void;
+  busy: boolean;
+  mutable: boolean;
+}) {
+  const byKind = (kind: string) => claims.filter((c) => c.kind === kind);
+  const orderedKinds = KIND_ORDER.filter((k) => byKind(k).length > 0);
+  const extraKinds = [...new Set(claims.map((c) => c.kind))].filter(
+    (k) => !KIND_ORDER.includes(k),
+  );
+  return (
+    <section id={`handoff-${domId}`} className="scroll-mt-4 rounded-md border border-line bg-surface">
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        aria-expanded={!collapsed}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+      >
+        <span className="w-3 shrink-0 text-xs text-faint" aria-hidden>
+          {collapsed ? "▸" : "▾"}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+          {title}
+        </span>
+        <span className="shrink-0 text-[11px] text-muted">
+          {claims.length} claim{claims.length === 1 ? "" : "s"} · {evidence.length} evidence
+        </span>
+      </button>
+
+      {!collapsed ? (
+        <div className="border-t border-line px-3 py-2">
+          {claims.length === 0 ? (
+            <p className="text-xs text-faint">
+              Evidence not cited by any claim in this package.
+            </p>
+          ) : (
+            [...orderedKinds, ...extraKinds].map((kind) => (
+              <div key={kind} className="mt-2 first:mt-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-faint">
+                  {KIND_LABEL[kind] ?? kind}
+                </div>
+                <ul className="mt-1 space-y-2">
+                  {byKind(kind).map((c) => (
+                    <li
+                      key={c.id}
+                      className="rounded-md border border-line bg-app2 px-3 py-2 text-sm"
+                    >
+                      <div className="text-ink">{c.text}</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {c.source_message_id_headers.map((h) => (
+                          <span
+                            key={h}
+                            className="rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] text-muted"
+                            title="Cited source message"
+                          >
+                            {h}
+                          </span>
+                        ))}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+
+          {evidence.length > 0 ? (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={onToggleEvidence}
+                aria-expanded={evidenceOpen}
+                className="text-xs font-medium text-brass underline underline-offset-2 hover:text-ink"
+              >
+                {evidenceOpen
+                  ? "Hide evidence"
+                  : `Show ${evidence.length} supporting message${evidence.length === 1 ? "" : "s"}`}
+              </button>
+              {evidenceOpen ? (
+                <ul className="mt-2 space-y-3">
+                  {evidence.map((ev) => (
+                    <EvidenceCard
+                      key={ev.message_id_header}
+                      ev={ev}
+                      removing={excludedHeaders.has(ev.message_id_header)}
+                      onRemove={() => onRemove(ev.message_id_header)}
+                      onCopy={() => onCopy(ev.message_id_header)}
+                      disabled={busy}
+                      canRemove={mutable}
+                    />
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
