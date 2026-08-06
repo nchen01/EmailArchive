@@ -10,6 +10,7 @@ import {
   REL_TYPE_LABEL,
   sortedProjectRoots,
 } from "../utils/relationshipMap";
+import type { OrgGroup } from "../utils/relationshipGraph";
 
 const MODES: { mode: RelationshipMapMode; label: string }[] = [
   { mode: "owner", label: "Owner tree" },
@@ -45,6 +46,11 @@ interface ControlsProps {
   onRecencyChange: (d: number | null) => void;
   minEvidence: number;
   onMinEvidenceChange: (n: number) => void;
+  orgGroups: OrgGroup[];
+  collapsedDomains: Set<string>;
+  onToggleDomain: (domain: string) => void;
+  onExpandAllOrgs: () => void;
+  onCollapseAllOrgs: () => void;
 }
 
 /** Left-rail controls for the relationship map: mode, project root, relationship
@@ -61,6 +67,11 @@ export function RelationshipMapControls({
   onRecencyChange,
   minEvidence,
   onMinEvidenceChange,
+  orgGroups,
+  collapsedDomains,
+  onToggleDomain,
+  onExpandAllOrgs,
+  onCollapseAllOrgs,
 }: ControlsProps) {
   return (
     <div className="rel-controls">
@@ -135,7 +146,128 @@ export function RelationshipMapControls({
           Evidence count is communication volume, not importance.
         </p>
       </div>
+
+      {orgGroups.length > 0 ? (
+        <OrgCollapsePanel
+          orgGroups={orgGroups}
+          collapsedDomains={collapsedDomains}
+          onToggleDomain={onToggleDomain}
+          onExpandAllOrgs={onExpandAllOrgs}
+          onCollapseAllOrgs={onCollapseAllOrgs}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/** How many members to show per org before the "Show more" affordance. */
+const MEMBERS_SHOWN = 5;
+
+/**
+ * Groups people by organization/domain and lets the user collapse (hide from the
+ * canvas) or expand each group — the primary readability lever for a busy map.
+ * Group size is shown as a plain member count (how many people share the domain),
+ * explicitly not a ranking of people or orgs. Each group's member list is itself
+ * capped with a Show more / Show fewer control so a large org never floods the
+ * rail.
+ */
+function OrgCollapsePanel({
+  orgGroups,
+  collapsedDomains,
+  onToggleDomain,
+  onExpandAllOrgs,
+  onCollapseAllOrgs,
+}: {
+  orgGroups: OrgGroup[];
+  collapsedDomains: Set<string>;
+  onToggleDomain: (domain: string) => void;
+  onExpandAllOrgs: () => void;
+  onCollapseAllOrgs: () => void;
+}) {
+  return (
+    <div className="rel-control-group">
+      <div className="rel-org-head">
+        <h3>Organizations</h3>
+        <div className="rel-org-bulk">
+          <button type="button" onClick={onExpandAllOrgs}>
+            Expand all
+          </button>
+          <span aria-hidden>·</span>
+          <button type="button" onClick={onCollapseAllOrgs}>
+            Collapse all
+          </button>
+        </div>
+      </div>
+      <p className="rel-control-note rel-control-note-top">
+        Collapse an organization to hide its people and de-clutter the map. The
+        count is how many people share the domain — not importance or ranking.
+      </p>
+      <ul className="rel-org-list">
+        {orgGroups.map((g) => (
+          <OrgGroupRow
+            key={g.domain}
+            group={g}
+            collapsed={collapsedDomains.has(g.domain)}
+            onToggle={() => onToggleDomain(g.domain)}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function OrgGroupRow({
+  group,
+  collapsed,
+  onToggle,
+}: {
+  group: OrgGroup;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const members = showAll ? group.members : group.members.slice(0, MEMBERS_SHOWN);
+  const hiddenCount = group.members.length - members.length;
+
+  return (
+    <li className="rel-org-row">
+      <div className="rel-org-row-head">
+        <button
+          type="button"
+          className="rel-org-toggle"
+          aria-expanded={!collapsed}
+          onClick={onToggle}
+          title={collapsed ? "Show these people on the map" : "Hide these people from the map"}
+        >
+          <span className="rel-org-caret" aria-hidden>
+            {collapsed ? "▸" : "▾"}
+          </span>
+          <span className="rel-org-name">
+            {group.label}
+            {group.internal ? <span className="rel-org-tag">internal</span> : null}
+          </span>
+          <span className="rel-org-count" title="Number of people sharing this domain">
+            {group.members.length}
+          </span>
+        </button>
+      </div>
+      <ul className="rel-org-members">
+        {members.map((m) => (
+          <li key={m.id} className="rel-org-member">
+            {m.label}
+          </li>
+        ))}
+      </ul>
+      {group.members.length > MEMBERS_SHOWN ? (
+        <button
+          type="button"
+          className="rel-org-showmore"
+          onClick={() => setShowAll((v) => !v)}
+        >
+          {showAll ? "Show fewer" : `Show ${hiddenCount} more`}
+        </button>
+      ) : null}
+    </li>
   );
 }
 

@@ -19,6 +19,11 @@ import {
   NODE_COLOR,
   pickDefaultProjectRoot,
 } from "../utils/relationshipMap";
+import {
+  defaultCollapsedDomains,
+  deriveOrgGroups,
+  filterGraph,
+} from "../utils/relationshipGraph";
 import { ErrorBanner } from "./ErrorBanner";
 import { LoadingSpinner } from "./LoadingSpinner";
 import {
@@ -67,6 +72,11 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
   const [recencyDays, setRecencyDays] = useState<number | null>(null);
   const [minEvidence, setMinEvidence] = useState(1);
   const [selection, setSelection] = useState<RelSelection | null>(null);
+  // Org/domain groups collapsed (their members hidden from the canvas) for
+  // readability. Large external orgs start collapsed; the user expands on demand.
+  const [collapsedDomains, setCollapsedDomains] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const fgRef = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(
     undefined,
@@ -107,38 +117,57 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
 
   const { data, loading, error, errorKind } = useRelationshipMap(mailboxId, query);
 
-  // Client-side minimum-evidence filter (drops below threshold, then orphans).
-  const graphData = useMemo(() => {
-    if (!data) return { nodes: [] as GraphNode[], links: [] as GraphLink[] };
-    const keptEdges = data.edges.filter((e) => e.evidence_count >= minEvidence);
-    const referenced = new Set<string>();
-    for (const e of keptEdges) {
-      referenced.add(e.source_id);
-      referenced.add(e.target_id);
-    }
-    if (data.root) referenced.add(data.root.id);
+  // People grouped by org/domain — used for the collapse controls and defaults.
+  const orgGroups = useMemo(() => deriveOrgGroups(data?.nodes ?? []), [data]);
 
-    const nodes: GraphNode[] = data.nodes
-      .filter((n) => referenced.has(n.id))
-      .map((n) => {
-        const isRoot = data.root?.id === n.id;
-        return {
-          id: n.id,
-          name: n.label,
-          color: NODE_COLOR[n.node_type] ?? "#64748b",
-          ntype: n.node_type,
-          val: isRoot ? 14 : n.node_type === "person" ? 6 : 9,
-          node: n,
-          ...(isRoot ? { fx: 0, fy: 0 } : {}),
-        };
-      });
-    const links: GraphLink[] = keptEdges.map((e) => ({
+  // Re-apply the default-collapsed set whenever the available groups change (new
+  // mailbox, mode, or a server-side filter that changes who is in the graph).
+  // Purely client-side changes (min-evidence) don't change the group signature,
+  // so a user's expand/collapse choices persist across them.
+  const groupSig = orgGroups.map((g) => g.domain).join(",");
+  useEffect(() => {
+    setCollapsedDomains(defaultCollapsedDomains(orgGroups));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupSig, mailboxId]);
+
+  // Min-evidence (volume) filter + org-collapse hide, then orphan drop.
+  const filtered = useMemo(
+    () => (data ? filterGraph(data, minEvidence, collapsedDomains) : null),
+    [data, minEvidence, collapsedDomains],
+  );
+
+  const graphData = useMemo(() => {
+    if (!filtered) return { nodes: [] as GraphNode[], links: [] as GraphLink[] };
+    const nodes: GraphNode[] = filtered.nodes.map((n) => {
+      const isRoot = data?.root?.id === n.id;
+      return {
+        id: n.id,
+        name: n.label,
+        color: NODE_COLOR[n.node_type] ?? "#64748b",
+        ntype: n.node_type,
+        val: isRoot ? 14 : n.node_type === "person" ? 6 : 9,
+        node: n,
+        ...(isRoot ? { fx: 0, fy: 0 } : {}),
+      };
+    });
+    const links: GraphLink[] = filtered.edges.map((e) => ({
       source: e.source_id,
       target: e.target_id,
       edge: e,
     }));
     return { nodes, links };
-  }, [data, minEvidence]);
+  }, [filtered, data]);
+
+  const toggleDomain = (domain: string) =>
+    setCollapsedDomains((prev) => {
+      const next = new Set(prev);
+      if (next.has(domain)) next.delete(domain);
+      else next.add(domain);
+      return next;
+    });
+  const expandAllOrgs = () => setCollapsedDomains(new Set());
+  const collapseAllOrgs = () =>
+    setCollapsedDomains(new Set(orgGroups.map((g) => g.domain)));
 
   const nodeLabels = useMemo(() => {
     const m: Record<string, string> = {};
@@ -149,8 +178,13 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;
-    fg.d3Force("charge")?.strength(-160);
-    fg.d3Force("link")?.distance(70);
+    // Give the layout more breathing room as it grows so nodes/labels overlap
+    // less — a denser graph gets stronger repulsion and longer links.
+    const n = graphData.nodes.length;
+    const charge = n > 40 ? -260 : n > 20 ? -200 : -160;
+    const dist = n > 40 ? 95 : 70;
+    fg.d3Force("charge")?.strength(charge);
+    fg.d3Force("link")?.distance(dist);
   }, [graphData]);
 
   const toggleType = (t: RelationshipType) =>
@@ -178,6 +212,11 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
         onRecencyChange={setRecencyDays}
         minEvidence={minEvidence}
         onMinEvidenceChange={setMinEvidence}
+        orgGroups={orgGroups}
+        collapsedDomains={collapsedDomains}
+        onToggleDomain={toggleDomain}
+        onExpandAllOrgs={expandAllOrgs}
+        onCollapseAllOrgs={collapseAllOrgs}
       />
 
       <div className="rel-canvas">
@@ -204,6 +243,26 @@ export function RelationshipMap({ mailboxId, projects }: RelationshipMapProps) {
           </div>
         ) : (
           <>
+            {filtered && filtered.hiddenPeople > 0 ? (
+              <div className="rel-declutter-banner">
+                <span>
+                  {filtered.hiddenPeople}{" "}
+                  {filtered.hiddenPeople === 1 ? "person" : "people"} in{" "}
+                  {filtered.collapsedGroups}{" "}
+                  {filtered.collapsedGroups === 1
+                    ? "organization"
+                    : "organizations"}{" "}
+                  collapsed to reduce clutter.
+                </span>
+                <button
+                  type="button"
+                  className="rel-declutter-expand"
+                  onClick={expandAllOrgs}
+                >
+                  Expand all
+                </button>
+              </div>
+            ) : null}
             <div className="rel-legend">
               <span><span className="rel-legend-line solid" /> Direct exchange</span>
               <span><span className="rel-legend-line dashed" /> Co-participation</span>
