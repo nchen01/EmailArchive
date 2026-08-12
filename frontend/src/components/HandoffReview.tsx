@@ -19,7 +19,12 @@ import type {
   ReturnContext,
 } from "../api/types";
 import { navigate, usePathname } from "../router";
-import { buildCoverageAreas, type CoverageArea } from "../utils/coverageAreas";
+import { useProjects } from "../hooks/useProjects";
+import {
+  buildHandoffProjectGroups,
+  filterHandoffGroup,
+  type HandoffGroup,
+} from "../utils/handoffGroups";
 import { ReturnBanner, ReturnCreatePanel } from "./ReturnHandoff";
 
 const HANDOFF_BASE = "/app/handoff";
@@ -236,31 +241,35 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
     }
   }, [pkg?.id, pkg?.package_type]);
 
-  // S37: honest topic grouping. `buildCoverageAreas` is the SAME package-local
-  // primitive the recipient view uses (utils/coverageAreas) — derived purely from
-  // the snapshot payload, no fetch, and labelled from a representative evidence
-  // subject, never a fabricated project name. Evidence a claim cites is grouped
-  // with that claim; any evidence cited by no claim is surfaced separately below
-  // so the visible total always equals the package's safe evidence count.
-  const areas = useMemo<CoverageArea[]>(
-    () => (pkg && pkg.claims.length > 0 ? buildCoverageAreas(pkg.claims, pkg.evidence) : []),
-    [pkg?.id, pkg?.claims, pkg?.evidence],
+  // S37: group by REAL project identity. This is the creator's OWN mailbox review
+  // surface, so we may use live project metadata — `claim.project_id` resolved to
+  // a label from the mailbox project list. (The recipient text-clustering
+  // primitive over-merged dense rich data into one giant area and is the wrong
+  // tool here.) No recipient live-mailbox access, no snapshot change.
+  const { projects } = useProjects(mailboxId);
+  const labelById = useMemo(
+    () => new Map(projects.map((p) => [p.id, p.label])),
+    [projects],
   );
-  const ungroupedEvidence = useMemo<HandoffEvidence[]>(() => {
-    if (!pkg) return [];
-    const inArea = new Set(areas.flatMap((a) => a.evidence.map((e) => e.message_id_header)));
-    return pkg.evidence.filter((e) => !inArea.has(e.message_id_header));
-  }, [pkg, areas]);
+  // Groups already include an "Other evidence" bucket for anything a claim no
+  // longer cites, so the visible evidence total always equals the safe count.
+  const groups = useMemo<HandoffGroup[]>(
+    () =>
+      pkg && pkg.claims.length > 0
+        ? buildHandoffProjectGroups(pkg.claims, pkg.evidence, labelById)
+        : [],
+    [pkg?.id, pkg?.claims, pkg?.evidence, labelById],
+  );
 
-  // A new package clears the filter; a changed area set (regenerate, prune)
-  // resets disclosure so stale ids never point at the wrong area.
+  // A new package clears the filter; a changed group set (regenerate, prune)
+  // resets disclosure so stale ids never point at the wrong group.
   useEffect(() => {
     setReviewFilter("");
   }, [pkg?.id]);
   useEffect(() => {
     setCollapsedAreas(new Set());
     setOpenEvidence(new Set());
-  }, [pkg?.id, areas.length, ungroupedEvidence.length]);
+  }, [pkg?.id, groups.length]);
 
   const create = () =>
     run("create", async () => {
@@ -362,23 +371,20 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
   // disabled in the UI (§immutability). Backend also rejects these transitions.
   const mutable = !pkg || pkg.status === "draft" || pkg.status === "generated";
 
-  // ── S37 review derivations (filter / jump / expand-collapse) ──────────────
-  const UNGROUPED_ID = "__ungrouped__";
+  // ── S37 review derivations (filter within groups / jump / counts) ─────────
   const q = reviewFilter.trim().toLowerCase();
-  const areaHaystack = (a: CoverageArea) =>
-    `${a.label} ${a.claims.map((c) => c.text).join(" ")} ${a.evidence
-      .map((e) => `${e.subject} ${e.sender_display} ${e.sender_domain}`)
-      .join(" ")}`.toLowerCase();
-  const visibleAreas = q ? areas.filter((a) => areaHaystack(a).includes(q)) : areas;
-  const ungroupedVisible = q
-    ? ungroupedEvidence.filter((e) =>
-        `${e.subject} ${e.sender_display} ${e.sender_domain}`.toLowerCase().includes(q),
-      )
-    : ungroupedEvidence;
-  const allAreaIds = [
-    ...areas.map((a) => a.id),
-    ...(ungroupedEvidence.length > 0 ? [UNGROUPED_ID] : []),
-  ];
+  // Filter WITHIN each group; keep only groups with a surviving claim or evidence.
+  const visibleGroups = groups
+    .map((g) => ({ group: g, ...filterHandoffGroup(g, q) }))
+    .filter((fg) => fg.claims.length > 0 || fg.evidence.length > 0);
+  const shownClaims = visibleGroups.reduce((n, fg) => n + fg.claims.length, 0);
+  const shownEvidenceHeaders = new Set<string>();
+  for (const fg of visibleGroups)
+    for (const e of fg.evidence) shownEvidenceHeaders.add(e.message_id_header);
+  const shownEvidence = shownEvidenceHeaders.size;
+  const totalClaims = pkg?.claims.length ?? 0;
+  const totalEvidence = pkg?.evidence.length ?? 0;
+  const allGroupIds = groups.map((g) => g.id);
   const toggleAreaCollapsed = (id: string) =>
     setCollapsedAreas((p) => {
       const n = new Set(p);
@@ -394,8 +400,8 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       return n;
     });
   const expandAllAreas = () => setCollapsedAreas(new Set());
-  const collapseAllAreas = () => setCollapsedAreas(new Set(allAreaIds));
-  const jumpToArea = (id: string) => {
+  const collapseAllAreas = () => setCollapsedAreas(new Set(allGroupIds));
+  const jumpToGroup = (id: string) => {
     // Expanding first so the target is on-screen before we scroll to it.
     setCollapsedAreas((p) => {
       const n = new Set(p);
@@ -561,9 +567,9 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                               type="text"
                               value={reviewFilter}
                               onChange={(e) => setReviewFilter(e.target.value)}
-                              placeholder="Filter by topic, subject, or sender…"
+                              placeholder="Filter by project, claim, subject, or sender…"
                               className="min-w-[12rem] flex-1 rounded border border-line2 bg-surface px-2 py-1 text-sm text-ink"
-                              aria-label="Filter coverage areas"
+                              aria-label="Filter project groups"
                             />
                             <div className="flex items-center gap-2 text-xs">
                               <button
@@ -584,22 +590,28 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                             </div>
                           </div>
                           <p className="mt-2 text-[11px] text-faint">
-                            Grouped into {areas.length} coverage area
-                            {areas.length === 1 ? "" : "s"} by topic (labelled from
-                            evidence subjects — not project names). Evidence is
-                            collapsed under each area; expand to inspect or remove.
+                            Grouped into {groups.length} project group
+                            {groups.length === 1 ? "" : "s"} by the covered project.
+                            Evidence is collapsed under each group; expand to inspect
+                            or remove.
                           </p>
-                          {areas.length > 1 ? (
+                          {q ? (
+                            <p className="mt-1 text-[11px] font-medium text-muted">
+                              Showing {shownClaims} of {totalClaims} claims ·{" "}
+                              {shownEvidence} of {totalEvidence} evidence.
+                            </p>
+                          ) : null}
+                          {visibleGroups.length > 1 ? (
                             <div className="mt-2 flex flex-wrap gap-1.5">
-                              {areas.map((a) => (
+                              {visibleGroups.map((fg) => (
                                 <button
-                                  key={a.id}
+                                  key={fg.group.id}
                                   type="button"
-                                  onClick={() => jumpToArea(a.id)}
+                                  onClick={() => jumpToGroup(fg.group.id)}
                                   className="max-w-[16rem] truncate rounded-full border border-line px-2.5 py-1 text-[11px] text-muted hover:bg-app2 hover:text-ink"
-                                  title={a.label}
+                                  title={fg.group.label}
                                 >
-                                  {a.label} · {a.claims.length}/{a.evidence.length}
+                                  {fg.group.label} · {fg.claims.length}/{fg.evidence.length}
                                 </button>
                               ))}
                             </div>
@@ -646,17 +658,17 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                         </p>
 
                         <div className="mt-2 space-y-3">
-                          {visibleAreas.map((a) => (
+                          {visibleGroups.map((fg) => (
                             <CoverageAreaSection
-                              key={a.id}
-                              domId={a.id}
-                              title={a.label}
-                              claims={a.claims}
-                              evidence={a.evidence}
-                              collapsed={collapsedAreas.has(a.id)}
-                              evidenceOpen={openEvidence.has(a.id)}
-                              onToggleCollapsed={() => toggleAreaCollapsed(a.id)}
-                              onToggleEvidence={() => toggleAreaEvidence(a.id)}
+                              key={fg.group.id}
+                              domId={fg.group.id}
+                              title={fg.group.label}
+                              claims={fg.claims}
+                              evidence={fg.evidence}
+                              collapsed={collapsedAreas.has(fg.group.id)}
+                              evidenceOpen={openEvidence.has(fg.group.id)}
+                              onToggleCollapsed={() => toggleAreaCollapsed(fg.group.id)}
+                              onToggleEvidence={() => toggleAreaEvidence(fg.group.id)}
                               excludedHeaders={excludedHeaders}
                               onRemove={removeEvidence}
                               onCopy={copyId}
@@ -665,27 +677,9 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                             />
                           ))}
 
-                          {ungroupedVisible.length > 0 ? (
-                            <CoverageAreaSection
-                              domId={UNGROUPED_ID}
-                              title="Other evidence (not cited by a claim)"
-                              claims={[]}
-                              evidence={ungroupedVisible}
-                              collapsed={collapsedAreas.has(UNGROUPED_ID)}
-                              evidenceOpen={openEvidence.has(UNGROUPED_ID)}
-                              onToggleCollapsed={() => toggleAreaCollapsed(UNGROUPED_ID)}
-                              onToggleEvidence={() => toggleAreaEvidence(UNGROUPED_ID)}
-                              excludedHeaders={excludedHeaders}
-                              onRemove={removeEvidence}
-                              onCopy={copyId}
-                              busy={busy !== null}
-                              mutable={mutable}
-                            />
-                          ) : null}
-
-                          {q && visibleAreas.length === 0 && ungroupedVisible.length === 0 ? (
+                          {visibleGroups.length === 0 ? (
                             <p className="rounded-md border border-line bg-app2 px-3 py-2 text-sm text-muted">
-                              No coverage areas match “{reviewFilter.trim()}”.
+                              No claims or evidence match “{reviewFilter.trim()}”.
                             </p>
                           ) : null}
                         </div>
