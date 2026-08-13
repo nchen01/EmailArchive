@@ -122,7 +122,7 @@ export function ConfirmReasonModal({
           className="mt-1 h-20 w-full resize-none rounded-md border border-line2 bg-app px-2 py-1 text-sm text-ink focus:border-brass focus:outline-none"
           value={reason}
           maxLength={500}
-          placeholder="Required — recorded in the audit trail."
+          placeholder="Required. Recorded in the audit trail."
           onChange={(e) => setReason(e.target.value)}
           disabled={busy}
           autoFocus

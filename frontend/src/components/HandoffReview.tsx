@@ -73,7 +73,7 @@ function generationEmptyMessage(pkg: HandoffPackage): string {
     case "no_events_for_mailbox":
       return (
         "No handoff claims were generated because this mailbox has no extracted " +
-        "handoff events at all. Widening the date range will not help — event " +
+        "handoff events at all. Widening the date range will not help. Event " +
         "extraction (L1 enrichment) must run for this mailbox before a handoff " +
         "package can be generated."
       );
@@ -420,7 +420,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       <h2 className="text-lg font-semibold text-ink">Review handoff package</h2>
       <p className="mt-1 max-w-2xl text-sm text-muted">
         Inspect and prune what a coverage handoff would reveal, from your own
-        mailbox, <strong>before publishing</strong>. This is your review surface —
+        mailbox, <strong>before publishing</strong>. This is your review surface,
         not the recipient view. Sensitive and noise messages are excluded
         automatically; you can remove anything else. When it looks right,{" "}
         <strong>publish</strong> to freeze it and mint a one-time recipient link.
@@ -435,8 +435,8 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
           The seeded Handoff mailbox is provisioned for{" "}
           <strong>handoff package generation</strong> (messages + extracted events),
           not the full graph profile. The Overview readiness strip reports{" "}
-          <strong>whole-workspace</strong> readiness (People, Projects, Retrieval) —
-          not handoff-generation readiness — so 0/0/limited here is expected and does
+          <strong>whole-workspace</strong> readiness (People, Projects, Retrieval),
+          not handoff-generation readiness, so 0/0/limited here is expected and does
           not block publishing. The Cover-for-me, Relationship Map, and Network Map
           demos use the <strong>puluo</strong> mailbox instead.
         </p>
@@ -628,7 +628,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                               you (excluded from this package).
                             </div>
                             <p className="mt-1">
-                              Regenerate rebuilds from the current scope, including your removals — the
+                              Regenerate rebuilds from the current scope, including your removals, so the
                               count stays reduced on purpose. Sensitive/noise content is excluded by
                               policy separately and is never restored here.
                             </p>
@@ -756,7 +756,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
                   id="actions"
                   className="scroll-mt-4 rounded-md border border-line2 bg-app2 p-4 text-xs text-faint"
                 >
-                  This package is {pkg.status} and frozen — scope, regeneration, and
+                  This package is {pkg.status} and frozen. Scope, regeneration, and
                   evidence removal are locked.
                 </div>
               )}
@@ -1145,7 +1145,7 @@ function PublishControls({
           {revoked
             ? `This handoff was revoked${pkg.revoked_at ? ` on ${fmtDate(pkg.revoked_at)}` : ""}. The recipient can no longer open it.`
             : "A newer version of this handoff has been published. The recipient's access to this version is blocked."}{" "}
-          To share again, create a revised version — it starts a fresh draft with
+          To share again, create a revised version. It starts a fresh draft with
           this package's scope; publishing it mints a new one-time link.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1192,7 +1192,7 @@ function PublishControls({
             </label>
             <div className="mt-2 rounded bg-warn-soft px-2 py-1.5 text-xs text-warn">
               <strong>This link is shown once.</strong> Copy it now and store it
-              securely — the code cannot be recovered later, not even by you. The
+              securely. The code cannot be recovered later, not even by you. The
               code is one-time: it is consumed the first time it is opened, so do
               not open it yourself before sending it to the recipient.
             </div>
@@ -1210,7 +1210,7 @@ function PublishControls({
           <p className="mt-3 text-xs text-jade">
             The share link was shown once, when this package was published, and
             cannot be recovered from the server. If you need the link again, create
-            a revised version below — it starts a fresh draft with this package's
+            a revised version below. It starts a fresh draft with this package's
             scope, and publishing it mints a new one-time link (which supersedes
             this version).
           </p>
@@ -1280,7 +1280,7 @@ function PublishControls({
       </div>
       {noEvidence ? (
         <p className="mt-2 text-xs text-brass">
-          This package has no evidence yet — widen the scope and regenerate before
+          This package has no evidence yet. Widen the scope and regenerate before
           publishing.
         </p>
       ) : null}

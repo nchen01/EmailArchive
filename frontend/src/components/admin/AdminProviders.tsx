@@ -40,7 +40,7 @@ export function AdminProviders() {
     try {
       await adminDisconnectProviderAccount(target.id, reason);
       setTarget(null);
-      setFlash("Provider account disconnected — token revoked and vault purged.");
+      setFlash("Provider account disconnected. Token revoked and vault purged.");
       load();
     } catch (e) {
       setActionError(describeError(e).message);

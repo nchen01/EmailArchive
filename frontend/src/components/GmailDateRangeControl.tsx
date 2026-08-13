@@ -224,7 +224,7 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
           <div>
             Window: <strong>{preview.date_from ?? "(open)"}</strong> –{" "}
             <strong>{preview.date_to ?? "(open)"}</strong>
-            {preview.provider_filter_applied ? " (filter applied)" : " (open — whole mailbox)"}
+            {preview.provider_filter_applied ? " (filter applied)" : " (open: whole mailbox)"}
           </div>
           <div>
             Matching messages:{" "}
@@ -239,7 +239,7 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
             </div>
           ) : null}
           <div style={{ marginTop: "0.25rem" }}>
-            Ready to persist this window (scoped snapshot) —{" "}
+            Ready to persist this window (scoped snapshot):{" "}
             {replace
               ? "will REPLACE the current mailbox snapshot before ingesting."
               : "append/upsert; existing out-of-window data is preserved."}
@@ -251,7 +251,7 @@ export function GmailDateRangeControl({ mailboxId }: { mailboxId: string }) {
         <div className="status-list" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
           <div>
             Ingest job: <strong>{job.status}</strong>
-            {!isJobTerminal(job.status) ? " — running in the background…" : null}
+            {!isJobTerminal(job.status) ? " · running in the background…" : null}
           </div>
           {typeof job.progress?.phase === "string" ? (
             <div>Phase: {String(job.progress.phase)}</div>

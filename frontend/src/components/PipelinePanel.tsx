@@ -106,7 +106,7 @@ export function PipelinePanel({ mailboxId }: { mailboxId: string }) {
            onClick={() => run("events", () => enqueueExtractEvents(mailboxId))} />
 
       <div className="flex items-center justify-between gap-3 border-t border-line py-2">
-        <span className="text-sm text-ink">3. Embedding backfill (Voyage — cost-gated)</span>
+        <span className="text-sm text-ink">3. Embedding backfill (Voyage, cost-gated)</span>
         <span className="flex items-center gap-3">
           {status.embed ? <span className="font-mono text-xs text-muted">{status.embed}</span> : null}
           <button

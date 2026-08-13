@@ -63,7 +63,7 @@ export function AdminPackages() {
       const updated = await adminRevokePackage(selectedId, reason);
       setDetail(updated);
       setShowRevoke(false);
-      setFlash("Package revoked — recipient access is now blocked.");
+      setFlash("Package revoked. Recipient access is now blocked.");
       loadList();
       getAdminPackageAudit(selectedId).then(setAudit).catch(() => undefined);
     } catch (e) {

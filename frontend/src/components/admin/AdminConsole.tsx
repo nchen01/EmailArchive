@@ -293,7 +293,7 @@ function ExclusionsPanel() {
   return (
     <div className="max-w-lg">
       <p className="mb-2 text-xs text-muted">
-        Aggregate counts only — no excluded subjects, bodies, or message ids are ever shown.
+        Aggregate counts only. No excluded subjects, bodies, or message ids are ever shown.
         Total excluded: <span className="font-mono text-ink">{data.total_excluded}</span>
       </p>
       {data.by_type.length === 0 ? (

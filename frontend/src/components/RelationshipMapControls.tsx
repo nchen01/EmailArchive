@@ -200,7 +200,7 @@ function OrgCollapsePanel({
       </div>
       <p className="rel-control-note rel-control-note-top">
         Collapse an organization to hide its people and de-clutter the map. The
-        count is how many people share the domain — not importance or ranking.
+        count is how many people share the domain, not importance or ranking.
       </p>
       <ul className="rel-org-list">
         {orgGroups.map((g) => (

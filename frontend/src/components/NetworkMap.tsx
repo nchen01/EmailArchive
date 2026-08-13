@@ -113,7 +113,7 @@ export function NetworkMap({
       nodeLabel={(n: NodeObject<GraphNode>) =>
         n.isOwner
           ? `${n.name} (owner)`
-          : `${n.name}${n.apiNode ? ` — ${n.apiNode.role}` : ""}`
+          : `${n.name}${n.apiNode ? `: ${n.apiNode.role}` : ""}`
       }
       linkWidth={(l) => (l as GraphLink).width}
       linkColor={(l) => (l as GraphLink).color}
