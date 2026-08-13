@@ -328,10 +328,10 @@ select:disabled {
 /* Sections + ledger */
 .lx-section { padding: 78px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 84px; }
 .lx-section.alt { background: var(--surface); }
-.lx-sechead { display: flex; justify-content: space-between; align-items: end; gap: 30px; flex-wrap: wrap; margin-bottom: 8px; }
+.lx-sechead { display: block; margin-bottom: 8px; }
 .lx-sechead h2 { font-family: var(--font-display); font-weight: 600; font-size: clamp(26px, 3.4vw, 36px);
   line-height: 1.1; letter-spacing: -.015em; margin: 14px 0 0; max-width: 15em; text-wrap: balance; }
-.lx-sechead p { color: var(--muted); font-size: 15px; max-width: 30em; margin: 0; }
+.lx-sechead p { color: var(--muted); font-size: 15px; line-height: 1.6; max-width: 46ch; margin: 16px 0 0; text-wrap: pretty; }
 .lx-ledger { margin-top: 34px; border-top: 1px solid var(--line-2); }
 .lx-lrow { display: grid; grid-template-columns: 60px 1.1fr 1.5fr; gap: 26px; align-items: baseline;
   padding: 26px 6px; border-bottom: 1px solid var(--line); transition: background .2s; }
