@@ -116,7 +116,7 @@ function EvidenceCard({
         <span className="evidence-card-snippet">{evidence.snippet}</span>
       ) : (
         <span className="evidence-card-snippet evidence-card-snippet-empty">
-          No message preview — open for citation detail.
+          No message preview. Open for citation detail.
         </span>
       )}
     </button>
@@ -226,34 +226,34 @@ function RetrievalStatusNote({
     case "active_l1_only":
       return (
         <p className="mt-2 text-xs text-faint">
-          No matching retrieved messages — answer uses structured data only.
+          No matching retrieved messages. Answer uses structured data only.
         </p>
       );
     case "disabled_no_key":
       return (
         <p className="mt-2 text-xs text-faint">
-          Evidence search not configured — set VOYAGE_API_KEY to enable message
+          Evidence search not configured. Set VOYAGE_API_KEY to enable message
           retrieval.
         </p>
       );
     case "degraded_rate_limit":
       return (
         <p className="mt-2 text-xs text-warn">
-          Evidence search temporarily limited (rate limit) — answer based on
+          Evidence search temporarily limited (rate limit). Answer based on
           structured data only.
         </p>
       );
     case "no_embeddings":
       return (
         <p className="mt-2 text-xs text-warn">
-          Message embeddings not found — run <code>embed_backfill.py</code> to
+          Message embeddings not found. Run <code>embed_backfill.py</code> to
           enable retrieval.
         </p>
       );
     case "unavailable":
       return (
         <p className="mt-2 text-xs text-warn">
-          Evidence search unavailable — answer based on structured data only.
+          Evidence search unavailable. Answer based on structured data only.
         </p>
       );
     default:

@@ -76,7 +76,7 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new ApiError(
         "timeout",
-        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s — the backend may be ` +
+        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s. The backend may be ` +
           `unresponsive. Check the backend window (scripts\\run_backend.ps1).`,
       );
     }
@@ -104,7 +104,7 @@ async function toHttpError(res: Response): Promise<ApiError> {
   if (res.status === 404) {
     return new ApiError(
       "not_found",
-      `Not found (404)${detail} — check the mailbox ID.`,
+      `Not found (404)${detail}. Check the mailbox ID.`,
       404,
     );
   }

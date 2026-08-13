@@ -660,7 +660,7 @@ function AskBox({ sessionToken }: { sessionToken: string }) {
     <section className="rounded-md border border-brass bg-brass-soft p-4">
       <h2 className="text-sm font-semibold text-ink">Ask about this handoff</h2>
       <p className="mt-0.5 text-xs text-brass">
-        Answers come only from this package — the sender's mailbox is not searched.
+        Answers come only from this package. The sender's mailbox is not searched.
       </p>
       <form className="mt-3 flex gap-2" onSubmit={submit}>
         <input

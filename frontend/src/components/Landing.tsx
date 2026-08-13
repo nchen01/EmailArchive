@@ -75,7 +75,7 @@ export function Landing() {
             <h1 className="lx-h1">When someone steps away,<br />the work doesn't <em>go dark</em>.</h1>
             <p className="lx-lede">
               Continuity turns a covered employee's email into a scoped, cited, revocable handoff
-              package — so whoever covers them opens with the decisions, open loops, and the evidence
+              package, so whoever covers them opens with the decisions, open loops, and the evidence
               behind each one. Nothing sensitive. Nothing off-scope.
             </p>
             <div className="lx-cta-row">
@@ -93,7 +93,7 @@ export function Landing() {
           <div className="lx-card" aria-hidden="true">
             <div className="lx-card-band">
               <div>
-                <div className="t">Covering Dana — Nexus Auth &amp; on-call</div>
+                <div className="t">Covering Dana: Nexus Auth &amp; on-call</div>
                 <div className="s">HANDOFF · v2 · LINEAGE 7f3a…c1</div>
               </div>
               <span className="lx-stamp">SEALED</span>
@@ -121,14 +121,14 @@ export function Landing() {
               <p className="lx-eyebrow">The principle</p>
               <h2>A coverage brief you can trust, because it can't overreach.</h2>
             </div>
-            <p>Not a chatbot loose in an inbox. A deliberate, package-local artifact — every fact
+            <p>Not a chatbot loose in an inbox. A deliberate, package-local artifact. Every fact
               carries its citation, and the recipient never touches the live mailbox.</p>
           </div>
           <div className="lx-ledger lx-reveal">
             <div className="lx-lrow">
               <div className="ix">01</div>
               <h3>Scoped</h3>
-              <div><p>The covered employee chooses what's in — by date, project, and person — then
+              <div><p>The covered employee chooses what's in (by date, project, and person), then
                 prunes anything that shouldn't travel. Whole-thread sensitivity and noise are excluded
                 before a single word is snapshotted.</p>
                 <span className="lx-tag">Sensitive &amp; noise never enter</span></div>
@@ -137,7 +137,7 @@ export function Landing() {
               <div className="ix">02</div>
               <h3>Cited</h3>
               <div><p>Claims are drawn only from already-extracted, already-cited events. No citation,
-                no claim. Ask a question and the answer is grounded in this package's evidence — never
+                no claim. Ask a question and the answer is grounded in this package's evidence, never
                 the mailbox behind it.</p>
                 <span className="lx-tag">Every claim → its evidence</span></div>
             </div>
@@ -145,7 +145,7 @@ export function Landing() {
               <div className="ix">03</div>
               <h3>Revocable</h3>
               <div><p>Publish mints a one-time link to a single recipient with a 30-day grant. Revoke,
-                or supersede with a new version, and access ends at once — with every step written to
+                or supersede with a new version, and access ends at once, with every step written to
                 an append-only audit trail.</p>
                 <span className="lx-tag">One-time code · full audit</span></div>
             </div>
@@ -161,13 +161,13 @@ export function Landing() {
               <p className="lx-eyebrow">Chain of custody</p>
               <h2>Six steps, from scope to seal.</h2>
             </div>
-            <p>The handoff is a sequence, and Continuity treats it like one — each stage leaves a record.</p>
+            <p>The handoff is a sequence, and Continuity treats it like one. Each stage leaves a record.</p>
           </div>
           <div className="lx-ledger lx-reveal">
             <div className="lx-lrow"><div className="ix">01</div><h3>Scope</h3><div><p>Pick the date window, projects, and people. Exclude threads by hand.</p></div></div>
             <div className="lx-lrow"><div className="ix">02</div><h3>Generate</h3><div><p>Claims + snapshotted evidence assemble; sensitive and noise drop out.</p></div></div>
             <div className="lx-lrow"><div className="ix">03</div><h3>Review</h3><div><p>Read the candidate, remove any evidence that shouldn't leave.</p></div></div>
-            <div className="lx-lrow"><div className="ix">04</div><h3>Publish</h3><div><p>One recipient, one-time link, 30-day access — the code is shown once.</p></div></div>
+            <div className="lx-lrow"><div className="ix">04</div><h3>Publish</h3><div><p>One recipient, one-time link, 30-day access. The code is shown once.</p></div></div>
             <div className="lx-lrow"><div className="ix">05</div><h3>Hand off</h3><div><p>They read a package-local brief and can ask questions of it.</p></div></div>
             <div className="lx-lrow"><div className="ix">06</div><h3>Revoke</h3><div><p>End access, or supersede with v2. Old links go dark instantly.</p></div></div>
           </div>

@@ -73,7 +73,7 @@ export function Overview({
           {ownerName
             ? `Oriented around ${ownerName}'s authorized mailbox.`
             : "Orient yourself before diving into a surface."}{" "}
-          Everything here is built from structured email evidence — answers are cited.
+          Everything here is built from structured email evidence. Answers are cited.
         </p>
       </header>
 
@@ -105,7 +105,7 @@ export function Overview({
       <section className="overview-section">
         <h2>Ask something</h2>
         <p className="overview-section-sub">
-          Not sure where to start? Try a question — every answer is grounded in
+          Not sure where to start? Try a question. Every answer is grounded in
           cited messages.
         </p>
         <div className="overview-suggestions">

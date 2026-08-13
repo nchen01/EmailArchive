@@ -261,7 +261,7 @@ export function Workspace() {
             className="health-dot-link"
             title={`Readiness: ${overall}${
               readinessLoading ? " (checking…)" : ""
-            } — open Status`}
+            }. Open Status`}
           >
             <span className={INDICATOR_DOT_CLASS[overall]} aria-hidden="true" />
             <span className="health-dot-label">Status</span>
@@ -388,7 +388,7 @@ export function Workspace() {
                       No contacts yet.
                     </p>
                     <p className="mt-1 text-sm text-faint">
-                      The graph is empty — run the ingest pipeline for this
+                      The graph is empty. Run the ingest pipeline for this
                       mailbox.
                     </p>
                   </div>
@@ -441,7 +441,7 @@ export function Workspace() {
                     <div className="flex h-full items-center justify-center text-faint text-sm">
                       {projects && projects.length > 0
                         ? "Select a project to see details."
-                        : "No projects yet — run the clustering pipeline."}
+                        : "No projects yet. Run the clustering pipeline."}
                     </div>
                   )}
                 </div>

@@ -63,7 +63,7 @@ export function GmailConnectPanel({ mailboxId }: { mailboxId: string }) {
       <h2 className="text-sm font-semibold text-ink">Gmail connection</h2>
       <p className="mt-1 text-xs text-muted">
         Connect the mailbox owner&apos;s Gmail with read-only access. Tokens are held
-        in the server-side vault — never shown here or stored with the mailbox.
+        in the server-side vault, never shown here or stored with the mailbox.
       </p>
 
       {result === "connected" ? (

@@ -47,7 +47,7 @@ export function ReturnCreatePanel({
       <section className="mt-4 rounded-md border border-brass bg-brass-soft p-4">
         <h3 className="text-sm font-semibold text-ink">Create return handoff from the package you were handed</h3>
         <p className="mt-1 text-xs text-muted">
-          The original coverage package is linked — its coverage areas are picked up automatically.
+          The original coverage package is linked. Its coverage areas are picked up automatically.
           The return handoff is created from <strong>your own mailbox</strong> (loaded above) and
           sent back to the original employee. It is a reciprocal package, not a revised version.
         </p>
@@ -70,7 +70,7 @@ export function ReturnCreatePanel({
       <h3 className="text-sm font-semibold text-ink">Create a return handoff</h3>
       <p className="mt-1 text-xs text-muted">
         Covered someone while they were away? A <strong>return handoff</strong> is created from
-        <strong> your own mailbox</strong> and sent back to the original employee — it is a
+        <strong> your own mailbox</strong> and sent back to the original employee. It is a
         reciprocal package, not a revised version. The usual way to start one is the
         <em> “Create return handoff”</em> button on the package you were handed; you can also paste
         an original coverage package id here.
@@ -112,7 +112,7 @@ export function ReturnBanner({ ctx, pkg }: { ctx: ReturnContext | null; pkg: Han
   return (
     <section className="mt-4 rounded-md border border-brass bg-brass-soft p-4">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-ink">Return handoff — what changed while {who} was away</h3>
+        <h3 className="text-sm font-semibold text-ink">Return handoff: what changed while {who} was away</h3>
         <span className="rounded-full bg-app2 px-2 py-0.5 text-[11px] font-medium text-muted">return</span>
       </div>
       <p className="mt-1 text-xs text-muted">
@@ -144,7 +144,7 @@ export function ReturnBanner({ ctx, pkg }: { ctx: ReturnContext | null; pkg: Han
                 ? `Resolved to ${ctx.resolved_project_count} project(s) in your mailbox`
                 : ctx.resolved_person_count > 0
                   ? "Resolved via coverage contacts (snapshot hints)"
-                  : "No coverer-side match resolved — review scope"}
+                  : "No coverer-side match resolved. Review scope."}
               {" · "}seed: {ctx.seed_method}
             </div>
           </div>
