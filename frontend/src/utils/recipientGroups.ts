@@ -9,13 +9,13 @@ import {
  * Recipient package grouping selector (S39).
  *
  * Groups a recipient package by the FROZEN project/coverage label snapshotted onto
- * each claim at publish time (`claim.project_label`) — real project identity, not
+ * each claim at publish time (`claim.project_label`) - real project identity, not
  * the representative-evidence-subject text clustering used before. Everything here
  * is derived PURELY from the package-local snapshot payload (claims + evidence);
  * it makes no API call and never resolves a project id against live rows.
  *
  * Degradation (per the S39 product decision):
- *  - No claim carries a label (pre-S39 package) → the whole package falls back to
+ *  - No claim carries a label (pre-S39 package) -> the whole package falls back to
  *    the existing `buildCoverageAreas` clustering, unchanged.
  *  - Labeled claims group by their frozen label.
  *  - Unlabeled claims in a MIXED package are NOT dumped into one giant bucket:
@@ -74,7 +74,7 @@ function groupByLabel(
   const areas = order.map((label, idx) =>
     areaFrom(`proj-${idx}`, label, groups.get(label)!, byHeader, evOrder),
   );
-  // Recommended-first: most decisions+open-loops, then most claims, then label —
+  // Recommended-first: most decisions+open-loops, then most claims, then label -
   // the same ordering coverageAreas uses, so the rail feels consistent.
   areas.sort((a, b) => {
     const an = a.decisionCount + a.openLoopCount;
@@ -90,7 +90,7 @@ export function buildRecipientAreas(
   claims: RecipientClaim[],
   evidence: RecipientEvidence[],
 ): CoverageArea[] {
-  // Pre-S39 / no-label package → unchanged clustering fallback.
+  // Pre-S39 / no-label package -> unchanged clustering fallback.
   if (!claims.some(hasLabel)) return buildCoverageAreas(claims, evidence);
 
   const byHeader = new Map<string, RecipientEvidence>();
