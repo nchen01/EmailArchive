@@ -127,6 +127,10 @@ class RecipientClaimOut(BaseModel):
     kind: str
     text: str
     project_id: str | None
+    # S39: frozen project/coverage label for this claim (snapshot-only; NULL on
+    # pre-S39 packages or claims with no resolvable project). The recipient groups
+    # by this label; it is NEVER resolved from live project rows.
+    project_label: str | None = None
     source_message_id_headers: list[str]
     confidence: float
 

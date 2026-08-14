@@ -723,6 +723,11 @@ class HandoffClaim(Base):
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     project_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    # S39: display label of the claim's project, FROZEN at generate time from the
+    # creator/coverer-owned mailbox's project table. The recipient reads this
+    # snapshot label and never resolves project_id against live project rows.
+    # NULL on pre-S39 packages and on claims with no (resolvable) project.
+    project_label: Mapped[str | None] = mapped_column(Text)
     source_message_id_headers: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric, nullable=False, server_default="0")
 

@@ -431,6 +431,9 @@ export interface RecipientClaim {
   kind: string; // open_loop | decision | blocker | project_state | briefing | person_note
   text: string;
   project_id: string | null;
+  /** S39: frozen project/coverage label (snapshot-only). Absent/null on pre-S39
+   * packages — the recipient then falls back to coverageAreas text clustering. */
+  project_label?: string | null;
   source_message_id_headers: string[];
   confidence: number;
 }
