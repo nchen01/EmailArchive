@@ -232,6 +232,30 @@ def _snapshot_evidence(session, mailbox_id: str, headers: list[str]):
     return evidence
 
 
+def _project_labels(session, mailbox_id: str, project_ids: set[str]) -> dict[str, str]:
+    """Map project_id -> display label from the OWNER's own project table (S39).
+
+    Runs only at generate time, on the creator/coverer-owned mailbox, so this live
+    read is permitted. The resolved label is frozen onto ``handoff_claim`` so the
+    recipient route never has to (and never does) query live project rows. Returns
+    only projects in THIS mailbox with a non-empty label; missing ids stay unmapped
+    (the claim's project_label is then NULL and the recipient degrades gracefully).
+    """
+    if not project_ids:
+        return {}
+    rows = session.execute(
+        select(orm.Project.id, orm.Project.label).where(
+            orm.Project.mailbox_id == mailbox_id,
+            orm.Project.id.in_(sorted(project_ids)),
+        )
+    ).all()
+    out: dict[str, str] = {}
+    for pid, label in rows:
+        if label and label.strip():
+            out[str(pid)] = label.strip()
+    return out
+
+
 def generate_candidate(session, package: orm.HandoffPackage) -> dict:
     """Generate/regenerate the candidate package for ``package``; return counts.
 
@@ -262,6 +286,12 @@ def generate_candidate(session, package: orm.HandoffPackage) -> dict:
             kept.append(c)
     claims = kept
 
+    # S39: freeze each claim's project label, resolved ONCE from the owner's own
+    # project table (allowed at generate time). Recipients read this snapshot only.
+    label_by_project = _project_labels(
+        session, mailbox_id, {c["project_id"] for c in claims if c["project_id"]}
+    )
+
     # ── Idempotent replace ────────────────────────────────────────────────────
     for model in (orm.HandoffClaim, orm.HandoffEvidence, orm.HandoffExclusion):
         session.execute(delete(model).where(model.package_id == package.id))
@@ -276,7 +306,9 @@ def generate_candidate(session, package: orm.HandoffPackage) -> dict:
     for c in claims:
         session.add(orm.HandoffClaim(
             package_id=package.id, kind=c["kind"], text=c["text"],
-            project_id=c["project_id"], source_message_id_headers=c["headers"],
+            project_id=c["project_id"],
+            project_label=label_by_project.get(c["project_id"]) if c["project_id"] else None,
+            source_message_id_headers=c["headers"],
             confidence=c["confidence"],
         ))
 

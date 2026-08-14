@@ -13,10 +13,10 @@ import type {
 } from "../api/types";
 import { navigate } from "../router";
 import {
-  buildCoverageAreas,
   peopleDetailForEvidence,
   type CoverageArea,
 } from "../utils/coverageAreas";
+import { buildRecipientAreas } from "../utils/recipientGroups";
 
 /**
  * Recipient handoff-package view (S17.6).
@@ -270,9 +270,11 @@ function PackageDocument({
   pkg: RecipientPackageData;
   sessionToken: string | null;
 }) {
-  // Coverage areas are derived purely from this package's claims + evidence.
+  // Coverage areas are derived purely from this package's snapshot claims +
+  // evidence: by frozen project label when present (S39), else the coverageAreas
+  // text-clustering fallback. No API call, no live project resolution.
   const areas = useMemo(
-    () => buildCoverageAreas(pkg.claims, pkg.evidence),
+    () => buildRecipientAreas(pkg.claims, pkg.evidence),
     [pkg.claims, pkg.evidence],
   );
   const [selectedId, setSelectedId] = useState<string | null>(areas[0]?.id ?? null);

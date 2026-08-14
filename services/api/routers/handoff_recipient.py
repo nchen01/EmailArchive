@@ -235,6 +235,7 @@ async def get_recipient_package(
         expires_at=pkg.expires_at.isoformat() if pkg.expires_at else None,
         claims=[RecipientClaimOut(
             id=c.id, kind=c.kind, text=c.text, project_id=c.project_id,
+            project_label=c.project_label,  # frozen snapshot label (S39); may be None
             source_message_id_headers=list(c.source_message_id_headers),
             confidence=float(c.confidence),
         ) for c in claims],
