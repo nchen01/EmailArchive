@@ -4,6 +4,12 @@ A step-by-step, copy-pasteable runbook for demoing the full audited handoff
 package flow end to end: **seed → create → generate → review/prune → publish →
 recipient (ask, refresh, consumed-link) → export → new-version/supersede.**
 
+> **Canonical investor-demo path:** for a clean, ordered end-to-end walkthrough
+> (three-mailbox lookup table, rich-demo talk track, S39 recipient project grouping
+> and S40 Ask checks, plus the return-handoff clarification) use
+> `docs/handoff-demo-quickstart.md`. This runbook is the detailed
+> terminal-by-terminal reference behind it.
+
 **Which mailbox to use**
 
 - **Handoff generation demo → the seeded `handoff-demo` mailbox** (below).
@@ -241,6 +247,12 @@ Vite serves on `http://localhost:5173` (strictPort). Leave this window running.
 A **return handoff** is reciprocal: after coverage ends, the coverer (Alex) hands
 work back to the original employee (Dana) from **Alex's own mailbox** — it is not a
 new version of Dana's package. The seed script now creates **two** mailboxes.
+
+> **Use the compact seed, not the rich seed, for the canonical return demo.** Do
+> not use the rich mailbox (`rich-handoff-demo@example.com`) as the return source
+> unless you are intentionally testing a non-canonical path: it is not the
+> coverer, so its return output is arbitrary (often a single same-day event),
+> which is mechanically valid but is not the intended return demo.
 
 **Seed (same day you demo — the coverer activity is dated "today" so it falls in the
 default return window):**
