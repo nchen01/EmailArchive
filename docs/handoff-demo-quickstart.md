@@ -202,8 +202,16 @@ for it before a live walkthrough:
   .\.venv\Scripts\python.exe scripts\embed_backfill.py --mailbox 5faa306a-61d5-4e63-a270-8c4a0a0eaaca --dry-run
   ```
 
-For a no-key, fully offline investor walkthrough, favor Handoff generation and
-the project-name Cover-for-me prompts (with a key), and skip broad semantic Ask.
+Two cases for the walkthrough:
+
+- **`ANTHROPIC_API_KEY` available:** you can include the project-name Cover-for-me
+  prompts (Flow B step 5) in the investor walkthrough.
+- **No key / fully offline walkthrough:** skip Cover-for-me synthesis and focus on
+  Overview, Projects, Relationship Map, Handoff generation, publish, and the
+  recipient view - all of which are deterministic and need no external API.
+
+Either way, broad semantic Cover-for-me questions (those that do not name a
+project or person) still require embeddings.
 
 ## Flow C - puluo graph/retrieval demo
 
