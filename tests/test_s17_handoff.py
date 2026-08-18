@@ -925,56 +925,49 @@ def test_recipient_ask_audit_is_safe(env):
 
 
 def test_ask_claims_never_cite_evidence_outside_returned_set():
-    """P1 regression (DB-free): when more than _MAX_EVIDENCE direct matches fill
-    the evidence cap, a claim citing an in-package row that gets capped OUT must
-    not appear with a dangling citation. Every returned claim must cite only rows
+    """P1 regression (DB-free): a claim citing an in-package row that is capped OUT
+    of the returned evidence must not appear with a dangling citation. S40 ties the
+    returned evidence to the answered claims' OWN citations (so evidence collapses
+    under each claim), and still enforces: every returned claim cites only rows
     present in the returned evidence."""
     from types import SimpleNamespace
 
     from services.handoff.ask import _MAX_EVIDENCE, answer_from_package
 
-    # More direct-match evidence rows than the cap — all match "atlas" directly.
+    # More distinct cited rows than the cap; all are claim-cited (in package order).
     evidence = [
         SimpleNamespace(
-            message_id_header=f"atlas-{i}@x", subject="Atlas cutover",
-            body_snapshot="atlas rollout work", sender_display="", sender_domain="", ts=None,
+            message_id_header=f"atlas-{i}@x", subject="Atlas",
+            body_snapshot="atlas work", sender_display="", sender_domain="", ts=None,
         )
         for i in range(_MAX_EVIDENCE + 2)
     ]
-    # A separate in-package row that does NOT match the query directly, but is
-    # cited by a claim whose TEXT does match — so it is appended after the direct
-    # matches and pushed out by the cap.
-    evidence.append(SimpleNamespace(
-        message_id_header="budget-1@x", subject="Quarterly budget",
-        body_snapshot="budget review", sender_display="", sender_domain="", ts=None,
-    ))
-    claim_capped = SimpleNamespace(
-        kind="decision", text="Atlas migration budget", source_message_id_headers=["budget-1@x"],
+    # One claim cites the first MAX+1 rows; the union then exceeds the cap.
+    claim_big = SimpleNamespace(
+        kind="decision", text="Atlas rollout across teams",
+        source_message_id_headers=[f"atlas-{i}@x" for i in range(_MAX_EVIDENCE + 1)],
     )
-    # A second claim that cites BOTH a returned row and the capped-out row.
-    claim_mixed = SimpleNamespace(
-        kind="decision", text="Atlas rollout owner",
-        source_message_id_headers=["atlas-0@x", "budget-1@x"],
+    # A second claim cites ONLY the last row, which is pushed out by the cap.
+    claim_capped = SimpleNamespace(
+        kind="decision", text="Atlas budget owner",
+        source_message_id_headers=[f"atlas-{_MAX_EVIDENCE + 1}@x"],
     )
 
-    res = answer_from_package("atlas", [claim_capped, claim_mixed], evidence)
+    res = answer_from_package("atlas", [claim_big, claim_capped], evidence)
     assert res.answered is True
     returned = {e.message_id_header for e in res.evidence}
-    assert len(returned) == _MAX_EVIDENCE and "budget-1@x" not in returned
+    assert len(returned) == _MAX_EVIDENCE
+    assert f"atlas-{_MAX_EVIDENCE + 1}@x" not in returned  # capped out
 
-    # Module contract: every returned claim has >=1 citation in the returned set;
-    # the budget-only claim is dropped entirely.
-    assert all(any(h in returned for h in c.source_message_id_headers) for c in res.claims)
+    # The claim citing only the capped-out row is dropped; no dangling citation.
     assert claim_capped not in res.claims
+    assert all(any(h in returned for h in c.source_message_id_headers) for c in res.claims)
 
-    # Endpoint contract: RecipientAskResponse claims cite ONLY returned evidence.
-    # Reproduce the endpoint's per-claim header filter + drop-empty.
-    answer_claims = [
-        [h for h in c.source_message_id_headers if h in returned] for c in res.claims
-    ]
-    answer_claims = [hs for hs in answer_claims if hs]
-    for hs in answer_claims:
-        assert set(hs) <= returned  # no citation outside the returned evidence
+    # Endpoint contract: after the per-claim header filter, no citation is outside
+    # the returned evidence.
+    for c in res.claims:
+        filtered = [h for h in c.source_message_id_headers if h in returned]
+        assert filtered and set(filtered) <= returned
 
 
 # ── S17.10 — package versioning + new-version re-share ───────────────────────
