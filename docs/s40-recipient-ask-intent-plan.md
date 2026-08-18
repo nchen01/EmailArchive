@@ -38,14 +38,21 @@ Intent classification (`detect_ask_intent`, specific-first):
 
 Pipeline in `answer_from_package`:
 
-1. Rank claims and evidence by term overlap (as before).
-2. If nothing in the package matches, return the neutral no-answer BEFORE any
-   intent shaping (oracle-safe, intent-independent).
-3. If the query names an S39 project (best frozen-label term overlap), scope the
-   candidate claims to that project so "next steps for Nexus" ranks Nexus work.
-4. Filter the scoped, ranked claims to the intent's shape.
-5. Return the shaped claims plus THEIR in-package citations (capped), so every
-   returned evidence row sits under a claim it supports - never an orphan wall.
+1. Treat each claim's frozen `project_label` as package-local searchable text: a
+   claim matches when the query overlaps its text OR its project label, so a claim
+   whose text does not repeat the project name ("Rotate remaining service keys"
+   under "Nexus Auth Platform") still answers a query that names the project.
+2. Detect a named project across ALL visible claims (best frozen-label term
+   overlap). Labels exist only on surviving, non-excluded claims, so this is
+   snapshot-safe and can never surface an excluded project's label.
+3. If a project label matches, scope the candidate claims to that project BEFORE
+   intent shaping (regardless of whether each claim's own text repeats the label);
+   otherwise the candidates are the term-matched claims.
+4. Oracle safety: if the query names no visible project AND matches no claim or
+   evidence, return the neutral no-answer BEFORE any shaping (intent-independent).
+5. Filter the scoped candidates to the intent's shape, then return the shaped
+   claims plus THEIR in-package citations (capped), so every returned evidence row
+   sits under a claim it supports - never an orphan wall.
 
 Answer shapes and honesty:
 

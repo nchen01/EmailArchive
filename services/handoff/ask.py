@@ -204,36 +204,52 @@ def answer_from_package(query: str, claims: list, evidence: list) -> AskResult:
 
     by_header = {e.message_id_header: e for e in evidence}
 
-    def score(text: str) -> int:
-        return len(q & _terms(text))
+    def claim_score(c) -> int:
+        # S39: the frozen project_label is package-local visible text and a valid
+        # match signal, so a claim whose text does not repeat its project name still
+        # matches a query that names that project.
+        pl = getattr(c, "project_label", None) or ""
+        return len(q & (_terms(c.text) | _terms(pl)))
 
-    # Rank claims by term overlap over claim text.
-    cl_scored = [(score(c.text), c) for c in claims]
-    cl_matched = [c for s, c in sorted(cl_scored, key=lambda p: p[0], reverse=True) if s > 0]
+    # Detect a named project across ALL visible claims via the frozen label (S39).
+    # A label exists only on surviving, non-excluded claims, so this is snapshot-safe
+    # and can never surface an excluded project's label.
+    label = _label_scope(claims, q)
 
-    # Rank evidence by term overlap over its safe, package-local fields only.
+    if label:
+        # Scope candidates to the named project (regardless of whether each claim's
+        # own text repeats the label); order by in-project relevance.
+        candidates = [
+            c for c in claims
+            if (getattr(c, "project_label", None) or "").strip() == label
+        ]
+        candidates.sort(key=claim_score, reverse=True)
+    else:
+        cl_scored = sorted(((claim_score(c), c) for c in claims),
+                           key=lambda p: p[0], reverse=True)
+        candidates = [c for s, c in cl_scored if s > 0]
+
+    # Rank evidence by term overlap over its safe, package-local fields only
+    # (grounding + the general evidence-only fallback).
     ev_scored = []
     for e in evidence:
-        s = score(" ".join([
+        s = len(q & _terms(" ".join([
             e.subject or "", e.body_snapshot or "",
             e.sender_display or "", e.sender_domain or "",
-        ]))
+        ])))
         if s > 0:
             ev_scored.append((s, e))
     ev_scored.sort(key=lambda p: (p[0], p[1].ts or _TS_MIN), reverse=True)
     ev_matched = [e for _, e in ev_scored]
 
-    # Oracle safety: nothing in the package matches -> neutral no-answer, BEFORE any
-    # intent shaping, so a sensitive/unknown topic is indistinguishable from a miss.
-    if not cl_matched and not ev_matched:
+    # Oracle safety: the query names no visible project AND matches no claim/evidence
+    # -> neutral no-answer, BEFORE any shaping, so a sensitive/unknown topic is
+    # indistinguishable from a miss. A matched project label is itself a legitimate
+    # visible match (it only exists on surviving, non-excluded claims).
+    if not label and not candidates and not ev_matched:
         return AskResult(False, [], [], intent=intent)
 
-    # Scope candidate claims to a named project when the query names one.
-    label = _label_scope(cl_matched, q)
-    scoped = [c for c in cl_matched if (getattr(c, "project_label", None) or "").strip() == label] \
-        if label else cl_matched
-
-    shaped = _shape_by_intent(intent, scoped)
+    shaped = _shape_by_intent(intent, candidates)
 
     # Specific intent, topic matched but no claim of that shape: answer True with an
     # honest "none found" - never restate other work (e.g. completed) as the answer.

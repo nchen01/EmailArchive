@@ -137,6 +137,68 @@ def test_oracle_safety_unchanged_for_unknown_or_empty_query():
     assert answer_from_package("what is the", claims, evidence).answered is False
 
 
+# ── label-only queries: project_label is a searchable signal (S40 fix) ────────
+# The claim text and evidence deliberately do NOT repeat the project name; only the
+# frozen project_label carries it, so these prove label-based matching/scoping.
+def _label_only_pkg():
+    claims = [
+        _C("nx-o", "open_loop", "Rotate the remaining service keys", ["k1@x"],
+           "Nexus Auth Platform"),
+        _C("nx-d", "decision", "Shipped the SSO cutover to production", ["s1@x"],
+           "Nexus Auth Platform"),
+    ]
+    evidence = [
+        _E("k1@x", "Key rotation", "Rotate remaining service account keys."),
+        _E("s1@x", "SSO cutover", "Cutover shipped to production."),
+    ]
+    return claims, evidence
+
+
+def test_label_only_next_steps_returns_open_loop():
+    claims, evidence = _label_only_pkg()
+    r = answer_from_package("What are next steps for Nexus Auth Platform?", claims, evidence)
+    assert r.answered is True
+    assert {c.id for c in r.claims} == {"nx-o"}
+    assert all(c.kind == "open_loop" for c in r.claims)
+    returned = {e.message_id_header for e in r.evidence}
+    assert returned == {"k1@x"}
+    assert all(any(h in returned for h in c.source_message_id_headers) for c in r.claims)
+
+
+def test_label_only_status_returns_decision_and_open_loop():
+    claims, evidence = _label_only_pkg()
+    r = answer_from_package("What is the status of Nexus Auth Platform?", claims, evidence)
+    assert r.answered is True
+    assert {c.id for c in r.claims} == {"nx-o", "nx-d"}
+
+
+def test_label_only_project_with_only_completed_says_none_and_does_not_restate():
+    claims = [_C("nx-d", "decision", "Shipped the SSO cutover to production", ["s1@x"],
+                 "Nexus Auth Platform")]
+    evidence = [_E("s1@x", "SSO cutover", "Cutover shipped to production.")]
+    r = answer_from_package("What are next steps for Nexus Auth Platform?", claims, evidence)
+    assert r.answered is True
+    assert r.claims == [] and r.evidence == []
+    assert "no explicit next steps" in r.message.lower()
+
+
+def test_label_only_unknown_project_is_neutral():
+    claims, evidence = _label_only_pkg()
+    r = answer_from_package("What are next steps for Payroll Layoffs?", claims, evidence)
+    assert r.answered is False and r.claims == [] and r.evidence == []
+
+
+def test_project_label_match_does_not_leak_excluded_label():
+    # An excluded project ("Layoffs Planning") has NO surviving claim, so its label
+    # is absent from the package. A query naming it stays neutral and never surfaces
+    # that label.
+    claims, evidence = _label_only_pkg()  # only Nexus survives
+    r = answer_from_package("What is the status of Layoffs Planning?", claims, evidence)
+    assert r.answered is False and r.claims == [] and r.evidence == []
+    assert "layoffs" not in (r.message or "").lower()
+    assert all((getattr(c, "project_label", "") or "") != "Layoffs Planning" for c in claims)
+
+
 def test_every_returned_claim_cites_returned_evidence():
     claims, evidence = _pkg()
     for q in ("status of Nexus", "next steps for Nexus", "decisions on Nexus"):
