@@ -299,9 +299,12 @@ async def recipient_ask(
             id=c.id, kind=c.kind, text=c.text, source_message_id_headers=cited,
         ))
 
+    # Answered path uses the intent-shaped message (S40); the not-answered path
+    # stays the SINGLE constant neutral message so it can never reveal whether
+    # sensitive/excluded content exists (oracle safety).
     return RecipientAskResponse(
         answered=result.answered,
-        message=_ASK_ANSWERED if result.answered else _ASK_NO_EVIDENCE,
+        message=(result.message or _ASK_ANSWERED) if result.answered else _ASK_NO_EVIDENCE,
         claims=answer_claims,
         evidence=[_evidence_out(e) for e in result.evidence],
     )

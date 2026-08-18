@@ -687,39 +687,96 @@ function AskBox({ sessionToken }: { sessionToken: string }) {
         </p>
       ) : null}
 
-      {state.kind === "answered" ? (
-        <div className="mt-3">
-          <p className="text-sm text-ink">{state.resp.message}</p>
-          {state.resp.answered ? (
-            <>
-              {state.resp.claims.length > 0 ? (
-                <ul className="mt-2 space-y-2">
-                  {state.resp.claims.map((c) => (
-                    <li
-                      key={c.id}
-                      className="rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+      {state.kind === "answered" ? <AnswerView resp={state.resp} /> : null}
+    </section>
+  );
+}
+
+/**
+ * Renders a shaped ask answer (S40): the intent message, then one item per claim
+ * with its supporting evidence COLLAPSED under it (progressive disclosure) rather
+ * than a wall. Each claim shows a small grounded-count and a toggle; expanding
+ * reveals only that claim's cited package messages. A "none found" answer shows
+ * just the message; a legacy evidence-only answer (no claims) collapses its
+ * messages under one toggle. Citations are package evidence cards only - no
+ * message-id link, no Gmail/source affordance, no mailbox id.
+ */
+function AnswerView({ resp }: { resp: RecipientAskResponse }) {
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggle = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const byHeader = new Map(resp.evidence.map((e) => [e.message_id_header, e]));
+
+  return (
+    <div className="mt-3">
+      <p className="text-sm text-ink">{resp.message}</p>
+      {resp.answered && resp.claims.length > 0 ? (
+        <ul className="mt-2 space-y-2">
+          {resp.claims.map((c) => {
+            const cites = [...new Set(c.source_message_id_headers)]
+              .map((h) => byHeader.get(h))
+              .filter((e): e is RecipientEvidence => !!e);
+            const open = expanded.has(c.id);
+            return (
+              <li
+                key={c.id}
+                className="rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+              >
+                <div>{c.text}</div>
+                {cites.length > 0 ? (
+                  <div className="mt-1.5">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-brass underline underline-offset-2 hover:text-ink"
+                      aria-expanded={open}
+                      onClick={() => toggle(c.id)}
                     >
-                      {c.text}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {state.resp.evidence.length > 0 ? (
-                <div className="mt-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-brass">
-                    From these messages
+                      {open
+                        ? "Hide evidence"
+                        : `Show ${cites.length} supporting message${cites.length === 1 ? "" : "s"}`}
+                    </button>
+                    {open ? (
+                      <ul className="mt-2 space-y-3">
+                        {cites.map((e) => (
+                          <EvidenceItem key={e.message_id_header} ev={e} />
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
-                  <ul className="mt-2 space-y-3">
-                    {state.resp.evidence.map((e) => (
-                      <EvidenceItem key={e.message_id_header} ev={e} />
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+
+      {/* Legacy evidence-only answer (no claims matched, only evidence did). */}
+      {resp.answered && resp.claims.length === 0 && resp.evidence.length > 0 ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            className="text-xs font-medium text-brass underline underline-offset-2 hover:text-ink"
+            aria-expanded={expanded.has("__evidence__")}
+            onClick={() => toggle("__evidence__")}
+          >
+            {expanded.has("__evidence__")
+              ? "Hide messages"
+              : `Show ${resp.evidence.length} related message${resp.evidence.length === 1 ? "" : "s"}`}
+          </button>
+          {expanded.has("__evidence__") ? (
+            <ul className="mt-2 space-y-3">
+              {resp.evidence.map((e) => (
+                <EvidenceItem key={e.message_id_header} ev={e} />
+              ))}
+            </ul>
           ) : null}
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }
