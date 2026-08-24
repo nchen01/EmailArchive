@@ -47,9 +47,14 @@ is the second "quality-first" roadmap item after the S43 eval harness
 5. **Override.** Allowed in S44 and audited. Heuristics have false positives, so a
    hard block with no escape would make Publish unusable; the creator may publish
    past high findings by acknowledging every current high finding id with a
-   non-blank reason, which writes `package_published_with_safety_override` with SAFE
-   metadata only (high count, category names, reason). No ack / blank reason / ack
-   that doesn't cover all current high ids -> 422.
+   non-blank reason (`SafetyAck.reason`, 1-500 chars). This writes
+   `package_published_with_safety_override` with SAFE metadata only - the high count,
+   the category names, and that a reason was provided plus its length
+   (`reason_provided` / `reason_length`). The raw reason text is untrusted free input
+   (it could contain a pasted secret / DB URL), so it is **never** stored in the
+   audit - the key-based sanitizer would not catch a `reason` key. No ack / blank
+   reason / ack that doesn't cover all current high ids -> 422; an over-length reason
+   -> 422.
 6. **Resolution.** (a) Remove the flagged claim/evidence and regenerate - the finding
    recomputes away. (b) Per-publish audited override for high findings.
 7. **Creator UI.** A compact "Safety review" panel (severity badges + one line per

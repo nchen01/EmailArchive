@@ -514,8 +514,10 @@ async def publish_handoff(
     )
     if override_used:
         # Audit the safety override with SAFE metadata only: the high-finding count,
-        # the category names (scalars), and the creator's reason. NEVER the matched
-        # sensitive text (also enforced by the audit sanitizer).
+        # the category names, and that a reason was provided (+ its length). The raw
+        # reason is untrusted free text (could contain a pasted secret), so it is
+        # NEVER stored - the key-based audit sanitizer would not catch "reason".
+        override_reason = body.safety_ack.reason.strip()
         write_handoff_audit(
             db, package_id=pkg.id, lineage_id=pkg.lineage_id,
             actor=f"owner:{pkg.creator_email}",
@@ -523,7 +525,8 @@ async def publish_handoff(
             metadata={
                 "high_finding_count": len(high),
                 "finding_categories": sorted({f.category for f in high}),
-                "reason": body.safety_ack.reason.strip(),
+                "reason_provided": True,
+                "reason_length": len(override_reason),
                 "version": pkg.version,
             },
         )

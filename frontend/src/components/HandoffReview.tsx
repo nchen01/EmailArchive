@@ -1415,6 +1415,7 @@ function PublishControls({
             Reason (recorded in the audit trail)
             <textarea
               rows={2}
+              maxLength={500}
               value={ackReason}
               onChange={(e) => setAckReason(e.target.value)}
               className="mt-1 w-full rounded border border-line2 bg-surface px-2 py-1 text-sm text-ink"

@@ -109,9 +109,10 @@ class HandoffPackageOut(BaseModel):
 
 class SafetyAck(BaseModel):
     """Creator acknowledgement to publish past high-severity safety findings (S44).
-    Requires a non-blank reason and the ids of every current high finding. Audited
-    with safe metadata only (categories/severities/count/reason)."""
-    reason: str
+    A non-blank reason is REQUIRED (and the ids of every current high finding), but
+    the reason is untrusted free text, so the audit stores only SAFE reason metadata
+    (that a reason was provided + its length) - NEVER the raw reason text."""
+    reason: str = Field(..., min_length=1, max_length=500)
     acknowledged_finding_ids: list[str] = Field(default_factory=list)
 
 

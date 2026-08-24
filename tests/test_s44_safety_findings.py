@@ -193,14 +193,18 @@ def test_creator_dto_surfaces_high_finding_and_publish_is_blocked(env):
 
 
 @requires_db
-def test_audited_override_publishes_with_safe_metadata(env):
+def test_audited_override_stores_safe_reason_metadata_only(env):
     from services.db import models as orm
     pid = _high_risk_generated(env)
     high_ids = [f["id"] for f in env.client.get(f"/api/handoff/{pid}").json()["findings"]
                 if f["severity"] == "high"]
+    # A reason that itself contains secret-like text: it must still publish, but the
+    # raw reason must NOT be stored in the audit metadata.
+    dburl = "postgresql://user:pw@host:5432/db"
+    secret_reason = f"publishing because {AKIA} and {dburl} - reviewed"
     r = env.client.post(f"/api/handoff/{pid}/publish", json={
         "recipient_email": "cov@acme.corp",
-        "safety_ack": {"reason": "known example key, false positive", "acknowledged_finding_ids": high_ids},
+        "safety_ack": {"reason": secret_reason, "acknowledged_finding_ids": high_ids},
     })
     assert r.status_code == 200
 
@@ -216,12 +220,31 @@ def test_audited_override_publishes_with_safe_metadata(env):
     override = [r for r in rows if r.action == "package_published_with_safety_override"]
     assert len(override) == 1
     meta = override[0].metadata_
+    # Safe reason metadata only.
+    assert meta["reason_provided"] is True
+    assert meta["reason_length"] == len(secret_reason)
+    assert "reason" not in meta  # the raw reason field is NOT stored
     assert "credential_or_secret" in meta["finding_categories"]
     assert meta["high_finding_count"] == 1
-    assert meta["reason"] == "known example key, false positive"
-    # SAFE metadata only: never the matched sensitive text.
+    assert meta["version"] == 1
+    # The raw reason / secrets never reach the audit metadata.
     import json as _json
-    assert AKIA not in _json.dumps(meta)
+    blob = _json.dumps(meta)
+    assert AKIA not in blob
+    assert dburl not in blob
+    assert secret_reason not in blob
+
+
+@requires_db
+def test_oversized_override_reason_is_rejected(env):
+    pid = _high_risk_generated(env)
+    high_ids = [f["id"] for f in env.client.get(f"/api/handoff/{pid}").json()["findings"]
+                if f["severity"] == "high"]
+    r = env.client.post(f"/api/handoff/{pid}/publish", json={
+        "recipient_email": "cov@acme.corp",
+        "safety_ack": {"reason": "x" * 501, "acknowledged_finding_ids": high_ids},
+    })
+    assert r.status_code == 422  # exceeds SafetyAck.reason max_length=500
 
 
 @requires_db
