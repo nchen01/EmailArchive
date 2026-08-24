@@ -1,0 +1,40 @@
+{
+  "name": "sensitive_noise_exclusion",
+  "description": "Sensitivity and noise gates: an HR-sensitive thread and an automated noise digest must be excluded from evidence and claims; only the clean event becomes a package claim.",
+  "owner_email": "ops@acme.dev",
+  "internal_domains": ["acme.dev"],
+  "projects": [
+    {"key": "billing", "label": "Harbor Billing Migration"}
+  ],
+  "threads": [
+    {"subject": "Billing cutover", "project": "billing", "messages": [
+      {"header": "bil-1@acme.dev", "sender": "ops@acme.dev", "display": "Ops Lead",
+       "body": "Completed the Harbor billing migration cutover."}
+    ]},
+    {"subject": "Layoff planning (confidential)", "project": "billing", "messages": [
+      {"header": "bil-sens-1@acme.dev", "sender": "hr@acme.dev", "display": "People Team",
+       "body": "Confidential layoff planning for the billing team.", "sensitivity": ["hr"]}
+    ]},
+    {"subject": "Automated billing alerts", "project": "billing", "messages": [
+      {"header": "bil-noise-1@pagerduty.example", "sender": "alerts@pagerduty.example", "display": "PagerDuty",
+       "body": "Automated billing pipeline alert digest.", "noise": true}
+    ]}
+  ],
+  "events": [
+    {"type": "outcome", "summary": "Completed the Harbor billing migration cutover", "project": "billing", "headers": ["bil-1@acme.dev"]},
+    {"type": "did", "summary": "Reviewed confidential layoff planning", "project": "billing", "headers": ["bil-sens-1@acme.dev"]},
+    {"type": "did", "summary": "Received automated billing alerts", "project": "billing", "headers": ["bil-noise-1@pagerduty.example"]}
+  ],
+  "scope": {"date_from": null, "date_to": null, "included_projects": []},
+  "gold": {
+    "project_labels": ["Harbor Billing Migration"],
+    "decisions": [
+      {"contains": "completed the harbor billing migration cutover", "cites": ["bil-1@acme.dev"]}
+    ],
+    "open_loops": [],
+    "blockers": [],
+    "stakeholders": ["acme.dev"],
+    "excluded_headers": ["bil-sens-1@acme.dev", "bil-noise-1@pagerduty.example"],
+    "stale_conflict": false
+  }
+}

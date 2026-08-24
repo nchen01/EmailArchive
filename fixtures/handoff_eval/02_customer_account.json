@@ -1,0 +1,44 @@
+{
+  "name": "customer_account",
+  "description": "Customer/account handoff: a renewal decision plus client commitments and follow-ups across two accounts, with external stakeholder domains.",
+  "owner_email": "csm@acme.dev",
+  "internal_domains": ["acme.dev"],
+  "projects": [
+    {"key": "northwind", "label": "Northwind Renewal"},
+    {"key": "contoso", "label": "Contoso Onboarding"}
+  ],
+  "threads": [
+    {"subject": "Northwind renewal", "project": "northwind", "messages": [
+      {"header": "cust-nw-1@northwind.example", "sender": "jordan@northwind.example", "display": "Jordan (Northwind)",
+       "body": "Renewed the Northwind contract for 12 months."}
+    ]},
+    {"subject": "Northwind SOW", "project": "northwind", "messages": [
+      {"header": "cust-nw-2@acme.dev", "sender": "csm@acme.dev", "display": "Account Manager",
+       "body": "Still owe Northwind the updated SOW with the new pricing."}
+    ]},
+    {"subject": "Contoso kickoff", "project": "contoso", "messages": [
+      {"header": "cust-co-1@contoso.com", "sender": "lee@contoso.com", "display": "Lee (Contoso)",
+       "body": "Kicked off the Contoso onboarding; they need SSO configured next week."}
+    ]}
+  ],
+  "events": [
+    {"type": "outcome", "summary": "Renewed the Northwind contract for 12 months", "project": "northwind", "headers": ["cust-nw-1@northwind.example"]},
+    {"type": "proposed", "summary": "Send Northwind the updated SOW with the new pricing", "project": "northwind", "headers": ["cust-nw-2@acme.dev"]},
+    {"type": "proposed", "summary": "Configure SSO for the Contoso onboarding next week", "project": "contoso", "headers": ["cust-co-1@contoso.com"]}
+  ],
+  "scope": {"date_from": null, "date_to": null, "included_projects": []},
+  "gold": {
+    "project_labels": ["Northwind Renewal", "Contoso Onboarding"],
+    "decisions": [
+      {"contains": "renewed the northwind contract", "cites": ["cust-nw-1@northwind.example"]}
+    ],
+    "open_loops": [
+      {"contains": "send northwind the updated sow", "cites": ["cust-nw-2@acme.dev"]},
+      {"contains": "configure sso for the contoso onboarding", "cites": ["cust-co-1@contoso.com"]}
+    ],
+    "blockers": [],
+    "stakeholders": ["northwind.example", "contoso.com"],
+    "excluded_headers": [],
+    "stale_conflict": false
+  }
+}

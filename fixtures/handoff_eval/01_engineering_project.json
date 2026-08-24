@@ -1,0 +1,61 @@
+{
+  "name": "engineering_project",
+  "description": "Engineering project handoff: decisions, open loops, a blocker (surfaced as an open loop), stakeholders, plus one sensitive and one noise item that must be excluded.",
+  "owner_email": "eng-lead@acme.dev",
+  "internal_domains": ["acme.dev"],
+  "projects": [
+    {"key": "nexus", "label": "Nexus Auth Platform"},
+    {"key": "payments", "label": "Payments Reliability"}
+  ],
+  "threads": [
+    {"subject": "Nexus SSO cutover", "project": "nexus", "messages": [
+      {"header": "eng-nx-1@acme.dev", "sender": "dana@acme.dev", "display": "Dana Ruiz",
+       "body": "We shipped the Nexus SSO cutover to production this morning."}
+    ]},
+    {"subject": "Nexus service keys", "project": "nexus", "messages": [
+      {"header": "eng-nx-2@acme.dev", "sender": "dana@acme.dev", "display": "Dana Ruiz",
+       "body": "Still need to rotate the remaining service account keys next sprint."}
+    ]},
+    {"subject": "Nexus vendor review", "project": "nexus", "messages": [
+      {"header": "eng-nx-3@acme.dev", "sender": "sam@vendorsec.example", "display": "Sam (VendorSec)",
+       "body": "The rollout is blocked on the vendor security review sign-off."}
+    ]},
+    {"subject": "Payments retry logic", "project": "payments", "messages": [
+      {"header": "eng-pay-1@acme.dev", "sender": "mira@acme.dev", "display": "Mira Patel",
+       "body": "Decided to add idempotent retries to the payments worker."}
+    ]},
+    {"subject": "Confidential comp review", "project": "nexus", "messages": [
+      {"header": "eng-sens-1@acme.dev", "sender": "hr@acme.dev", "display": "People Team",
+       "body": "Confidential: compensation review notes for the Nexus team.", "sensitivity": ["hr"]}
+    ]},
+    {"subject": "Weekly status digest", "project": "nexus", "messages": [
+      {"header": "eng-noise-1@statuspage.io", "sender": "notifications@statuspage.io", "display": "Statuspage",
+       "body": "Automated weekly uptime digest.", "noise": true}
+    ]}
+  ],
+  "events": [
+    {"type": "did", "summary": "Shipped the Nexus SSO cutover to production", "project": "nexus", "headers": ["eng-nx-1@acme.dev"]},
+    {"type": "proposed", "summary": "Rotate the remaining Nexus service account keys next sprint", "project": "nexus", "headers": ["eng-nx-2@acme.dev"]},
+    {"type": "proposed", "summary": "Unblock the rollout by getting the vendor security review sign-off", "project": "nexus", "headers": ["eng-nx-3@acme.dev"]},
+    {"type": "did", "summary": "Added idempotent retries to the payments worker", "project": "payments", "headers": ["eng-pay-1@acme.dev"]},
+    {"type": "did", "summary": "Reviewed confidential compensation notes", "project": "nexus", "headers": ["eng-sens-1@acme.dev"]},
+    {"type": "did", "summary": "Received the weekly automated status digest", "project": "nexus", "headers": ["eng-noise-1@statuspage.io"]}
+  ],
+  "scope": {"date_from": null, "date_to": null, "included_projects": []},
+  "gold": {
+    "project_labels": ["Nexus Auth Platform", "Payments Reliability"],
+    "decisions": [
+      {"contains": "shipped the nexus sso cutover", "cites": ["eng-nx-1@acme.dev"]},
+      {"contains": "added idempotent retries to the payments worker", "cites": ["eng-pay-1@acme.dev"]}
+    ],
+    "open_loops": [
+      {"contains": "rotate the remaining nexus service account keys", "cites": ["eng-nx-2@acme.dev"]}
+    ],
+    "blockers": [
+      {"contains": "vendor security review sign-off", "cites": ["eng-nx-3@acme.dev"]}
+    ],
+    "stakeholders": ["acme.dev"],
+    "excluded_headers": ["eng-sens-1@acme.dev", "eng-noise-1@statuspage.io"],
+    "stale_conflict": false
+  }
+}

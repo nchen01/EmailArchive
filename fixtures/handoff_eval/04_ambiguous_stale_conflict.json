@@ -1,0 +1,43 @@
+{
+  "name": "ambiguous_stale_conflict",
+  "description": "Conflicting and stale decisions in one project. The generator surfaces all of them as claims; there is no detector for staleness or contradiction, so the harness reports that as a known limitation, not a hard failure.",
+  "owner_email": "arch@acme.dev",
+  "internal_domains": ["acme.dev"],
+  "projects": [
+    {"key": "datastore", "label": "Datastore Selection"}
+  ],
+  "threads": [
+    {"subject": "Datastore decision", "project": "datastore", "messages": [
+      {"header": "arc-1@acme.dev", "sender": "arch@acme.dev", "display": "Arch Lead",
+       "body": "Decided to standardize on Postgres for the service datastore."}
+    ]},
+    {"subject": "Datastore decision (revisited)", "project": "datastore", "messages": [
+      {"header": "arc-2@acme.dev", "sender": "arch@acme.dev", "display": "Arch Lead",
+       "body": "Update: we are switching the datastore from Postgres to DynamoDB."}
+    ]},
+    {"subject": "Old datastore note", "project": "datastore", "messages": [
+      {"header": "arc-3@acme.dev", "sender": "arch@acme.dev", "display": "Arch Lead",
+       "body": "Earlier plan: evaluate Cassandra for the datastore (now stale)."}
+    ]}
+  ],
+  "events": [
+    {"type": "did", "summary": "Decided to standardize on Postgres for the datastore", "project": "datastore", "headers": ["arc-1@acme.dev"]},
+    {"type": "did", "summary": "Decided to switch the datastore from Postgres to DynamoDB", "project": "datastore", "headers": ["arc-2@acme.dev"]},
+    {"type": "proposed", "summary": "Evaluate Cassandra for the datastore (earlier plan, now stale)", "project": "datastore", "headers": ["arc-3@acme.dev"]}
+  ],
+  "scope": {"date_from": null, "date_to": null, "included_projects": []},
+  "gold": {
+    "project_labels": ["Datastore Selection"],
+    "decisions": [
+      {"contains": "standardize on postgres", "cites": ["arc-1@acme.dev"]},
+      {"contains": "switch the datastore from postgres to dynamodb", "cites": ["arc-2@acme.dev"]}
+    ],
+    "open_loops": [
+      {"contains": "evaluate cassandra", "cites": ["arc-3@acme.dev"]}
+    ],
+    "blockers": [],
+    "stakeholders": ["acme.dev"],
+    "excluded_headers": [],
+    "stale_conflict": true
+  }
+}
