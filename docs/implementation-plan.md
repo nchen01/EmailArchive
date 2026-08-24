@@ -314,7 +314,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29–S31, S34, S35–S41):**
+**Implemented (S22–S27, S29–S31, S34, S35–S44; S42 docs-only):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -490,6 +490,29 @@ components of the handoff-package experience.
   separation, ordered rich-demo talk track, fresh-package warning, deferred S40
   final-QA checklist, return-handoff clarification); light pointer + return caution in
   `docs/s17-handoff-manual-demo-runbook.md`. No code/schema/migration/dependency change.
+- **S42 (docs-only)** Docs-status cleanup + quality-first roadmap: synced the status
+  docs to record S34-S41 and the current Alembic head, clarified S28 (implemented by
+  S29/S30) and S33 (implemented by S34), and added
+  `docs/product-roadmap-quality-first.md` (prove packages are accurate/safe/pilot-ready
+  before more intelligence or broad integrations; calendar is the first likely connector
+  after quality/safety/pilot readiness; Slack/Teams only after pilot evidence).
+- **S43 ✓ (offline eval harness)** Deterministic handoff quality evaluation harness
+  (`services/handoff/eval/`, `scripts/eval_handoff_quality.py`, `fixtures/handoff_eval/`):
+  seeds a throwaway mailbox, runs the real `generate_candidate`, and scores it against a
+  synthetic gold corpus - hard gates (every claim cited, citations in evidence, excluded
+  material absent) + quality signals. Requires local Postgres; no external API; no
+  product behavior change. Known limitations recorded: blocker-kind extraction and
+  stale/conflict detection are not implemented.
+- **S44 ✓ (backend + frontend)** Pre-publish privacy/safety review gates
+  (`services/handoff/safety.py`): deterministic, creator-side findings over a generated
+  package's own snapshot on the creator DTO (safe metadata only - category/severity/
+  explanation/ref, never the matched text). HIGH findings block publish (422) until the
+  flagged content is removed and regenerated, or acknowledged with a required 1-500 char
+  reason; the override audits `package_published_with_safety_override` with safe metadata
+  only (`reason_provided` + `reason_length`, high count, categories, version) - never the
+  raw reason. Recipient + admin DTOs unchanged; recipient stays snapshot-only. No
+  migration, no ekc_schemas change, no dependency change. Alembic head stays
+  `0014_handoff_claim_project_label`.
 
 **Originating spec, implemented by S29 + S30 (S28):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):

@@ -110,6 +110,25 @@ answer item, snapshot-only and oracle-safe, no schema/DTO change. **S41 (rich de
 polish + runbook) is implemented as docs/QA only**: `docs/handoff-demo-quickstart.md` is the
 canonical investor-demo path (three-mailbox separation, ordered rich-demo talk track,
 fresh-package warning, deferred S40 final-QA checklist, return-handoff clarification).
+**S42 (docs-status cleanup + quality-first roadmap) is docs-only**: it synced the status docs
+to record S34-S41 and the current Alembic head, clarified S28 (implemented by S29/S30) and S33
+(implemented by S34), and added `docs/product-roadmap-quality-first.md` (prove packages are
+accurate/safe/pilot-ready before more intelligence or broad integrations; calendar is the first
+likely connector after quality/safety/pilot readiness; Slack/Teams only after pilot evidence).
+**S43 (offline, deterministic handoff quality evaluation harness) is implemented**:
+`services/handoff/eval/` + `scripts/eval_handoff_quality.py` + `fixtures/handoff_eval/` seed a
+throwaway mailbox, run the real `generate_candidate`, and score it against a synthetic gold
+corpus (hard gates: every claim cited, citations in evidence, excluded material absent) with no
+product behavior change; known limitations recorded as candidate work are blocker-kind extraction
+and stale/conflict detection. **S44 (pre-publish privacy/safety review gates) is implemented**:
+`services/handoff/safety.py` computes deterministic, creator-side findings over a generated
+package's own snapshot (credential/secret, payment, personal/SSN/medical, HR/legal, security,
+stale/conflict, blocker, low-confidence) as safe metadata only (category/severity/explanation/ref,
+never the matched text); HIGH-severity findings block publish until the flagged content is removed
+and regenerated or acknowledged with a required 1-500 char reason, and the audited override stores
+only safe reason metadata (`reason_provided` + `reason_length`, never the raw reason). The recipient
+payload is unchanged and stays snapshot-only; no migration, no ekc_schemas change, no dependency
+change. **The current Alembic head remains `0014_handoff_claim_project_label`.**
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 Roadmap (post-S41): **quality-first** - prove package accuracy/safety/pilot-readiness before adding more intelligence or broad integrations; calendar is the first likely connector, Slack/Teams only after pilot evidence. See `docs/product-roadmap-quality-first.md`.

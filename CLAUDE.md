@@ -220,6 +220,31 @@ Key docs:
   separation, ordered rich-demo talk track, fresh-package warning, deferred S40 final-QA
   checklist, return-handoff clarification); light pointer + return caution added to
   `docs/s17-handoff-manual-demo-runbook.md`. No code/schema/migration/dependency change.
+- **S42 - docs-status cleanup + quality-first roadmap (docs-only).** Synced the status
+  docs to record S34-S41 and the current Alembic head, clarified S28 (implemented by
+  S29/S30) and S33 (implemented by S34), and added
+  `docs/product-roadmap-quality-first.md`: the quality-first roadmap - prove packages
+  are accurate/safe/usable/governable/pilot-ready before more intelligence or broad
+  integrations; calendar is the first likely connector after quality/safety/pilot
+  readiness; Slack/Teams only after pilot evidence.
+- **S43 ✓ implemented.** Offline, deterministic handoff quality evaluation harness
+  (`services/handoff/eval/`, `scripts/eval_handoff_quality.py`, `fixtures/handoff_eval/`):
+  seeds a throwaway mailbox, runs the real `generate_candidate`, and scores it against a
+  small synthetic gold corpus - hard gates (every claim cited, citations in evidence,
+  excluded material absent) + quality signals. Requires local Postgres; no external API;
+  no product behavior change. Known limitations recorded as candidate work:
+  blocker-kind extraction and stale/conflict detection are not implemented.
+- **S44 ✓ implemented.** Pre-publish privacy/safety review gates
+  (`services/handoff/safety.py`): deterministic, creator-side findings over a generated
+  package's own snapshot (credential/secret, payment, personal/SSN/medical, hr_legal,
+  security, stale/conflict, blocker, low-confidence) on the creator DTO as safe metadata
+  only (category/severity/explanation/ref - never the matched text). HIGH findings block
+  publish (422) until the flagged content is removed and regenerated, or acknowledged
+  with a required 1-500 char reason; the override audits
+  `package_published_with_safety_override` with safe metadata only (`reason_provided` +
+  `reason_length`, high count, categories, version) - never the raw reason. Recipient +
+  admin DTOs unchanged; recipient stays snapshot-only. No migration, no ekc_schemas
+  change, no dependency change. **Alembic head stays `0014_handoff_claim_project_label`.**
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
