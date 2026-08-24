@@ -112,6 +112,7 @@ canonical investor-demo path (three-mailbox separation, ordered rich-demo talk t
 fresh-package warning, deferred S40 final-QA checklist, return-handoff clarification).
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
+Roadmap (post-S41): **quality-first** - prove package accuracy/safety/pilot-readiness before adding more intelligence or broad integrations; calendar is the first likely connector, Slack/Teams only after pilot evidence. See `docs/product-roadmap-quality-first.md`.
 
 ---
 

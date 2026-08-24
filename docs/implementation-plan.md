@@ -275,6 +275,14 @@ components of the handoff-package experience.
   the manual UI checklist, and the cleanup policy for `ekc_test` vs `ekc_dev`.
 
 **Implemented / planned (S16+, current direction):**
+
+> **Roadmap direction (post-S41):** the next phase is quality-first - prove that
+> handoff packages are accurate, safe, usable, governable, and pilot-ready before
+> adding more intelligence or broad integrations. Calendar is the first likely
+> connector (meetings / deadlines / handoff windows) after quality and safety;
+> Slack/Teams only after pilot evidence. See
+> `docs/product-roadmap-quality-first.md`.
+
 - **S16.0** Date-range ingest: customizable Gmail date-window preview/ingest for
   large mailboxes and scoped snapshots. Date-windowed runs bypass stored sync
   tokens and do not save new ones; replace-snapshot requires an explicit date
