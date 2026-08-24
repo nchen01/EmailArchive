@@ -53,7 +53,10 @@ Hard gates (a failure is a real problem, exits non-zero):
 Quality signals (reported, inform trust; not a hard failure on their own):
 
 - expected decisions found / missing; expected open loops found / missing.
-- expected blockers found / missing (see Limitations).
+- **blocker content** found / missing (kind-agnostic - blocker-shaped work is
+  matched even though it surfaces as an open_loop/decision), plus
+  **blocker_kind_present** (whether a true `blocker`-kind claim exists; currently
+  always false - see Limitations).
 - project labels present where expected (S39 frozen `project_label`).
 - stakeholders / related domains present in evidence senders.
 - **claim precision proxy** = generated claims matching a gold category / total

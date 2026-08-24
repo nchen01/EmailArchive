@@ -38,8 +38,9 @@ def format_console(results: list[ScenarioResult]) -> str:
                      + (f"  MISSING: {q['missing_decisions']}" if q["missing_decisions"] else ""))
         lines.append(f"    open loops  {q['open_loops_found']}/{q['open_loops_expected']} found"
                      + (f"  MISSING: {q['missing_open_loops']}" if q["missing_open_loops"] else ""))
-        lines.append(f"    blockers    {q['blockers_found']}/{q['blockers_expected']} found"
-                     + (f"  MISSING: {q['missing_blockers']}" if q["missing_blockers"] else ""))
+        lines.append(f"    blocker content  {q['blocker_content_found']}/{q['blocker_content_expected']} found"
+                     + (f"  MISSING: {q['missing_blocker_content']}" if q["missing_blocker_content"] else ""))
+        lines.append(f"    blocker kind present: {q['blocker_kind_present']}")
         lines.append(f"    project labels present: {q['project_labels_present']}"
                      + (f"  MISSING: {q['missing_project_labels']}" if q["missing_project_labels"] else ""))
         lines.append(f"    stakeholders present:   {q['stakeholders_present']}"

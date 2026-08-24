@@ -38,7 +38,7 @@ requires_db = pytest.mark.skipif(
 )
 
 
-# ── DB-free: corpus coherence + pure metrics ─────────────────────────────────
+# -- DB-free: corpus coherence + pure metrics ---------------------------------
 
 def test_corpus_has_scenarios():
     corpus = load_corpus()
@@ -120,11 +120,12 @@ def test_evaluate_reports_limitations_without_failing():
     }
     r = evaluate(data, generated)
     assert r.hard_pass is True                       # limitations are NOT hard failures
-    assert r.quality["blockers_found"] == 1          # content present (as open_loop)
+    assert r.quality["blocker_content_found"] == 1   # content present (as open_loop)
+    assert r.quality["blocker_kind_present"] is False  # no TRUE blocker-kind claim
     assert len(r.limitations) == 2                   # blocker-kind + stale/conflict
 
 
-# ── DB-gated: run the real generator over the corpus ─────────────────────────
+# -- DB-gated: run the real generator over the corpus -------------------------
 
 def _fresh():
     from services.db.engine import SessionLocal

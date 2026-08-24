@@ -20,7 +20,7 @@ from services.handoff.generator import generate_candidate
 _TS = datetime(2026, 4, 15, tzinfo=timezone.utc)
 
 
-# ── seeding (throwaway mailbox) ───────────────────────────────────────────────
+# -- seeding (throwaway mailbox) -----------------------------------------------
 
 def _parse_date(s: str | None) -> date | None:
     return date.fromisoformat(s) if s else None
@@ -115,7 +115,7 @@ def cleanup(session, mailbox_id: str, package_id: str | None) -> None:
     session.commit()
 
 
-# ── evaluation (pure) ─────────────────────────────────────────────────────────
+# -- evaluation (pure) ---------------------------------------------------------
 
 @dataclass
 class ScenarioResult:
@@ -165,7 +165,12 @@ def evaluate(data: dict, generated: dict) -> ScenarioResult:
 
     dec_found, dec_missing = _match(gold.get("decisions", []), claims, "decision")
     ol_found, ol_missing = _match(gold.get("open_loops", []), claims, "open_loop")
+    # "blocker content" is kind-agnostic: the generator has no 'blocker' kind, so
+    # blocker-shaped work surfaces as an open_loop/decision. "blocker_kind_present"
+    # is whether a TRUE blocker-kind claim exists (currently always False - see the
+    # limitation below and the S43 plan).
     bl_found, bl_missing = _match(gold.get("blockers", []), claims, None)
+    blocker_kind_present = any(c["kind"] == "blocker" for c in claims)
 
     labels_present = {c["project_label"] for c in claims if c["project_label"]}
     labels_missing = [x for x in gold.get("project_labels", []) if x not in labels_present]
@@ -191,8 +196,10 @@ def evaluate(data: dict, generated: dict) -> ScenarioResult:
         "missing_decisions": dec_missing,
         "open_loops_found": len(ol_found), "open_loops_expected": len(gold.get("open_loops", [])),
         "missing_open_loops": ol_missing,
-        "blockers_found": len(bl_found), "blockers_expected": len(gold.get("blockers", [])),
-        "missing_blockers": bl_missing,
+        "blocker_content_found": len(bl_found),
+        "blocker_content_expected": len(gold.get("blockers", [])),
+        "missing_blocker_content": bl_missing,
+        "blocker_kind_present": blocker_kind_present,
         "project_labels_present": labels_missing == [], "missing_project_labels": labels_missing,
         "stakeholders_present": stake_missing == [], "missing_stakeholders": stake_missing,
         "claim_precision_proxy": precision, "unexpected_claims": unexpected,
