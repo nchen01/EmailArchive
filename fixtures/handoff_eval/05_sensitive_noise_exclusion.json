@@ -35,6 +35,7 @@
     "blockers": [],
     "stakeholders": ["acme.dev"],
     "excluded_headers": ["bil-sens-1@acme.dev", "bil-noise-1@pagerduty.example"],
-    "stale_conflict": false
+    "stale_conflict": false,
+    "expected_findings": []
   }
 }

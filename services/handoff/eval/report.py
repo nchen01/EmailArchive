@@ -48,6 +48,12 @@ def format_console(results: list[ScenarioResult]) -> str:
         lines.append(f"    claim precision proxy:  {q['claim_precision_proxy']}")
         if q["unexpected_claims"]:
             lines.append(f"    unexpected claims: {q['unexpected_claims']}")
+        fp = [f"{f['category']}/{f['severity']}" for f in q.get("findings", [])]
+        lines.append(f"    safety findings: {fp or 'none'}  "
+                     f"(high present: {q.get('high_severity_finding_present')})")
+        if not q.get("expected_findings_match", True):
+            lines.append(f"    findings MISMATCH  missing: {q.get('missing_findings')}  "
+                         f"unexpected: {q.get('unexpected_findings')}")
         if r.limitations:
             lines.append("  known limitations (not a hard failure; candidate S44 work):")
             for lim in r.limitations:

@@ -39,6 +39,7 @@
     "blockers": [],
     "stakeholders": ["northwind.example", "contoso.com"],
     "excluded_headers": [],
-    "stale_conflict": false
+    "stale_conflict": false,
+    "expected_findings": []
   }
 }

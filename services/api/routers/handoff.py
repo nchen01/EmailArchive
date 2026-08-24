@@ -37,6 +37,7 @@ from services.handoff.audit import write_handoff_audit
 from services.handoff.export_html import render_package_html
 from services.handoff.generator import generate_candidate, generation_diagnostic
 from services.handoff.return_handoff import create_return_draft, default_return_window
+from services.handoff.safety import high_severity, scan_package
 from services.handoff.tokens import actor_hash_prefix, hash_token, new_capability_code
 from services.ingest.list_options import DateWindowError, parse_date_window
 
@@ -58,10 +59,26 @@ from ..schemas.handoff import (
     HandoffScopeOut,
     PublishRequest,
     PublishResponse,
+    SafetyFindingOut,
     ScopeRequest,
 )
 
 router = APIRouter(tags=["handoff"])
+
+
+def _safety_findings(claims, evidence):
+    """Deterministic creator-side safety findings over a package's OWN snapshot rows
+    (S44). Pure/offline; never reads the live mailbox and never exposes matched text."""
+    claim_dicts = [
+        {"id": c.id, "kind": c.kind, "text": c.text, "confidence": float(c.confidence)}
+        for c in claims
+    ]
+    ev_dicts = [
+        {"header": e.message_id_header, "subject": e.subject,
+         "body": e.body_snapshot, "sender_domain": e.sender_domain}
+        for e in evidence
+    ]
+    return scan_package(claim_dicts, ev_dicts)
 
 _VALID_REASONS = {"vacation", "leave", "transfer", "delegation", "other"}
 # Scope/generate are only legal while the package is still being drafted.
@@ -164,6 +181,14 @@ def _package_out(db: Session, pkg: orm.HandoffPackage) -> HandoffPackageOut:
         ) for e in evidence],
         exclusion_counts=exclusion_counts,
         generation=generation,
+        findings=[
+            SafetyFindingOut(
+                id=f.id, category=f.category, severity=f.severity,
+                explanation=f.explanation, claim_id=f.claim_id,
+                evidence_header=f.evidence_header,
+            )
+            for f in _safety_findings(claims, evidence)
+        ],
     )
 
 
@@ -426,6 +451,32 @@ async def publish_handoff(
             detail="cannot publish a package with no cited evidence; widen the scope and regenerate",
         )
 
+    # S44 privacy/safety gate: recompute deterministic findings over the package's
+    # OWN snapshot. HIGH-severity findings block publish until the creator either
+    # removes the flagged content and regenerates (the finding then disappears) OR
+    # acknowledges every current high finding with a non-blank reason (audited).
+    claims = list(db.execute(select(orm.HandoffClaim).where(
+        orm.HandoffClaim.package_id == pkg.id)).scalars())
+    evidence_rows = list(db.execute(select(orm.HandoffEvidence).where(
+        orm.HandoffEvidence.package_id == pkg.id)).scalars())
+    findings = _safety_findings(claims, evidence_rows)
+    high = high_severity(findings)
+    high_ids = {f.id for f in high}
+    override_used = False
+    if high_ids:
+        ack = body.safety_ack
+        acked = set(ack.acknowledged_finding_ids) if ack else set()
+        if not ack or not ack.reason.strip() or not high_ids <= acked:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Publish blocked: {len(high_ids)} high-severity safety finding(s) "
+                    "must be resolved (remove the flagged content and regenerate) or "
+                    "acknowledged with a reason."
+                ),
+            )
+        override_used = True
+
     now = datetime.now(timezone.utc)
     days = body.expires_in_days or _DEFAULT_EXPIRY_DAYS
     expires_at = now + timedelta(days=days)
@@ -461,6 +512,24 @@ async def publish_handoff(
             "version": pkg.version,
         },
     )
+    if override_used:
+        # Audit the safety override with SAFE metadata only: the high-finding count,
+        # the category names, and that a reason was provided (+ its length). The raw
+        # reason is untrusted free text (could contain a pasted secret), so it is
+        # NEVER stored - the key-based audit sanitizer would not catch "reason".
+        override_reason = body.safety_ack.reason.strip()
+        write_handoff_audit(
+            db, package_id=pkg.id, lineage_id=pkg.lineage_id,
+            actor=f"owner:{pkg.creator_email}",
+            action="package_published_with_safety_override",
+            metadata={
+                "high_finding_count": len(high),
+                "finding_categories": sorted({f.category for f in high}),
+                "reason_provided": True,
+                "reason_length": len(override_reason),
+                "version": pkg.version,
+            },
+        )
     for old_id, old_version in superseded:
         write_handoff_audit(
             db, package_id=old_id, lineage_id=pkg.lineage_id,

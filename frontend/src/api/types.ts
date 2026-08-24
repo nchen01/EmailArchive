@@ -389,6 +389,19 @@ export interface HandoffPackage {
   exclusion_counts: Record<string, number>;
   /** Creator-only: why an empty generated candidate is empty (S17.13); else null. */
   generation?: GenerationDiagnostic | null;
+  /** Creator-only pre-publish safety findings (S44); [] when none. Never sent to a
+   * recipient and never in admin DTOs. Safe metadata only (no matched text). */
+  findings?: SafetyFinding[];
+}
+
+/** Creator-only pre-publish safety finding (S44). Safe metadata only. */
+export interface SafetyFinding {
+  id: string;
+  category: string;
+  severity: "high" | "medium" | "low" | string;
+  explanation: string;
+  claim_id?: string | null;
+  evidence_header?: string | null;
 }
 
 /** Publish request (creator). Mirrors services/api/schemas/handoff.py PublishRequest. */
@@ -396,6 +409,8 @@ export interface PublishRequest {
   recipient_email: string;
   /** Override the 30-day default validity (1–365). Omit to keep the default. */
   expires_in_days?: number | null;
+  /** S44: required only when the package has unresolved high-severity findings. */
+  safety_ack?: { reason: string; acknowledged_finding_ids: string[] };
 }
 
 /**

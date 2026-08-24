@@ -56,6 +56,7 @@
     ],
     "stakeholders": ["acme.dev"],
     "excluded_headers": ["eng-sens-1@acme.dev", "eng-noise-1@statuspage.io"],
-    "stale_conflict": false
+    "stale_conflict": false,
+    "expected_findings": []
   }
 }

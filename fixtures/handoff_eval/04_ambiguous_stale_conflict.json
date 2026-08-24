@@ -38,6 +38,9 @@
     "blockers": [],
     "stakeholders": ["acme.dev"],
     "excluded_headers": [],
-    "stale_conflict": true
+    "stale_conflict": true,
+    "expected_findings": [
+      {"category": "stale_or_conflicting", "severity": "medium"}
+    ]
   }
 }
