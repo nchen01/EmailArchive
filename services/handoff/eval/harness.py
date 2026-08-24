@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from services.db import models as orm
 from services.handoff.generator import generate_candidate
+from services.handoff.safety import high_severity, scan_package
 
 _TS = datetime(2026, 4, 15, tzinfo=timezone.utc)
 
@@ -95,7 +96,8 @@ def collect(session, package_id: str) -> dict:
     exclusions = session.execute(select(orm.HandoffExclusion).where(
         orm.HandoffExclusion.package_id == package_id)).scalars().all()
     return {
-        "claims": [{"kind": c.kind, "text": c.text, "project_label": c.project_label,
+        "claims": [{"id": c.id, "kind": c.kind, "text": c.text,
+                    "project_label": c.project_label, "confidence": float(c.confidence),
                     "cites": list(c.source_message_id_headers)} for c in claims],
         "evidence": [{"header": e.message_id_header, "sender_domain": e.sender_domain,
                       "sender_display": e.sender_display, "subject": e.subject,
@@ -216,6 +218,21 @@ def evaluate(data: dict, generated: dict) -> ScenarioResult:
             "stale/conflict detection not implemented: contradictory or outdated claims "
             "are surfaced without a flag (candidate S44 work)."
         )
+
+    # S44: deterministic privacy/safety findings over the same snapshot. Compared as
+    # (category, severity) SETS so multiple findings of one category collapse.
+    findings = scan_package(claims, evidence)
+    finding_pairs = sorted({(f.category, f.severity) for f in findings})
+    gold_pairs = sorted({(g["category"], g["severity"]) for g in gold.get("expected_findings", [])})
+    quality["findings"] = [{"category": c, "severity": s} for c, s in finding_pairs]
+    quality["expected_findings_match"] = finding_pairs == gold_pairs
+    quality["unexpected_findings"] = [
+        {"category": c, "severity": s} for c, s in finding_pairs if (c, s) not in gold_pairs
+    ]
+    quality["missing_findings"] = [
+        {"category": c, "severity": s} for c, s in gold_pairs if (c, s) not in finding_pairs
+    ]
+    quality["high_severity_finding_present"] = len(high_severity(findings)) > 0
 
     counts = {"claims": len(claims), "evidence": len(evidence),
               "exclusions": len(generated["exclusions"])}

@@ -17,6 +17,7 @@ import type {
   HandoffScopeData,
   PublishResponse,
   ReturnContext,
+  SafetyFinding,
 } from "../api/types";
 import { navigate, usePathname } from "../router";
 import { useProjects } from "../hooks/useProjects";
@@ -304,7 +305,11 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
 
   // Publish freezes the package and returns the one-time code exactly once; we
   // hold the result in transient state (setShare) and never persist/log it.
-  const publish = async (recipientEmail: string, expiresInDays: number | null) => {
+  const publish = async (
+    recipientEmail: string,
+    expiresInDays: number | null,
+    safetyAck?: { reason: string; acknowledged_finding_ids: string[] },
+  ) => {
     if (!pkg) return;
     setBusy("publish");
     setError(null);
@@ -312,6 +317,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
       const resp = await publishHandoff(pkg.id, {
         recipient_email: recipientEmail,
         ...(expiresInDays ? { expires_in_days: expiresInDays } : {}),
+        ...(safetyAck ? { safety_ack: safetyAck } : {}),
       });
       setPkg(resp.package); // same id, status now "published" → share survives
       setShare(resp);
@@ -551,6 +557,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
               ) : (
                 <>
                   <ExclusionSummary counts={pkg.exclusion_counts} />
+                  <SafetyReviewPanel findings={pkg.findings ?? []} />
 
                   <section id="review" className="mt-4 scroll-mt-4">
                     {pkg.claims.length === 0 ? (
@@ -783,6 +790,72 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Creator-only pre-publish safety review (S44). Shows deterministic findings the
+ * server computed from THIS package's own snapshot, grouped by severity, with a
+ * safe category + short explanation and the affected claim/evidence reference. It
+ * shows only safe metadata (never the matched sensitive text) and never appears in
+ * the recipient or admin surfaces. High-severity findings block publishing (see
+ * PublishControls); medium/low only warn.
+ */
+function SafetyReviewPanel({ findings }: { findings: SafetyFinding[] }) {
+  if (findings.length === 0) return null;
+  const order: SafetyFinding["severity"][] = ["high", "medium", "low"];
+  const style: Record<string, string> = {
+    high: "border-danger-line bg-danger-soft text-danger",
+    medium: "border-warn-line bg-warn-soft text-warn",
+    low: "border-line bg-app2 text-muted",
+  };
+  const bySev = (sev: string) => findings.filter((f) => f.severity === sev);
+  const highCount = bySev("high").length;
+  return (
+    <section className="mt-4 rounded-md border border-line bg-surface p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold text-ink">Safety review</h3>
+        {order.map((sev) =>
+          bySev(sev).length > 0 ? (
+            <span
+              key={sev}
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${style[sev] ?? style.low}`}
+            >
+              {bySev(sev).length} {sev}
+            </span>
+          ) : null,
+        )}
+      </div>
+      <p className="mt-1 text-xs text-faint">
+        Detected in this package&apos;s own content before publish. Remove the flagged
+        claim/evidence and regenerate to clear a finding.
+        {highCount > 0
+          ? " High-severity findings block publishing until resolved or acknowledged."
+          : ""}
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {order.flatMap((sev) =>
+          bySev(sev).map((f) => (
+            <li key={f.id} className="flex flex-wrap items-baseline gap-2 text-xs">
+              <span
+                className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${style[f.severity] ?? style.low}`}
+              >
+                {f.severity}
+              </span>
+              <span className="font-medium text-ink">{f.category}</span>
+              <span className="text-muted">{f.explanation}</span>
+              {f.claim_id ? (
+                <span className="text-faint">· claim</span>
+              ) : f.evidence_header ? (
+                <span className="break-all font-mono text-[10px] text-faint">
+                  · {f.evidence_header}
+                </span>
+              ) : null}
+            </li>
+          )),
+        )}
+      </ul>
+    </section>
   );
 }
 
@@ -1125,7 +1198,11 @@ function PublishControls({
   pkg: HandoffPackage;
   share: PublishResponse | null;
   busy: string | null;
-  onPublish: (recipientEmail: string, expiresInDays: number | null) => void;
+  onPublish: (
+    recipientEmail: string,
+    expiresInDays: number | null,
+    safetyAck?: { reason: string; acknowledged_finding_ids: string[] },
+  ) => void;
   onRevoke: () => void;
   onNewVersion: () => void;
   defaultRecipientEmail?: string; // S34: prefill return recipient (original creator)
@@ -1133,6 +1210,8 @@ function PublishControls({
   const [email, setEmail] = useState(defaultRecipientEmail ?? "");
   const [days, setDays] = useState("30");
   const [copied, setCopied] = useState(false);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [ackReason, setAckReason] = useState("");
 
   if (pkg.status === "revoked" || pkg.status === "superseded") {
     const revoked = pkg.status === "revoked";
@@ -1235,8 +1314,25 @@ function PublishControls({
   // status === "generated": the publish form.
   const noEvidence = pkg.evidence.length === 0;
   const parsedDays = parseInt(days, 10);
-  const submit = () =>
-    onPublish(email.trim(), Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : null);
+  const expiresDays = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : null;
+  const highFindings = (pkg.findings ?? []).filter((f) => f.severity === "high");
+  const submit = () => {
+    // High-severity findings must be acknowledged with a reason (S44). Open the
+    // override panel instead of publishing; the creator can also just prune the
+    // flagged content and regenerate to clear them.
+    if (highFindings.length > 0) {
+      setOverrideOpen(true);
+      return;
+    }
+    onPublish(email.trim(), expiresDays);
+  };
+  const confirmOverride = () => {
+    onPublish(email.trim(), expiresDays, {
+      reason: ackReason.trim(),
+      acknowledged_finding_ids: highFindings.map((f) => f.id),
+    });
+    setOverrideOpen(false);
+  };
 
   return (
     <section className="mt-6 rounded-md border border-brass bg-brass-soft p-4">
@@ -1246,6 +1342,18 @@ function PublishControls({
         After publishing you can no longer edit scope, regenerate, or remove
         evidence.
       </p>
+
+      {highFindings.length > 0 ? (
+        <div className="mt-3 rounded-md border border-danger-line bg-danger-soft px-3 py-2 text-xs text-danger">
+          <strong>
+            {highFindings.length} high-severity safety finding
+            {highFindings.length === 1 ? "" : "s"} block publishing.
+          </strong>{" "}
+          Remove the flagged content and regenerate, or acknowledge with a reason to
+          publish anyway.
+        </div>
+      ) : null}
+
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="flex flex-1 flex-col text-xs text-ink">
           Recipient email
@@ -1275,7 +1383,11 @@ function PublishControls({
           disabled={busy !== null || !email.trim() || noEvidence}
           title={noEvidence ? "Generate a package with evidence before publishing" : undefined}
         >
-          {busy === "publish" ? "Publishing…" : "Publish package"}
+          {busy === "publish"
+            ? "Publishing…"
+            : highFindings.length > 0
+              ? "Review safety findings…"
+              : "Publish package"}
         </button>
       </div>
       {noEvidence ? (
@@ -1283,6 +1395,50 @@ function PublishControls({
           This package has no evidence yet. Widen the scope and regenerate before
           publishing.
         </p>
+      ) : null}
+
+      {overrideOpen ? (
+        <div className="mt-3 rounded-md border border-danger-line bg-surface p-3">
+          <div className="text-xs font-semibold text-danger">
+            Acknowledge {highFindings.length} high-severity finding
+            {highFindings.length === 1 ? "" : "s"} to publish
+          </div>
+          <ul className="mt-2 space-y-1">
+            {highFindings.map((f) => (
+              <li key={f.id} className="text-xs text-ink">
+                <span className="font-mono text-[11px] text-danger">{f.category}</span>{" "}
+                {f.explanation}
+              </li>
+            ))}
+          </ul>
+          <label className="mt-2 block text-xs text-ink">
+            Reason (recorded in the audit trail)
+            <textarea
+              rows={2}
+              value={ackReason}
+              onChange={(e) => setAckReason(e.target.value)}
+              className="mt-1 w-full rounded border border-line2 bg-surface px-2 py-1 text-sm text-ink"
+              placeholder="Why is it safe to publish these?"
+            />
+          </label>
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              type="button"
+              className="rounded-md bg-danger px-3 py-1.5 text-xs font-medium text-white hover:bg-danger disabled:opacity-50"
+              onClick={confirmOverride}
+              disabled={busy !== null || !ackReason.trim() || !email.trim()}
+            >
+              {busy === "publish" ? "Publishing…" : "Publish with override"}
+            </button>
+            <button
+              type="button"
+              className="text-xs font-medium text-muted hover:text-ink"
+              onClick={() => setOverrideOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       ) : null}
     </section>
   );

@@ -66,6 +66,19 @@ class GenerationDiagnostic(BaseModel):
     event_count: int
 
 
+class SafetyFindingOut(BaseModel):
+    """Creator-only pre-publish safety finding (S44). Carries only SAFE metadata -
+    a category, severity, a fixed explanation, and a package-local reference (claim
+    id or message_id_header). NEVER the matched sensitive text. Not returned to a
+    recipient and not exposed in admin DTOs."""
+    id: str
+    category: str
+    severity: str  # 'high' (blocks publish) | 'medium' | 'low'
+    explanation: str
+    claim_id: str | None = None
+    evidence_header: str | None = None
+
+
 class HandoffPackageOut(BaseModel):
     id: str
     mailbox_id: str
@@ -87,14 +100,27 @@ class HandoffPackageOut(BaseModel):
     exclusion_counts: dict[str, int]
     # Creator-only: why an empty generated candidate is empty (S17.13); else null.
     generation: GenerationDiagnostic | None = None
+    # Creator-only pre-publish safety findings (S44); [] when none. Never sent to a
+    # recipient and never in admin DTOs.
+    findings: list[SafetyFindingOut] = Field(default_factory=list)
 
 
 # ── Publish (creator) — S17.5 ────────────────────────────────────────────────
+
+class SafetyAck(BaseModel):
+    """Creator acknowledgement to publish past high-severity safety findings (S44).
+    Requires a non-blank reason and the ids of every current high finding. Audited
+    with safe metadata only (categories/severities/count/reason)."""
+    reason: str
+    acknowledged_finding_ids: list[str] = Field(default_factory=list)
+
 
 class PublishRequest(BaseModel):
     recipient_email: str = Field(..., description="the single coverage recipient")
     # Override the default 30-day validity (published_at + expires_in_days).
     expires_in_days: int | None = Field(default=None, ge=1, le=365)
+    # S44: required only when the package has unresolved high-severity findings.
+    safety_ack: SafetyAck | None = None
 
 
 class PublishResponse(BaseModel):

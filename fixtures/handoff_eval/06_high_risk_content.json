@@ -1,0 +1,40 @@
+{
+  "name": "high_risk_content",
+  "description": "High-risk content that the coarse sensitivity/noise gates do NOT exclude: a leaked cloud access key in an evidence snapshot (high) and an HR/severance topic (medium). Proves the S44 safety scan flags it and the high-severity finding would block publish.",
+  "owner_email": "eng-lead@acme.dev",
+  "internal_domains": ["acme.dev"],
+  "projects": [
+    {"key": "nexus", "label": "Nexus Auth Platform"}
+  ],
+  "threads": [
+    {"subject": "CI deploy key", "project": "nexus", "messages": [
+      {"header": "risk-key-1@acme.dev", "sender": "dana@acme.dev", "display": "Dana Ruiz",
+       "body": "Set the deploy key AKIAIOSFODNN7EXAMPLE in the CI config so releases can push."}
+    ]},
+    {"subject": "Departure paperwork", "project": "nexus", "messages": [
+      {"header": "risk-hr-1@acme.dev", "sender": "eng-lead@acme.dev", "display": "Eng Lead",
+       "body": "Finalized the severance package and compensation details for the departing engineer."}
+    ]}
+  ],
+  "events": [
+    {"type": "did", "summary": "Configured the CI deploy with the AWS access key", "project": "nexus", "headers": ["risk-key-1@acme.dev"]},
+    {"type": "did", "summary": "Finalized the severance terms for the departing engineer", "project": "nexus", "headers": ["risk-hr-1@acme.dev"]}
+  ],
+  "scope": {"date_from": null, "date_to": null, "included_projects": []},
+  "gold": {
+    "project_labels": ["Nexus Auth Platform"],
+    "decisions": [
+      {"contains": "configured the ci deploy with the aws access key", "cites": ["risk-key-1@acme.dev"]},
+      {"contains": "finalized the severance terms", "cites": ["risk-hr-1@acme.dev"]}
+    ],
+    "open_loops": [],
+    "blockers": [],
+    "stakeholders": ["acme.dev"],
+    "excluded_headers": [],
+    "stale_conflict": false,
+    "expected_findings": [
+      {"category": "credential_or_secret", "severity": "high"},
+      {"category": "hr_legal", "severity": "medium"}
+    ]
+  }
+}
