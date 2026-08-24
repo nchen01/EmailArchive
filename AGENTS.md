@@ -340,7 +340,7 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   package access stays package-local snapshot-only. Non-goals unchanged: no infra
   provisioning, admin UI, telemetry vendor, M365, production IdP, recipient auth, or
   retention enforcement.
-- **S28 — planned, docs/spec-only (not implemented).** Admin / Audit Viewer +
+- **S28 — ✓ implemented by S29 (read-only viewer) + S30 (audited actions); originating spec.** Admin / Audit Viewer +
   Operations Console (`docs/s28-admin-audit-ops-plan.md`): a governance + operational
   visibility surface over **safe metadata only** — package lifecycle, provider-account
   connection metadata, job status, audit trails, aggregate exclusion counts, and
@@ -413,7 +413,8 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   a `new-version`. Migration **0013** adds `handoff_package.package_type`
   (coverage|return_delta), the safe `coverage_return` reason, and
   `handoff_return_context` (safe provenance + carried descriptors + seed_method);
-  head is now **`0013_return_handoff`** (no ekc_schemas change). Scope auto-seeds from
+  S34's head was **`0013_return_handoff`**; the **current alembic head is
+  `0014_handoff_claim_project_label`** after S39 (no ekc_schemas change). Scope auto-seeds from
   the original (`services/handoff/return_scope.py`): structured carry-forward matches
   original **coverage-area labels → the coverer's own project ids**, else domain/person
   snapshot hints → coverer person ids; **original project UUIDs are never used as
@@ -433,13 +434,54 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   matching projects, coverage-delta events, and a sensitive+noise item) plus the return
   runbook section. Recipient routes stay package-local snapshot-only; the original
   outbound package is never revoked/superseded/mutated by publishing a return.
-- **S33 planned / docs-only, not implemented.** Return Handoff / Coverage Delta
+- **S33 — ✓ implemented by S34; originating spec.** Return Handoff / Coverage Delta
   (`docs/s33-return-handoff-coverage-delta-plan.md`, D15): after coverage ends,
   the coverer creates a reciprocal package from their own mailbox back to the
   original employee. The return draft is automatically seeded from the original
   package's projects / coverage areas where possible, but it is not a
   `new-version` of the original package and it never gives the returning employee
-  live access to the coverer's mailbox.
+  live access to the coverer's mailbox. Shipped in S34 (see above).
+- **S35 ✓ implemented.** Cover-for-me answer quality + rich demo seed. Intent-aware
+  L1 answers (blocked / next-steps / status / what-changed) that use the user's real
+  question, a softened no-embeddings warning when L1 has an answer, collapsed
+  evidence + temporal next-step grouping in the Cover-for-me UI, and a richer
+  deterministic demo mailbox (`scripts/seed_rich_handoff_demo.py`). Answer-shaping +
+  frontend + demo seed; citation allow-list and sensitivity/noise gates unchanged.
+- **S36 ✓ implemented.** Relationship Map readability. Frontend-only org/domain
+  grouping with large external orgs collapsed by default and progressive disclosure
+  (`frontend/src/utils/relationshipGraph.ts`, `RelationshipMapControls.tsx`); no
+  derivation/data/DTO change. Edge evidence is still labeled as communication volume,
+  never importance.
+- **S37 ✓ implemented.** Creator Handoff review ergonomics. The creator review groups
+  claims + evidence by **real project identity** — `claim.project_id` resolved to a
+  label via the creator's own mailbox project list (allowed; creator-owned) — with
+  within-group filtering and per-area collapsed evidence
+  (`frontend/src/utils/handoffGroups.ts`, `HandoffReview.tsx`). Frontend/client only;
+  recipient view and package snapshot untouched.
+- **S38 ✓ implemented.** Frontend copy + landing polish. Reduced em dashes in
+  user-facing copy and made the landing section headers single-column so the intro
+  copy sits under the heading. Docs/copy/CSS only; no behavior/DTO change.
+- **S39 ✓ implemented.** Recipient handoff **project grouping via snapshot coverage
+  labels**. **Migration 0014** (`0014_handoff_claim_project_label`) adds a nullable
+  `handoff_claim.project_label`, **frozen at generate time** from the creator/coverer
+  -owned mailbox's project table; the recipient DTO surfaces it and the recipient rail
+  groups by the frozen label (`frontend/src/utils/recipientGroups.ts`), with the prior
+  `coverageAreas` clustering as the fallback for pre-S39 packages. **Recipient routes
+  stay snapshot-only** — the label is read from the snapshot, never resolved from live
+  project rows. Admin DTOs unchanged. **Current alembic head:
+  `0014_handoff_claim_project_label`.**
+- **S40 ✓ implemented.** Recipient **package-local Ask intent shaping**. The
+  deterministic, LLM-free ask (`services/handoff/ask.py`) shapes answers by intent —
+  **status / next steps / blocked / decisions** — and uses the S39 frozen
+  `project_label` as a searchable + scoping signal, with supporting evidence collapsed
+  under each answer item. Snapshot-only (reads only `handoff_*` rows; no Project /
+  Event / Message / L0 / L1 / L2 / retrieval / live-mailbox access); the oracle-safe
+  neutral no-answer is preserved; no schema/DTO change.
+- **S41 ✓ implemented (docs/QA only).** Rich demo final polish + runbook.
+  `docs/handoff-demo-quickstart.md` is the canonical investor-demo path (three-mailbox
+  separation, ordered rich-demo talk track, fresh-package warning, deferred S40
+  final-QA checklist, return-handoff clarification), with a light pointer + return
+  caution added to `docs/s17-handoff-manual-demo-runbook.md`. No code/schema/migration.
 
 ## 6. Known gaps — flag, don't fake
 

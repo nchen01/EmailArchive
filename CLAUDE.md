@@ -130,7 +130,7 @@ Key docs:
   regression. Safe `GET /readyz` (bare status, no leak), migration-free worker
   readiness off the `job` table, and `scripts/preflight.py --hosted`. No migration
   (head `0012_job_infra`); recipient access stays snapshot-only.
-- **S28 planned — docs/spec-only, not implemented.** Admin / Audit Viewer + Operations
+- **S28 ✓ implemented by S29 (read-only viewer) + S30 (audited actions); originating spec.** Admin / Audit Viewer + Operations
   Console (`docs/s28-admin-audit-ops-plan.md`): governance + ops visibility over **safe
   metadata only** (package lifecycle, provider-connection, jobs, audit trails, aggregate
   exclusion counts, readiness) + two audited admin actions (revoke package, disconnect
@@ -169,8 +169,9 @@ Key docs:
   docs/s33-return-handoff-coverage-delta-plan.md). Reciprocal package
   (`package_type=return_delta`, new lineage) from the coverer's mailbox back to the
   original employee — not a `new-version`. **Migration 0013** (`package_type`, safe
-  `coverage_return` reason, `handoff_return_context`); **alembic head is now
-  `0013_return_handoff`**. Auto scope-seed resolves original coverage-area labels →
+  `coverage_return` reason, `handoff_return_context`); S34's head was
+  `0013_return_handoff`, and the **current alembic head is
+  `0014_handoff_claim_project_label`** after S39. Auto scope-seed resolves original coverage-area labels →
   coverer-side project ids (original UUIDs are provenance only, never cross-mailbox
   filters). Endpoints `POST /api/handoff/{original}/return-draft` +
   `GET .../return-context`; generation reuses `generate_candidate`. **Part 2 shipped:**
@@ -179,11 +180,46 @@ Key docs:
   (`RecipientPackage.tsx`, via a safe `package_type` DTO field), and a two-mailbox demo
   seed (`scripts/seed_handoff_demo.py`: Dana + `coverer-demo`) + runbook. Recipient
   routes stay snapshot-only; original package untouched by a return publish.
-- **S33 planned / docs-only, not implemented.** Return Handoff / Coverage Delta
+- **S33 ✓ implemented by S34 (originating spec).** Return Handoff / Coverage Delta
   (`docs/s33-return-handoff-coverage-delta-plan.md`, D15): a reciprocal package
   created by the coverer after coverage ends, sourced from the coverer's mailbox
   and automatically seeded from the original package's projects / coverage areas,
-  without treating it as a `new-version` or opening a mailbox backdoor.
+  without treating it as a `new-version` or opening a mailbox backdoor. Shipped in
+  S34 (see above).
+- **S35 ✓ implemented.** Cover-for-me answer quality + rich demo seed: intent-aware
+  L1 answers (blocked / next-steps / status / what-changed) using the user's real
+  query, softened no-embeddings warning, collapsed evidence + temporal next-step
+  grouping, and a richer deterministic mailbox (`scripts/seed_rich_handoff_demo.py`).
+  Citation allow-list + sensitivity/noise gates unchanged.
+- **S36 ✓ implemented.** Relationship Map readability: frontend-only org/domain
+  grouping, large external orgs collapsed by default, progressive disclosure
+  (`frontend/src/utils/relationshipGraph.ts`). No derivation/data/DTO change; edge
+  evidence stays labeled as volume, not importance.
+- **S37 ✓ implemented.** Creator Handoff review ergonomics: creator review grouped by
+  **real project identity** (`claim.project_id` resolved to labels from the creator's
+  own project list) with within-group filtering + collapsed evidence
+  (`frontend/src/utils/handoffGroups.ts`). Frontend/client only; recipient untouched.
+- **S38 ✓ implemented.** Frontend copy + landing polish: reduced em dashes in
+  user-facing copy; single-column landing section headers. Docs/copy/CSS only.
+- **S39 ✓ implemented.** Recipient project grouping via **snapshot coverage labels**:
+  **migration 0014** (`0014_handoff_claim_project_label`) adds nullable
+  `handoff_claim.project_label`, frozen at generate from the creator/coverer-owned
+  mailbox's project table; recipient DTO surfaces it and the recipient rail groups by
+  the frozen label (`frontend/src/utils/recipientGroups.ts`), with the `coverageAreas`
+  clustering as the pre-S39 fallback. **Recipient stays snapshot-only** (label read from
+  the snapshot, never resolved live); admin DTOs unchanged. **Alembic head is now
+  `0014_handoff_claim_project_label`.**
+- **S40 ✓ implemented.** Recipient package-local **Ask intent shaping**
+  (`services/handoff/ask.py`): deterministic, LLM-free answers shaped by intent —
+  status / next steps / blocked / decisions — using the S39 frozen `project_label` as a
+  searchable + scoping signal, evidence collapsed under each answer item. Snapshot-only
+  (only `handoff_*` rows; no Project/Event/Message/L0/L1/L2/retrieval/live mailbox);
+  oracle-safe neutral no-answer preserved; no schema/DTO change.
+- **S41 ✓ implemented (docs/QA only).** Rich demo final polish + runbook:
+  `docs/handoff-demo-quickstart.md` is the canonical investor-demo path (three-mailbox
+  separation, ordered rich-demo talk track, fresh-package warning, deferred S40 final-QA
+  checklist, return-handoff clarification); light pointer + return caution added to
+  `docs/s17-handoff-manual-demo-runbook.md`. No code/schema/migration/dependency change.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
