@@ -482,6 +482,34 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   separation, ordered rich-demo talk track, fresh-package warning, deferred S40
   final-QA checklist, return-handoff clarification), with a light pointer + return
   caution added to `docs/s17-handoff-manual-demo-runbook.md`. No code/schema/migration.
+- **S42 - docs-status cleanup + quality-first roadmap (docs-only).** Synced the status
+  docs to record S34-S41 and the current Alembic head, clarified S28 (implemented by
+  S29/S30) and S33 (implemented by S34), and added
+  `docs/product-roadmap-quality-first.md`: the quality-first roadmap - prove packages
+  are accurate/safe/usable/governable/pilot-ready before more intelligence or broad
+  integrations; **calendar is the first likely connector** after quality/safety/pilot
+  readiness; Slack/Teams only after pilot evidence. No code/schema/migration/dependency
+  change.
+- **S43 ✓ implemented.** Offline, deterministic handoff **quality evaluation harness**
+  (`services/handoff/eval/`, `scripts/eval_handoff_quality.py`, `fixtures/handoff_eval/`):
+  seeds a THROWAWAY mailbox, runs the real `generate_candidate`, and scores the result
+  against a small synthetic gold corpus - hard gates (every claim cited, citations in
+  evidence, excluded material absent) plus quality signals (decisions/open-loops/blocker
+  content, project labels, stakeholders, precision proxy). Requires local Postgres; no
+  external API; no product behavior change. Known limitations recorded as candidate
+  work: **blocker-kind extraction** and **stale/conflict detection** are not implemented.
+- **S44 ✓ implemented.** Pre-publish **privacy/safety review gates**
+  (`services/handoff/safety.py`): deterministic, creator-side findings over a generated
+  package's OWN snapshot (credential/secret, payment, personal/SSN/medical, hr_legal,
+  security, stale/conflict, blocker, low-confidence), surfaced on the creator DTO as
+  SAFE metadata only (category/severity/explanation/claim-or-evidence ref - NEVER the
+  matched text). HIGH-severity findings BLOCK publish (422) until the flagged content is
+  removed and regenerated, or acknowledged with a required 1-500 char reason; the
+  override audits `package_published_with_safety_override` with SAFE metadata only
+  (`reason_provided` + `reason_length`, high count, categories, version) - never the raw
+  reason. Recipient payload + admin DTOs unchanged; **recipient stays snapshot-only**.
+  No migration, no ekc_schemas change, no dependency change. **Alembic head stays
+  `0014_handoff_claim_project_label`.**
 
 ## 6. Known gaps — flag, don't fake
 
