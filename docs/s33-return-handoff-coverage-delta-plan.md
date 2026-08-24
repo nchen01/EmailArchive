@@ -4,7 +4,11 @@
 > changes are made here. This plan designs how a coverage recipient hands work
 > back to the original employee after the coverage period ends.
 
-**Status:** Drafted as a docs/spec-only plan; **not implemented in code**.
+**Status:** **Implemented by S34** (backend + UI + two-mailbox demo). This
+document is the originating spec; the shipped implementation is described under S34
+in `AGENTS.md`, `CLAUDE.md`, and `docs/implementation-plan.md`. The S33 spec
+*sprint itself* made no code changes (the blockquote above is historical); the
+code shipped in S34.
 
 **Decision source:** D14 (employee-initiated audited handoff package) and D15
 (return handoff is a reciprocal package linked to the original coverage package).

@@ -1,5 +1,8 @@
 # S28 — Admin / Audit Viewer + Operations Console (spec)
 
+**Status:** **Implemented by S29 (read-only viewer) + S30 (two audited actions).**
+This document is the originating spec; it made no code changes itself.
+
 > **Docs/spec-only sprint.** No backend/frontend/schema/migration/dependency
 > changes are made in *this* document. It designs the **governance and operational
 > visibility** surface now that S22–S27 are implemented, under one hard rule: **the
@@ -479,8 +482,9 @@ not public.
 - Docs/spec-only; **no** backend/frontend/schema/migration/dependency changes in this
   sprint. New `docs/s28-admin-audit-ops-plan.md` (this file).
 - README / AGENTS / CLAUDE / `docs/implementation-plan.md` updated with
-  **pointer/status lines only** — S28 is **planned / docs-only / spec-only, not
-  implemented**.
+  **pointer/status lines only** — S28 shipped as this docs/spec-only plan; **the
+  spec has since been implemented by S29 (read-only viewer) + S30 (audited
+  actions)**.
 - `git diff --check` clean.
 - *(Historical, at the time of the S28 spec sprint:)* S28 shipped no code — every
   role, DTO, endpoint, event, and action above was *proposed for the S29+ build*.

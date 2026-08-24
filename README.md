@@ -53,8 +53,8 @@ worker-readiness signal off the existing job table, a `scripts/preflight.py --ho
 check, and a deploy runbook. Gated on `EKC_DEPLOY_ENV=production` + `AUTH_MODE=production`
 so local dev is unchanged; no schema migration (head stays `0012_job_infra`). See
 `docs/s27-hosted-deploy-readiness-plan.md` and `docs/s27-hosted-deploy-runbook.md`.
-**S28 (Admin / Audit Viewer + Operations Console) is planned as a docs-only spec,
-not yet implemented** — a governance/ops surface for safe metadata (package
+**S28 (Admin / Audit Viewer + Operations Console) was specified as a docs-only spec
+and is now implemented by S29 + S30 (below)** — a governance/ops surface for safe metadata (package
 lifecycle, provider-connection, jobs, audit trails, aggregate exclusion counts,
 readiness) plus two audited admin actions (revoke package, disconnect provider,
 each with a mandatory reason), designed so **no admin route becomes a content
@@ -83,13 +83,36 @@ jobs, audit log, exclusion summary, and the two audited actions (revoke package,
 disconnect provider) behind a mandatory typed-reason confirmation modal. Frontend
 only — no backend/schema/migration change; it renders only the safe metadata the API
 returns (no bodies, tokens, or vault refs) and respects security-reviewer masking.
-**S33 is drafted as a docs-only return-handoff / coverage-delta spec**:
-after coverage ends, the coverer can create a reciprocal package back to the
-original employee, automatically seeded from the original package's projects /
-coverage areas, while still using the coverer's mailbox as the source and
-preserving package-local snapshot access. Not implemented in code.
+**S33 is the originating docs-only return-handoff / coverage-delta spec, now
+implemented by S34**: after coverage ends, the coverer can create a reciprocal
+package back to the original employee, automatically seeded from the original
+package's projects / coverage areas, while still using the coverer's mailbox as the
+source and preserving package-local snapshot access. **S34 (return handoff, backend
++ UI + two-mailbox demo) is implemented**: a reciprocal `package_type=return_delta`
+package (new lineage) built from the coverer's mailbox back to the original employee,
+migration 0013 (`package_type`, safe `coverage_return` reason, `handoff_return_context`),
+auto scope-seed from the original coverage areas, and a two-mailbox demo seed
+(`scripts/seed_handoff_demo.py`); recipient routes stay snapshot-only and the original
+package is never mutated. **S35 (Cover-for-me answer quality + rich demo seed),
+S36 (Relationship Map readability), S37 (creator Handoff review project grouping +
+filtering), and S38 (frontend copy + landing polish) are implemented** (mostly
+frontend/answer-shaping; S35 also adds `scripts/seed_rich_handoff_demo.py`).
+**S39 (recipient project grouping via snapshot coverage labels) is implemented**:
+migration `0014_handoff_claim_project_label` adds a nullable `handoff_claim.project_label`
+frozen at generate from the creator/coverer-owned mailbox's project table, the recipient
+rail groups by that frozen label with a coverageAreas fallback for pre-S39 packages, and
+recipient routes stay snapshot-only (label read from the snapshot, never resolved live).
+**The current Alembic head is `0014_handoff_claim_project_label`.**
+**S40 (recipient package-local Ask intent shaping) is implemented**: the deterministic,
+LLM-free ask shapes answers by intent (status / next steps / blocked / decisions) using the
+S39 frozen `project_label` as a searchable + scoping signal, evidence collapsed under each
+answer item, snapshot-only and oracle-safe, no schema/DTO change. **S41 (rich demo final
+polish + runbook) is implemented as docs/QA only**: `docs/handoff-demo-quickstart.md` is the
+canonical investor-demo path (three-mailbox separation, ordered rich-demo talk track,
+fresh-package warning, deferred S40 final-QA checklist, return-handoff clarification).
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
+Roadmap (post-S41): **quality-first** - prove package accuracy/safety/pilot-readiness before adding more intelligence or broad integrations; calendar is the first likely connector, Slack/Teams only after pilot evidence. See `docs/product-roadmap-quality-first.md`.
 
 ---
 

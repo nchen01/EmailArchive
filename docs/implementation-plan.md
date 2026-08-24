@@ -275,6 +275,14 @@ components of the handoff-package experience.
   the manual UI checklist, and the cleanup policy for `ekc_test` vs `ekc_dev`.
 
 **Implemented / planned (S16+, current direction):**
+
+> **Roadmap direction (post-S41):** the next phase is quality-first - prove that
+> handoff packages are accurate, safe, usable, governable, and pilot-ready before
+> adding more intelligence or broad integrations. Calendar is the first likely
+> connector (meetings / deadlines / handoff windows) after quality and safety;
+> Slack/Teams only after pilot evidence. See
+> `docs/product-roadmap-quality-first.md`.
+
 - **S16.0** Date-range ingest: customizable Gmail date-window preview/ingest for
   large mailboxes and scoped snapshots. Date-windowed runs bypass stored sync
   tokens and do not save new ones; replace-snapshot requires an explicit date
@@ -306,7 +314,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29–S31; S34 backend):**
+**Implemented (S22–S27, S29–S31, S34, S35–S41):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -424,8 +432,9 @@ components of the handoff-package experience.
   A reciprocal package (`package_type=return_delta`, new lineage) created from the
   **coverer's** mailbox back to the original employee — never a `new-version`.
   Migration **0013** (`handoff_package.package_type` coverage|return_delta, safe
-  `coverage_return` reason, `handoff_return_context` provenance table; head
-  `0013_return_handoff`, no ekc_schemas change). Auto scope-seed
+  `coverage_return` reason, `handoff_return_context` provenance table; S34 head
+  `0013_return_handoff`, current alembic head `0014_handoff_claim_project_label`
+  after S39, no ekc_schemas change). Auto scope-seed
   (`services/handoff/return_scope.py`): original coverage-area **labels → coverer-side
   project ids**, else domain/person snapshot hints → coverer person ids; original
   project UUIDs are provenance only, never cross-mailbox filters (§12). Endpoints
@@ -446,7 +455,43 @@ components of the handoff-package experience.
   section. Recipient routes stay snapshot-only; the original outbound package is never
   revoked/superseded/mutated by a return publish.
 
-**Planned — docs/spec-only, not implemented (S28 spec fully implemented by S29+S30):**
+- **S35 ✓ (answer-shaping + frontend + demo seed)** Cover-for-me answer quality +
+  rich demo seed: intent-aware L1 answers (blocked / next-steps / status /
+  what-changed) using the user's real query, softened no-embeddings warning,
+  collapsed evidence + temporal next-step grouping, and a richer deterministic demo
+  mailbox (`scripts/seed_rich_handoff_demo.py`). Citation allow-list +
+  sensitivity/noise gates unchanged.
+- **S36 ✓ (frontend-only)** Relationship Map readability: org/domain grouping with
+  large external orgs collapsed by default + progressive disclosure
+  (`frontend/src/utils/relationshipGraph.ts`, `RelationshipMapControls.tsx`); no
+  derivation/data/DTO change; edge evidence stays labeled as volume, not importance.
+- **S37 ✓ (frontend/client)** Creator Handoff review ergonomics: creator review
+  grouped by real project identity (`claim.project_id` resolved to labels from the
+  creator's own project list) with within-group filtering + collapsed evidence
+  (`frontend/src/utils/handoffGroups.ts`, `HandoffReview.tsx`); recipient untouched.
+- **S38 ✓ (docs/copy/CSS)** Frontend copy + landing polish: reduced em dashes in
+  user-facing copy; single-column landing section headers. No behavior/DTO change.
+- **S39 ✓ (migration 0014 + recipient DTO + frontend)** Recipient project grouping via
+  snapshot coverage labels: `0014_handoff_claim_project_label` adds nullable
+  `handoff_claim.project_label`, frozen at generate from the creator/coverer-owned
+  mailbox's project table; recipient DTO surfaces it and the recipient rail groups by
+  the frozen label (`frontend/src/utils/recipientGroups.ts`), with `coverageAreas`
+  clustering as the pre-S39 fallback. Recipient stays snapshot-only (label read from
+  the snapshot, never resolved live); admin DTOs unchanged. Current alembic head:
+  `0014_handoff_claim_project_label`.
+- **S40 ✓ (backend + frontend)** Recipient package-local Ask intent shaping
+  (`services/handoff/ask.py`): deterministic, LLM-free answers shaped by intent
+  (status / next steps / blocked / decisions) using the S39 frozen `project_label` as a
+  searchable + scoping signal, evidence collapsed under each answer item. Snapshot-only
+  (only `handoff_*` rows; no Project/Event/Message/L0/L1/L2/retrieval/live mailbox);
+  oracle-safe neutral no-answer preserved; no schema/DTO change.
+- **S41 ✓ (docs/QA only)** Rich demo final polish + runbook:
+  `docs/handoff-demo-quickstart.md` is the canonical investor-demo path (three-mailbox
+  separation, ordered rich-demo talk track, fresh-package warning, deferred S40
+  final-QA checklist, return-handoff clarification); light pointer + return caution in
+  `docs/s17-handoff-manual-demo-runbook.md`. No code/schema/migration/dependency change.
+
+**Originating spec, implemented by S29 + S30 (S28):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):
   a governance + operational visibility surface over **safe metadata only** — package
   lifecycle, provider-account connection metadata, job status, audit trails, aggregate
@@ -469,7 +514,7 @@ components of the handoff-package experience.
   admin edit/generate/publish/prune, no token viewing/silent reconnect, no legal-hold
   content access, no M365/new provider/new auth provider, no retention-enforcement engine.
 
-**Planned — docs/spec-only, not implemented (S33):**
+**Originating spec, implemented by S34 (S33):**
 - **S33 — Return Handoff / Coverage Delta**
   (`docs/s33-return-handoff-coverage-delta-plan.md`, D15): designs the reciprocal
   handoff after a coverage period ends. The coverer creates a new package from
