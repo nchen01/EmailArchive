@@ -1,0 +1,42 @@
+{
+  "name": "operations_process",
+  "description": "Operations/process handoff: a recurring on-call decision and a deadline-bound runbook task, plus one sensitive incident thread that must be excluded.",
+  "owner_email": "sre@acme.dev",
+  "internal_domains": ["acme.dev"],
+  "projects": [
+    {"key": "runbook", "label": "Incident Runbook Refresh"}
+  ],
+  "threads": [
+    {"subject": "On-call rotation", "project": "runbook", "messages": [
+      {"header": "ops-1@acme.dev", "sender": "sre@acme.dev", "display": "SRE Lead",
+       "body": "Rotated the on-call schedule to the new team layout."}
+    ]},
+    {"subject": "Runbook refresh", "project": "runbook", "messages": [
+      {"header": "ops-2@acme.dev", "sender": "sre@acme.dev", "display": "SRE Lead",
+       "body": "Need to refresh the incident runbook before the Friday game day."}
+    ]},
+    {"subject": "Security incident (confidential)", "project": "runbook", "messages": [
+      {"header": "ops-sens-1@acme.dev", "sender": "security@acme.dev", "display": "Security",
+       "body": "Confidential: details of an active security incident.", "sensitivity": ["legal"]}
+    ]}
+  ],
+  "events": [
+    {"type": "did", "summary": "Rotated the on-call schedule to the new team layout", "project": "runbook", "headers": ["ops-1@acme.dev"]},
+    {"type": "proposed", "summary": "Refresh the incident runbook before the Friday game day", "project": "runbook", "headers": ["ops-2@acme.dev"]},
+    {"type": "did", "summary": "Handled a confidential security incident", "project": "runbook", "headers": ["ops-sens-1@acme.dev"]}
+  ],
+  "scope": {"date_from": null, "date_to": null, "included_projects": []},
+  "gold": {
+    "project_labels": ["Incident Runbook Refresh"],
+    "decisions": [
+      {"contains": "rotated the on-call schedule", "cites": ["ops-1@acme.dev"]}
+    ],
+    "open_loops": [
+      {"contains": "refresh the incident runbook before the friday game day", "cites": ["ops-2@acme.dev"]}
+    ],
+    "blockers": [],
+    "stakeholders": ["acme.dev"],
+    "excluded_headers": ["ops-sens-1@acme.dev"],
+    "stale_conflict": false
+  }
+}
