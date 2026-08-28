@@ -131,10 +131,15 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
   const [reason, setReason] = useState("vacation");
   const [title, setTitle] = useState("");
 
-  // Scope form.
+  // Scope form. Person/thread scope is seeded from the package (e.g. a return
+  // handoff auto-seed) and is EDITABLE as removable chips here; adding brand-new
+  // contacts/threads is deferred to the Advanced surface (no creator-safe list
+  // endpoint is wired for the guided step). See docs/s45 S46 status note.
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [selectedProjects, setSelectedProjects] = useState<Set<string>>(() => new Set());
+  const [selectedPersons, setSelectedPersons] = useState<Set<string>>(() => new Set());
+  const [selectedThreads, setSelectedThreads] = useState<Set<string>>(() => new Set());
 
   // Review filter / disclosure.
   const [reviewFilter, setReviewFilter] = useState("");
@@ -209,6 +214,8 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
       setFrom(pkg.scope.date_from ?? "");
       setTo(pkg.scope.date_to ?? "");
       setSelectedProjects(new Set(pkg.scope.included_project_ids));
+      setSelectedPersons(new Set(pkg.scope.included_person_ids));
+      setSelectedThreads(new Set(pkg.scope.included_thread_ids));
       setEmail("");
     } else {
       setReason("vacation");
@@ -216,6 +223,8 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
       setFrom("");
       setTo("");
       setSelectedProjects(new Set());
+      setSelectedPersons(new Set());
+      setSelectedThreads(new Set());
       setEmail("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,6 +294,8 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
       date_from: from || null,
       date_to: to || null,
       included_project_ids: [...selectedProjects],
+      included_person_ids: [...selectedPersons],
+      included_thread_ids: [...selectedThreads],
     });
   };
 
@@ -419,20 +430,38 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
   const selectedThreadEstimate = projects
     .filter((p) => selectedProjects.has(p.id))
     .reduce((n, p) => n + (p.thread_count || 0), 0);
-  const seededPeople = pkg?.scope.included_person_ids.length ?? 0;
-  const seededThreads = pkg?.scope.included_thread_ids.length ?? 0;
+  // Scope is "empty" only when nothing at all is selected: no project, contact,
+  // thread, or date bound. Empty scope disables Generate (spec: at least one
+  // project/person/thread/date range is required; there is no whole-mailbox
+  // default in the guided path).
   const anyScope =
-    selectedProjects.size > 0 || !!from || !!to || seededPeople > 0 || seededThreads > 0;
+    selectedProjects.size > 0 ||
+    selectedPersons.size > 0 ||
+    selectedThreads.size > 0 ||
+    !!from ||
+    !!to;
+  // "Broad" is a non-blocking caution, only meaningful once something IS scoped.
   const broadScope =
-    !anyScope ||
-    selectedProjects.size > BROAD_PROJECT_COUNT ||
-    selectedThreadEstimate > BROAD_THREAD_COUNT;
+    anyScope &&
+    (selectedProjects.size > BROAD_PROJECT_COUNT || selectedThreadEstimate > BROAD_THREAD_COUNT);
 
   const toggleProject = (id: string) =>
     setSelectedProjects((p) => {
       const n = new Set(p);
       if (n.has(id)) n.delete(id);
       else n.add(id);
+      return n;
+    });
+  const removePerson = (id: string) =>
+    setSelectedPersons((prev) => {
+      const n = new Set(prev);
+      n.delete(id);
+      return n;
+    });
+  const removeThread = (id: string) =>
+    setSelectedThreads((prev) => {
+      const n = new Set(prev);
+      n.delete(id);
       return n;
     });
 
@@ -504,15 +533,17 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
               pkg={pkg}
               projects={projects}
               selectedProjects={selectedProjects}
+              selectedPersons={selectedPersons}
+              selectedThreads={selectedThreads}
               from={from}
               to={to}
               busy={busy}
               broadScope={broadScope}
               anyScope={anyScope}
               selectedThreadEstimate={selectedThreadEstimate}
-              seededPeople={seededPeople}
-              seededThreads={seededThreads}
               onToggleProject={toggleProject}
+              onRemovePerson={removePerson}
+              onRemoveThread={removeThread}
               onFrom={setFrom}
               onTo={setTo}
               onSaveScope={saveScope}
@@ -586,7 +617,8 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
                   highFindings={highFindings}
                   safetySatisfied={safetySatisfied}
                   busy={busy}
-                  defaultRecipientEmail={
+                  isReturn={pkg.package_type === "return_delta"}
+                  suggestedRecipient={
                     pkg.package_type === "return_delta"
                       ? returnCtx?.suggested_recipient_email
                       : undefined
@@ -726,20 +758,24 @@ function StartStep({
   );
 }
 
-/** Step 2: date range + project scope with empty/broad guidance. */
+/** Step 2: date range + project + (seeded) person/thread scope. Empty scope
+ * disables Generate with a reason; a broad selection gets a non-blocking caution.
+ * Person/thread scope is seeded and removable here (adding new is Advanced). */
 function ScopeStep({
   pkg,
   projects,
   selectedProjects,
+  selectedPersons,
+  selectedThreads,
   from,
   to,
   busy,
   broadScope,
   anyScope,
   selectedThreadEstimate,
-  seededPeople,
-  seededThreads,
   onToggleProject,
+  onRemovePerson,
+  onRemoveThread,
   onFrom,
   onTo,
   onSaveScope,
@@ -748,15 +784,17 @@ function ScopeStep({
   pkg: HandoffPackage;
   projects: ProjectSummary[];
   selectedProjects: Set<string>;
+  selectedPersons: Set<string>;
+  selectedThreads: Set<string>;
   from: string;
   to: string;
   busy: string | null;
   broadScope: boolean;
   anyScope: boolean;
   selectedThreadEstimate: number;
-  seededPeople: number;
-  seededThreads: number;
   onToggleProject: (id: string) => void;
+  onRemovePerson: (id: string) => void;
+  onRemoveThread: (id: string) => void;
   onFrom: (v: string) => void;
   onTo: (v: string) => void;
   onSaveScope: () => void;
@@ -764,6 +802,8 @@ function ScopeStep({
 }) {
   const generating = busy === "generate" || busy === "scope";
   const alreadyGenerated = pkg.status === "generated";
+  const personChips = [...selectedPersons];
+  const threadChips = [...selectedThreads];
   return (
     <section className="mt-4 rounded-md border border-line bg-surface p-4">
       <h3 className="text-sm font-semibold text-ink">Scope the handoff</h3>
@@ -798,8 +838,8 @@ function ScopeStep({
         <div className="text-xs font-semibold uppercase tracking-wide text-faint">Projects</div>
         {projects.length === 0 ? (
           <p className="mt-1 text-xs text-muted">
-            No project list is available for this mailbox. Scope by date range, or generate from the
-            whole mailbox and prune in review.
+            No project list is available for this mailbox. Scope by date range (or, for a return
+            handoff, by the seeded contacts/threads below).
           </p>
         ) : (
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -827,28 +867,53 @@ function ScopeStep({
         )}
       </div>
 
-      {seededPeople > 0 || seededThreads > 0 ? (
-        <p className="mt-2 text-[11px] text-faint">
-          Also scoped to {seededPeople} seeded contact(s) and {seededThreads} seeded thread(s) from
-          this package.
-        </p>
+      {personChips.length > 0 || threadChips.length > 0 ? (
+        <div className="mt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-faint">
+            Contacts &amp; threads (seeded)
+          </div>
+          <p className="mt-1 text-[11px] text-faint">
+            Seeded from this package (e.g. a return handoff auto-seed). Remove any you do not want in
+            scope. Adding new contacts or threads is available in Advanced review.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {personChips.map((id) => (
+              <button
+                key={`person-${id}`}
+                type="button"
+                onClick={() => onRemovePerson(id)}
+                className="max-w-[16rem] truncate rounded-full border border-brass bg-brass-soft px-2.5 py-1 text-[11px] text-brass hover:bg-app2"
+                title={`Remove contact ${id}`}
+              >
+                x contact {id.slice(0, 8)}
+              </button>
+            ))}
+            {threadChips.map((id) => (
+              <button
+                key={`thread-${id}`}
+                type="button"
+                onClick={() => onRemoveThread(id)}
+                className="max-w-[16rem] truncate rounded-full border border-brass bg-brass-soft px-2.5 py-1 text-[11px] text-brass hover:bg-app2"
+                title={`Remove thread ${id}`}
+              >
+                x thread {id.slice(0, 8)}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
 
-      {broadScope ? (
+      {!anyScope ? (
         <div className="mt-3 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn">
-          {!anyScope ? (
-            <>
-              <strong>This will draw from your entire mailbox.</strong> That is allowed, but it is
-              the broadest possible scope. Select a project or a date range to narrow it, or continue
-              and prune everything in review.
-            </>
-          ) : (
-            <>
-              <strong>This looks broad.</strong> You selected {selectedProjects.size} project(s)
-              {selectedThreadEstimate > 0 ? ` (about ${selectedThreadEstimate} threads)` : ""}. You
-              will review and prune everything it selects, so a tighter scope is usually easier.
-            </>
-          )}
+          <strong>Choose a scope before generating.</strong> Select at least one project, a seeded
+          contact/thread, or a date range. The guided flow deliberately does not generate from your
+          entire mailbox; a scoped package is faster to review and safer to share.
+        </div>
+      ) : broadScope ? (
+        <div className="mt-3 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn">
+          <strong>This looks broad.</strong> You selected {selectedProjects.size} project(s)
+          {selectedThreadEstimate > 0 ? ` (about ${selectedThreadEstimate} threads)` : ""}. You will
+          review and prune everything it selects, so a tighter scope is usually easier.
         </div>
       ) : null}
 
@@ -865,15 +930,10 @@ function ScopeStep({
           type="button"
           className="rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
           onClick={onGenerate}
-          disabled={busy !== null}
+          disabled={busy !== null || !anyScope}
+          title={!anyScope ? "Select a project, contact/thread, or date range first" : undefined}
         >
-          {generating
-            ? "Generating..."
-            : !anyScope
-              ? "Generate from entire mailbox"
-              : alreadyGenerated
-                ? "Regenerate & review"
-                : "Generate & review"}
+          {generating ? "Generating..." : alreadyGenerated ? "Regenerate & review" : "Generate & review"}
         </button>
       </div>
     </section>
@@ -1177,7 +1237,8 @@ function PublishStep({
   highFindings,
   safetySatisfied,
   busy,
-  defaultRecipientEmail,
+  isReturn,
+  suggestedRecipient,
   onBack,
   onPublish,
 }: {
@@ -1190,16 +1251,11 @@ function PublishStep({
   highFindings: SafetyFinding[];
   safetySatisfied: boolean;
   busy: string | null;
-  defaultRecipientEmail?: string;
+  isReturn: boolean;
+  suggestedRecipient?: string;
   onBack: () => void;
   onPublish: () => void;
 }) {
-  // Prefill the return-handoff recipient once, if the field is still empty.
-  useEffect(() => {
-    if (defaultRecipientEmail && !email) onEmail(defaultRecipientEmail);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultRecipientEmail]);
-
   const parsedDays = parseInt(days, 10);
   const expiresDays = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : 30;
   const noEvidence = pkg.evidence.length === 0;
@@ -1207,7 +1263,17 @@ function PublishStep({
     highFindings.length === 0
       ? "No high-severity findings"
       : `${highFindings.length} high-severity finding${highFindings.length === 1 ? "" : "s"} acknowledged`;
-  const canPublish = busy === null && !!email.trim() && !noEvidence && safetySatisfied;
+  // A return handoff may be published with a BLANK recipient: the server defaults
+  // it to the original creator. We do NOT auto-fill the field (so the default path
+  // stays exercised) and only allow blank when a suggested recipient is known.
+  const canDefaultToOriginal = isReturn && !!suggestedRecipient;
+  const recipientOk = canDefaultToOriginal || !!email.trim();
+  const recipientLabel = email.trim()
+    ? email.trim()
+    : canDefaultToOriginal
+      ? `${suggestedRecipient} (original employee)`
+      : "not set";
+  const canPublish = busy === null && recipientOk && !noEvidence && safetySatisfied;
 
   return (
     <section className="mt-4 rounded-md border border-brass bg-brass-soft p-4">
@@ -1218,10 +1284,12 @@ function PublishStep({
       </p>
 
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+        <SummaryCell label="Recipient" value={recipientLabel} />
+        <SummaryCell label="Expires" value={`~${expiresDays} day${expiresDays === 1 ? "" : "s"}`} />
+        <SummaryCell label="Safety" value={safetyStatus} />
         <SummaryCell label="Claims" value={String(pkg.claims.length)} />
         <SummaryCell label="Evidence" value={String(pkg.evidence.length)} />
         <SummaryCell label="Removed by you" value={String(excludedCount)} />
-        <SummaryCell label="Safety" value={safetyStatus} />
         <SummaryCell label="Package" value={pkg.package_type === "return_delta" ? "return" : "coverage"} />
         <SummaryCell label="Version" value={`v${pkg.version}`} />
       </dl>
@@ -1234,8 +1302,13 @@ function PublishStep({
             className="mt-1 rounded border border-brass bg-surface px-2 py-1 text-sm text-ink"
             value={email}
             onChange={(e) => onEmail(e.target.value)}
-            placeholder="cover@company.com"
+            placeholder={canDefaultToOriginal ? "Leave blank to send back to the original employee" : "cover@company.com"}
           />
+          {canDefaultToOriginal ? (
+            <span className="mt-1 text-[11px] text-muted">
+              Leave blank to send back to {suggestedRecipient}.
+            </span>
+          ) : null}
         </label>
         <label className="flex w-28 flex-col text-xs text-ink">
           Expires (days)
@@ -1273,7 +1346,13 @@ function PublishStep({
           className="rounded-md bg-brass px-4 py-2 text-sm font-medium text-onbrass hover:bg-brass disabled:bg-brass-soft disabled:text-faint"
           onClick={onPublish}
           disabled={!canPublish}
-          title={!safetySatisfied ? "Resolve or acknowledge the high-severity findings first" : undefined}
+          title={
+            !safetySatisfied
+              ? "Resolve or acknowledge the high-severity findings first"
+              : !recipientOk
+                ? "Enter a recipient email first"
+                : undefined
+          }
         >
           {busy === "publish" ? "Publishing..." : "Publish package"}
         </button>
