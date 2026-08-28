@@ -69,7 +69,7 @@ const EXCLUSION_LABEL: Record<string, string> = {
  * that widening the date range will NOT help when the mailbox has no extracted
  * events at all. Falls back to the old generic copy if no diagnostic is present.
  */
-function generationEmptyMessage(pkg: HandoffPackage): string {
+export function generationEmptyMessage(pkg: HandoffPackage): string {
   switch (pkg.generation?.code) {
     case "no_events_for_mailbox":
       return (
@@ -801,7 +801,7 @@ export function HandoffReview({ mailboxId }: { mailboxId: string }) {
  * the recipient or admin surfaces. High-severity findings block publishing (see
  * PublishControls); medium/low only warn.
  */
-function SafetyReviewPanel({ findings }: { findings: SafetyFinding[] }) {
+export function SafetyReviewPanel({ findings }: { findings: SafetyFinding[] }) {
   if (findings.length === 0) return null;
   const order: SafetyFinding["severity"][] = ["high", "medium", "low"];
   const style: Record<string, string> = {
@@ -859,7 +859,7 @@ function SafetyReviewPanel({ findings }: { findings: SafetyFinding[] }) {
   );
 }
 
-function ExclusionSummary({ counts }: { counts: Record<string, number> }) {
+export function ExclusionSummary({ counts }: { counts: Record<string, number> }) {
   const parts = Object.entries(counts)
     .filter(([, n]) => n > 0)
     .map(([type, n]) => `${n} ${EXCLUSION_LABEL[type] ?? type}`);
@@ -1008,7 +1008,7 @@ interface ReviewClaim {
  * changes which claims/evidence exist, and removal still routes through the same
  * scope-exclusion + regenerate path.
  */
-function CoverageAreaSection({
+export function CoverageAreaSection({
   domId,
   title,
   claims,
