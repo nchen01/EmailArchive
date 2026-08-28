@@ -510,6 +510,32 @@ Implement to the Definition of Done, run the eval where one exists, and prove de
   reason. Recipient payload + admin DTOs unchanged; **recipient stays snapshot-only**.
   No migration, no ekc_schemas change, no dependency change. **Alembic head stays
   `0014_handoff_claim_project_label`.**
+- **S45 (docs/spec-only).** Creator guided handoff wizard SPEC
+  (`docs/s45-creator-guided-handoff-wizard-plan.md`): a frontend-led, wizard-first
+  reframing of the creator flow over existing endpoints, reusing S37 grouping and the
+  S44 findings/gate. No code change; implemented by S46.
+- **S46 ✓ implemented.** Creator Guided Handoff Wizard, **frontend-only**
+  (`frontend/src/components/handoff/HandoffWizard.tsx`), mounted as the PRIMARY creator
+  Handoff surface (`frontend/src/workspace/Workspace.tsx`). A wizard-first Start ->
+  Scope -> Review -> Safety -> Publish flow over the EXISTING creator endpoints
+  (`POST /handoff/{mailbox}` create, `PATCH /handoff/{id}/scope`,
+  `POST /handoff/{id}/generate`, prune = excluded-message-header + regenerate,
+  restore-all, `POST /handoff/{id}/publish`, plus return-draft/revoke/new-version/
+  export). The detailed `HandoffReview` is PRESERVED as an "Advanced / full evidence
+  review" mode (additive `export`s only, no behavior change). **Empty scope DISABLES
+  Generate** (no whole-mailbox default); guided scope is **date + project** selection
+  plus **seeded person/thread scope editable as removable chips**, with **add-new
+  person/thread selection deferred** to Advanced/future (no creator-safe list endpoint
+  wired, avoided on purpose). The **S44 safety step is REQUIRED and HIGH findings cannot
+  be skipped** - prune/regenerate them away, or acknowledge every current high finding
+  id with a reason through the existing `safety_ack` contract; the server publish gate
+  remains the enforcement point. The **`return_delta` blank-recipient path is
+  preserved**: the recipient field is not auto-filled ("leave blank to send back to
+  <original creator>") and Publish sends **`recipient_email: ""`** so the existing
+  server default to the original creator is exercised (coverage packages still require a
+  non-blank recipient). **No backend/schema/migration/dependency/ekc_schemas/recipient/
+  admin change; recipient stays snapshot-only. Alembic head stays
+  `0014_handoff_claim_project_label`.**
 
 ## 6. Known gaps — flag, don't fake
 

@@ -129,6 +129,19 @@ and regenerated or acknowledged with a required 1-500 char reason, and the audit
 only safe reason metadata (`reason_provided` + `reason_length`, never the raw reason). The recipient
 payload is unchanged and stays snapshot-only; no migration, no ekc_schemas change, no dependency
 change. **The current Alembic head remains `0014_handoff_claim_project_label`.**
+**S45 (creator guided handoff wizard spec) is docs/spec-only** (`docs/s45-creator-guided-handoff-wizard-plan.md`);
+implemented by S46. **S46 (Creator Guided Handoff Wizard) is implemented, frontend-only**:
+`frontend/src/components/handoff/HandoffWizard.tsx` is mounted as the primary creator Handoff surface and
+drives a wizard-first Start -> Scope -> Review -> Safety -> Publish flow over the existing creator endpoints
+(create/scope/generate, prune via excluded-message-header + regenerate, restore-all, publish), preserving the
+detailed `HandoffReview` as an Advanced / full-evidence review mode. Empty scope disables Generate (no
+whole-mailbox default); guided scope is date + project selection plus seeded person/thread scope editable as
+removable chips, with add-new person/thread selection deferred. The S44 safety step is required and
+high-severity findings cannot be skipped (prune/regenerate them away, or acknowledge every current high
+finding id with a reason via the existing `safety_ack` contract). The `return_delta` blank-recipient path is
+preserved: the recipient field is not auto-filled and Publish sends `recipient_email: ""` so the server
+default to the original creator is exercised. No backend/schema/migration/dependency/ekc_schemas/recipient/
+admin change; recipient stays snapshot-only, and the Alembic head remains `0014_handoff_claim_project_label`.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 Roadmap (post-S41): **quality-first** - prove package accuracy/safety/pilot-readiness before adding more intelligence or broad integrations; calendar is the first likely connector, Slack/Teams only after pilot evidence. See `docs/product-roadmap-quality-first.md`.

@@ -314,7 +314,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29–S31, S34, S35–S44; S42 docs-only):**
+**Implemented (S22–S27, S29–S31, S34, S35–S44, S46; S42 + S45 docs-only):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -513,6 +513,27 @@ components of the handoff-package experience.
   raw reason. Recipient + admin DTOs unchanged; recipient stays snapshot-only. No
   migration, no ekc_schemas change, no dependency change. Alembic head stays
   `0014_handoff_claim_project_label`.
+- **S45 (docs/spec-only)** Creator guided handoff wizard spec
+  (`docs/s45-creator-guided-handoff-wizard-plan.md`): the frontend-led, wizard-first
+  reframing of the creator flow over existing endpoints, reusing S37 grouping and the S44
+  findings/gate. No code change; implemented by S46.
+- **S46 ✓ (frontend-only)** Creator Guided Handoff Wizard
+  (`frontend/src/components/handoff/HandoffWizard.tsx`), mounted as the PRIMARY creator
+  Handoff surface (`frontend/src/workspace/Workspace.tsx`). Wizard-first Start -> Scope ->
+  Review -> Safety -> Publish over the EXISTING creator endpoints (create/scope/generate,
+  prune via excluded-message-header + regenerate, restore-all, publish, plus return-draft/
+  revoke/new-version/export). The detailed `HandoffReview` is preserved as an "Advanced /
+  full evidence review" mode (additive `export`s only, no behavior change). Empty scope
+  DISABLES Generate (no whole-mailbox default); guided scope is date + project selection
+  plus seeded person/thread scope editable as removable chips, with add-new person/thread
+  selection deferred to Advanced/future. The S44 safety step is REQUIRED and high-severity
+  findings cannot be skipped (prune/regenerate them away, or acknowledge every current high
+  finding id with a reason via the existing `safety_ack` contract; the server publish gate
+  remains the enforcement point). The `return_delta` blank-recipient path is preserved: the
+  recipient field is not auto-filled and Publish sends `recipient_email: ""` so the server
+  default to the original creator is exercised (coverage packages still require a non-blank
+  recipient). No backend/schema/migration/dependency/ekc_schemas/recipient/admin change;
+  recipient stays snapshot-only. Alembic head stays `0014_handoff_claim_project_label`.
 
 **Originating spec, implemented by S29 + S30 (S28):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):
