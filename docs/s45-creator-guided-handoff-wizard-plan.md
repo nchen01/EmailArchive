@@ -345,3 +345,33 @@ Open (for product lead):
   for S45; revisit only if a demo shows it is misleading.)
 
 Stop after this spec PR. Do not implement S45 until the product lead approves.
+
+## S46 implementation status (as shipped)
+
+S46 implements this spec as a frontend-only wizard
+(`frontend/src/components/handoff/HandoffWizard.tsx`) mounted as the primary
+Handoff surface, with the detailed `HandoffReview` preserved as the Advanced /
+full-evidence review mode. Three scope points differ from the spec text above and
+are called out here for the product lead:
+
+- Scope step - person/thread SELECTION is deferred. The guided Scope step ships
+  with editable date range + project selection, plus seeded person/thread scope
+  rendered as REMOVABLE chips (a return handoff's auto-seeded contacts/threads can
+  be removed from scope, applied through the same replace-like
+  `PATCH /handoff/{id}/scope`). Adding brand-new contacts or threads from the
+  guided step is deferred to the Advanced surface, because there is no
+  creator-safe person/thread list endpoint wired for the guided picker and adding
+  one would be a backend change this sprint deliberately avoids. Full person/thread
+  selection remains candidate work for a later sprint (with the deferred scope
+  preview/count endpoint).
+- Empty scope - Generate is DISABLED (aligned to spec). When nothing is scoped (no
+  project, no seeded contact/thread, no date range) the Generate button is disabled
+  with a reason; the guided path deliberately has NO whole-mailbox default. A
+  whole-mailbox escape hatch was NOT shipped; if one is ever wanted it must be an
+  explicit Advanced action approved by the product lead.
+- Return publish - the blank-recipient/server-default path is preserved. For a
+  `return_delta` package the recipient field is NOT auto-filled; it shows
+  "Leave blank to send back to <original creator email>" and Publish is allowed
+  with a blank recipient (sends `recipient_email: ""`, so the existing server
+  default to the original creator is exercised). Normal coverage packages still
+  require a non-blank recipient.

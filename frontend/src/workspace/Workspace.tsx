@@ -5,7 +5,7 @@ import { ContactPanel } from "../components/ContactPanel";
 import { CoverForMe } from "../components/CoverForMe";
 import { DemoReadinessStrip } from "../components/DemoReadinessStrip";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { HandoffReview } from "../components/HandoffReview";
+import { HandoffWizard } from "../components/handoff/HandoffWizard";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { NetworkMap } from "../components/NetworkMap";
 import { Overview } from "../components/Overview";
@@ -462,7 +462,7 @@ export function Workspace() {
           </div>
         ) : screen === "handoff" ? (
           <div className="w-full overflow-y-auto bg-app2">
-            <HandoffReview mailboxId={mailboxId} />
+            <HandoffWizard mailboxId={mailboxId} />
           </div>
         ) : null}
       </main>
