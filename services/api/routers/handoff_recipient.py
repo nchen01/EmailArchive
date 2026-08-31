@@ -43,8 +43,11 @@ from services.handoff.tokens import (
     new_session_token,
 )
 
+from services.handoff.coverage_contract import contract_from_orm
+
 from ..deps import get_db
 from ..schemas.handoff import (
+    CoverageContractEntryOut,
     PrivacyPosture,
     RecipientAnswerClaimOut,
     RecipientAskRequest,
@@ -241,6 +244,12 @@ async def get_recipient_package(
         ) for c in claims],
         evidence=[_evidence_out(e) for e in evidence],
         privacy_posture=PrivacyPosture(),
+        coverage_contract=[
+            CoverageContractEntryOut(**e)
+            for e in contract_from_orm(
+                claims, evidence, return_mode=pkg.package_type == "return_delta"
+            )
+        ],
     )
 
 

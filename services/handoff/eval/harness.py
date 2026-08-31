@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import select
 
 from services.db import models as orm
+from services.handoff.coverage_contract import build_coverage_contract
 from services.handoff.generator import generate_candidate
 from services.handoff.safety import high_severity, scan_package
 
@@ -159,10 +160,35 @@ def evaluate(data: dict, generated: dict) -> ScenarioResult:
     all_cites = {h for c in claims for h in c["cites"]}
     excluded = set(gold.get("excluded_headers", []))
 
+    # S48 coverage contract, assembled from the SAME frozen rows (pure, DB-free).
+    contract = build_coverage_contract(
+        [{"id": c.get("id", ""), "kind": c["kind"], "text": c["text"],
+          "project_label": c.get("project_label"), "cites": c["cites"]} for c in claims],
+        [e["header"] for e in evidence],
+    )
+    contract_items = [
+        it for entry in contract
+        for key in ("decisions", "open_loops", "blockers", "people")
+        for it in entry[key]
+    ]
+    contract_ref_union = {h for entry in contract for h in entry["evidence_refs"]}
+    contract_item_headers = {h for it in contract_items for h in it["source_message_id_headers"]}
+
     hard_gates = {
         "every_claim_cited": all(len(c["cites"]) >= 1 for c in claims),
         "citations_in_evidence": all(h in ev_headers for c in claims for h in c["cites"]),
         "excluded_material_absent": not (excluded & (ev_headers | all_cites)),
+        # Every contract item is citation-backed by >= 1 in-package evidence header.
+        "contract_items_cited": all(
+            it["source_message_id_headers"]
+            and all(h in ev_headers for h in it["source_message_id_headers"])
+            for it in contract_items
+        ),
+        # The contract's evidence set equals the package evidence set: nothing
+        # invented, nothing silently dropped (the other-evidence bucket reconciles).
+        "contract_evidence_reconciles": contract_ref_union == ev_headers,
+        # No excluded fixture material appears anywhere in the contract.
+        "contract_excluded_absent": not (excluded & (contract_ref_union | contract_item_headers)),
     }
 
     dec_found, dec_missing = _match(gold.get("decisions", []), claims, "decision")
@@ -233,6 +259,10 @@ def evaluate(data: dict, generated: dict) -> ScenarioResult:
         {"category": c, "severity": s} for c, s in gold_pairs if (c, s) not in finding_pairs
     ]
     quality["high_severity_finding_present"] = len(high_severity(findings)) > 0
+
+    # S48: coverage-contract shape (informational; the hard gates above enforce it).
+    quality["contract_entries"] = len(contract)
+    quality["contract_items"] = len(contract_items)
 
     counts = {"claims": len(claims), "evidence": len(evidence),
               "exclusions": len(generated["exclusions"])}

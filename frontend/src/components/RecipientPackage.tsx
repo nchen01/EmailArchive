@@ -5,6 +5,7 @@ import {
   startRecipientSession,
 } from "../api/client";
 import type {
+  CoverageContractEntry,
   RecipientAskResponse,
   RecipientClaim,
   RecipientEvidence,
@@ -293,6 +294,14 @@ function PackageDocument({
   const resolveEvidence = (headers: string[]): RecipientEvidence[] =>
     headers.map((h) => byHeader.get(h)).filter((e): e is RecipientEvidence => e != null);
 
+  // S48: the per-project coverage contract (server-assembled from this package's
+  // frozen snapshot). Keyed by the same label the area rail groups by, so each
+  // area brief can state what it covers and its boundary. Snapshot-only.
+  const contractByLabel = useMemo(
+    () => new Map((pkg.coverage_contract ?? []).map((e) => [e.project_label, e])),
+    [pkg.coverage_contract],
+  );
+
   return (
     <article className="overflow-hidden rounded-lg bg-surface shadow-sm ring-1 ring-line">
       {/* Document header band — the delivered-package identity. S34: a return
@@ -379,7 +388,11 @@ function PackageDocument({
               />
               <div className="mt-6 min-w-0 lg:mt-0">
                 {selected ? (
-                  <AreaBrief area={selected} resolveEvidence={resolveEvidence} />
+                  <AreaBrief
+                    area={selected}
+                    resolveEvidence={resolveEvidence}
+                    contract={contractByLabel.get(selected.label) ?? null}
+                  />
                 ) : null}
                 {selected ? <PeopleSection area={selected} /> : null}
               </div>
@@ -491,9 +504,11 @@ const BRIEF_SECTIONS: { heading: string; kinds: string[] }[] = [
 function AreaBrief({
   area,
   resolveEvidence,
+  contract,
 }: {
   area: CoverageArea;
   resolveEvidence: (headers: string[]) => RecipientEvidence[];
+  contract: CoverageContractEntry | null;
 }) {
   // Only claims backed by in-package evidence are shown.
   const supported = area.claims.filter(
@@ -522,6 +537,15 @@ function AreaBrief({
         {area.openLoopCount} open loop{area.openLoopCount === 1 ? "" : "s"} ·{" "}
         {area.evidenceCount} message{area.evidenceCount === 1 ? "" : "s"}
       </div>
+
+      {/* S48 coverage contract: what this project covers, and its boundary. Safe
+          metadata only (no exclusion counts / hidden-content categories). */}
+      {contract ? (
+        <div className="mt-3 rounded-md border border-line bg-app2 px-3 py-2 text-xs">
+          <div className="font-medium text-ink">{contract.covers_summary}</div>
+          <div className="mt-1 text-muted">{contract.boundary}</div>
+        </div>
+      ) : null}
 
       {BRIEF_SECTIONS.map((sec) => {
         const claims = sec.kinds.flatMap((k) => grouped[k] ?? []);

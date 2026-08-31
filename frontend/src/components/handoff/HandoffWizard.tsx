@@ -12,6 +12,7 @@ import {
   updateHandoffScope,
 } from "../../api/client";
 import type {
+  CoverageContractEntry,
   HandoffPackage,
   HandoffScopeData,
   ProjectSummary,
@@ -1014,6 +1015,7 @@ function ReviewStep({
 
       <ExclusionSummary counts={pkg.exclusion_counts} />
       <SafetyReviewPanel findings={pkg.findings ?? []} />
+      <CoverageContractSummary entries={pkg.coverage_contract ?? []} />
 
       {empty ? (
         <div className="mt-4 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
@@ -1116,6 +1118,38 @@ function ReviewStep({
           Continue to safety review
         </button>
       </div>
+    </section>
+  );
+}
+
+/** S48 creator-side coverage contract overview: one line per project stating what
+ * the package covers and its boundary, assembled server-side from frozen claims/
+ * evidence. Safe metadata only (no exclusion counts here; the creator's exclusion
+ * posture stays in the separate ExclusionSummary). Renders nothing when empty. */
+function CoverageContractSummary({ entries }: { entries: CoverageContractEntry[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <section className="mt-4 rounded-md border border-line bg-surface p-3">
+      <h3 className="text-sm font-semibold text-ink">Coverage contract</h3>
+      <p className="mt-1 text-[11px] text-faint">
+        What this package covers per project, and its boundary. Assembled from the cited claims and
+        evidence below; the recipient sees the same statements (never your exclusion counts).
+      </p>
+      <ul className="mt-2 space-y-2">
+        {entries.map((e) => (
+          <li key={e.project_label} className="rounded border border-line bg-app2 px-3 py-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-sm font-medium text-ink">{e.project_label}</span>
+              <span className="text-[11px] text-muted">
+                {e.decisions.length} decided / {e.open_loops.length} open / {e.blockers.length} blocked
+                {e.people.length > 0 ? ` / ${e.people.length} people` : ""}
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-ink">{e.covers_summary}</div>
+            <div className="mt-0.5 text-[11px] text-muted">{e.boundary}</div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

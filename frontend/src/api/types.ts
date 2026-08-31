@@ -392,6 +392,41 @@ export interface HandoffPackage {
   /** Creator-only pre-publish safety findings (S44); [] when none. Never sent to a
    * recipient and never in admin DTOs. Safe metadata only (no matched text). */
   findings?: SafetyFinding[];
+  /** S48: per-project coverage contract, computed from this package's frozen
+   * claims/evidence. Safe metadata only (same shape the recipient receives). */
+  coverage_contract?: CoverageContractEntry[];
+}
+
+/**
+ * Per-project coverage contract (S48). Assembled from the package's frozen
+ * claims/evidence and grouped by the S39 frozen project_label. Identical,
+ * recipient-safe shape on both the creator and recipient package DTOs: it carries
+ * no exclusion counts and no hidden-content categories (anti-oracle). Every item
+ * is citation-backed by in-package evidence headers.
+ */
+export interface CoverageContractItem {
+  claim_id: string;
+  kind: string;
+  text: string;
+  source_message_id_headers: string[];
+}
+
+export interface CoverageContractSafetyPosture {
+  scope_limited: boolean;
+  sensitive_excluded: boolean;
+}
+
+export interface CoverageContractEntry {
+  project_label: string;
+  is_fallback: boolean;
+  covers_summary: string;
+  decisions: CoverageContractItem[];
+  open_loops: CoverageContractItem[];
+  blockers: CoverageContractItem[];
+  people: CoverageContractItem[];
+  evidence_refs: string[];
+  boundary: string;
+  safety_posture: CoverageContractSafetyPosture;
 }
 
 /** Creator-only pre-publish safety finding (S44). Safe metadata only. */
@@ -482,6 +517,10 @@ export interface RecipientPackage {
   claims: RecipientClaim[];
   evidence: RecipientEvidence[];
   privacy_posture: RecipientPrivacyPosture;
+  /** S48: per-project coverage contract, assembled from this package's frozen
+   * snapshot only (no live mailbox). No exclusion counts, no hidden-content
+   * categories (anti-oracle). Absent on pre-S48 packages. */
+  coverage_contract?: CoverageContractEntry[];
 }
 
 // ── Recipient package-local ask (S17.9) ──────────────────────────────────────

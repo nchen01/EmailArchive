@@ -50,7 +50,10 @@ from ..auth import (
     require_owner_package,
 )
 from ..deps import get_db
+from services.handoff.coverage_contract import contract_from_orm
+
 from ..schemas.handoff import (
+    CoverageContractEntryOut,
     CreateHandoffRequest,
     GenerationDiagnostic,
     HandoffClaimOut,
@@ -188,6 +191,12 @@ def _package_out(db: Session, pkg: orm.HandoffPackage) -> HandoffPackageOut:
                 evidence_header=f.evidence_header,
             )
             for f in _safety_findings(claims, evidence)
+        ],
+        coverage_contract=[
+            CoverageContractEntryOut(**e)
+            for e in contract_from_orm(
+                claims, evidence, return_mode=pkg.package_type == "return_delta"
+            )
         ],
     )
 
