@@ -126,10 +126,20 @@ step, so it stays one flow:
   provenance allows, else shows it package-level as today.
 - Confirmation: a lightweight "This coverage looks right" acknowledgement per
   package (not per project) recorded in the wizard state and, at publish, written
-  as a safe audit event (e.g. `coverage_contract_confirmed`, metadata only:
-  project count, per-kind totals - never claim text). This gives managers an
-  auditable "the creator reviewed the boundary" signal without new content
-  exposure.
+  as a safe audit event (e.g. `coverage_contract_confirmed`). Note this is the ONE
+  part of S47 that is not purely frontend/API-DTO: writing an audit row at publish
+  is a small backend change on the existing publish path, not a migration (it
+  reuses the existing `HandoffAuditEvent` table). The event must carry SAFE
+  metadata ONLY - `project_count` and per-kind totals (decisions / open loops /
+  blockers / people) - and NEVER claim text, evidence text, excluded content,
+  recipient tokens/emails, source message-id headers, or live/Gmail links. It
+  gives managers an auditable "the creator reviewed the boundary" signal without
+  any new content exposure. If we want S47 implementation to stay STRICTLY
+  frontend + API-DTO only (no backend write at all), then
+  `coverage_contract_confirmed` is marked DEFERRED and the creator confirmation is
+  wizard-state only until a later increment; the recommendation (section 6) allows
+  the confirmation audit only when it is implemented as safe metadata with no
+  migration.
 - Editing wording: DEFERRED in the MVP. Because every contract line must stay
   citation-backed, free-text editing risks uncited assertions. The creator edits
   the contract by editing scope/claims (prune evidence, regenerate) as they
@@ -207,6 +217,23 @@ decisions, open loops, blockers, people, evidence, and the neutral boundary line
 This satisfies "package-local and frozen at generation/publish" because it is a
 pure function of already-frozen claims, and it keeps S47 a no-migration,
 no-`ekc_schemas` change.
+
+Scope of the recommended S47 build, stated precisely:
+
+- The computed coverage contract MVP needs NO migration.
+- It DOES add additive creator/recipient DTO fields (the `coverage_contract`
+  block, section 7); existing fields are unchanged.
+- The one optional exception to "frontend + API-DTO only" is the creator
+  confirmation: if S47 includes `coverage_contract_confirmed`, it requires a small
+  backend change to write a safe metadata-only `HandoffAuditEvent` on the existing
+  publish path - still NO migration (it reuses the existing audit table). That
+  audit row must contain only safe metadata (`project_count`, per-kind totals) and
+  never claim text, evidence text, excluded content, recipient tokens/emails,
+  source message-id headers, or live/Gmail links.
+- If S47 must stay strictly frontend + API-DTO with no backend write at all, mark
+  `coverage_contract_confirmed` DEFERRED and keep the confirmation in wizard state
+  only. The confirmation audit is ALLOWED only if implemented as safe metadata and
+  with no migration.
 
 Add creator INTENT (explicit "does not cover" declaration + a per-package
 confirmation) as a SEPARATE, deferred increment using Option C - a package-local
@@ -337,8 +364,12 @@ admin console unchanged; frontend build clean; no migration in the MVP.
   the original package's contract.
 - MVP introduces no migration, no `ekc_schemas` change, no dependency, and no
   admin/recipient route signature change (additive DTO fields only); Alembic head
-  stays `0014_handoff_claim_project_label`. Any Option C increment is a separate,
-  later, service-DB-only migration with its own approval.
+  stays `0014_handoff_claim_project_label`. The single allowed backend change is
+  the optional `coverage_contract_confirmed` audit write on the existing publish
+  path (safe metadata only, reusing the existing `HandoffAuditEvent` table, still
+  no migration); if S47 is to stay strictly frontend + API-DTO, that write is
+  DEFERRED. Any Option C creator-intent store is a separate, later, service-DB-only
+  migration with its own approval.
 - Frontend build passes; new source/docs are ASCII-only.
 
 ## 12. Open questions and recommended defaults
@@ -359,8 +390,13 @@ Encode these defaults unless the product lead objects:
   on the RECIPIENT side never as exclusion counts (anti-oracle). MVP boundary is
   the neutral scope-limited line; explicit "does not cover X" declaration is the
   deferred Option C increment. (Default: neutral line now, declaration later.)
-- Start with decisions / open loops / blockers / known exclusions per project; no
-  broad free-text narrative unless generated from cited claims. (Default: yes.)
+- Start with decisions / open loops / blockers per project; no broad free-text
+  narrative unless generated from cited claims. "Known exclusions per project" is
+  a CREATOR-ONLY view (drawn from the existing creator-only `exclusion_counts`) and
+  is NOT rendered to the recipient: the recipient side never shows per-project
+  withheld counts or categories. The only per-project "does not cover" the
+  recipient may see is an explicit creator-declared safe label (the deferred Option
+  C declaration), never an inferred hidden-content count. (Default: yes.)
 - Return handoff shows "what changed during coverage" per carried project and does
   not mutate the original package's contract. (Default: yes.)
 - Migration posture: computed-only MVP (no migration). A migration is proposed
