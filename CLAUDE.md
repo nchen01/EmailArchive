@@ -245,6 +245,27 @@ Key docs:
   `reason_length`, high count, categories, version) - never the raw reason. Recipient +
   admin DTOs unchanged; recipient stays snapshot-only. No migration, no ekc_schemas
   change, no dependency change. **Alembic head stays `0014_handoff_claim_project_label`.**
+- **S45 - creator guided handoff wizard spec (docs/spec-only).**
+  `docs/s45-creator-guided-handoff-wizard-plan.md`: the frontend-led, wizard-first
+  reframing of the creator flow (create -> scope -> generate/review/prune -> S44 safety
+  -> publish), reusing existing endpoints, S37 grouping, and the S44 findings/gate. No
+  code change in S45; implemented by S46.
+- **S46 ✓ implemented.** Creator Guided Handoff Wizard (frontend-only;
+  `frontend/src/components/handoff/HandoffWizard.tsx`), mounted as the PRIMARY creator
+  Handoff surface (`Workspace.tsx`). Wizard-first Start -> Scope -> Review -> Safety ->
+  Publish over the EXISTING creator endpoints (create/scope/generate/prune via
+  excluded-header + regenerate/restore/publish); the detailed `HandoffReview` is
+  preserved as an "Advanced / full evidence review" mode (additive `export`s only, no
+  behavior change). Empty scope DISABLES Generate (no whole-mailbox default); guided
+  scope is date + project selection plus seeded person/thread scope editable as
+  REMOVABLE chips, with add-new person/thread selection deferred to Advanced/future. The
+  S44 safety step is REQUIRED and high-severity findings cannot be skipped (prune/
+  regenerate them away, or acknowledge every current high finding id with a reason via
+  the existing `safety_ack` contract). The `return_delta` blank-recipient path is
+  preserved (recipient field not auto-filled; "leave blank to send back to <original
+  creator>"; publishes `recipient_email: ""` so the server default is exercised).
+  No backend/schema/migration/dependency/ekc_schemas/recipient/admin change; recipient
+  stays snapshot-only. **Alembic head stays `0014_handoff_claim_project_label`.**
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /
