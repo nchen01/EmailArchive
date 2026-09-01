@@ -253,12 +253,24 @@ and it is frozen at publish like every other handoff row.
   (`services/api/schemas/handoff.py`) and the recipient/creator serializers. Add a
   `coverage_contract` block to the creator package DTO and the recipient package
   DTO as a derived, additive field:
-  - `CoverageContractEntry { project_label, covers_summary, decisions[],
-    open_loops[], blockers[], people[], evidence_refs[], boundary, safety_posture }`
-    where list items reference existing claim/evidence ids already in the payload
-    (no new content, no duplication of bodies beyond what is already sent).
-  - The recipient entry carries NO exclusion counts and NO out-of-scope content
-    (section 8); the creator entry may carry the creator-only exclusion posture.
+  - `CoverageContractEntry { project_label, is_fallback, covers_summary,
+    decisions[], open_loops[], blockers[], people[], evidence_refs[], boundary,
+    safety_posture }`. Each list item is a
+    `CoverageContractItem { claim_id, kind, text, source_message_id_headers }` and
+    each `evidence_refs` entry is a `message_id_header`. Per this repo's citation
+    convention (invariant 2: internal FKs are UUIDs, citations/provenance are
+    `message_id_header` values), the item does NOT carry separate evidence UUIDs:
+    `source_message_id_headers` and `evidence_refs` are the `message_id_header`
+    citations already present in the package's `evidence[]` payload, so the client
+    resolves them against that list (no new content, no duplicated bodies). As
+    shipped in S48 the item also inlines the claim `text` (already in the payload
+    via `claims[]`) so a contract section renders without a second lookup; this is
+    the intended final MVP shape.
+  - The `coverage_contract` block is IDENTICAL and recipient-safe on both the
+    creator and recipient DTOs: it carries NO exclusion counts and NO out-of-scope
+    content (section 8). As shipped in S48 the creator's exclusion posture is NOT
+    part of the contract block; it stays in the separate, pre-existing creator-only
+    `exclusion_counts` field on the package DTO.
 - These are additive response fields; existing recipient/admin fields are
   unchanged. Because the recipient shape is a strict subset assembled server-side,
   this is not an `ekc_schemas` contract change (the shared schema package is not
@@ -417,3 +429,26 @@ Open (for product lead):
 
 Stop after opening/reporting this spec PR. Do not implement S47 until the product
 lead approves.
+
+## S48 implementation status (as shipped)
+
+S48 implements this spec as the computed-only MVP
+(`services/handoff/coverage_contract.py` + additive `coverage_contract` DTO blocks
+on the creator and recipient package responses + frontend rendering + three
+additive S43 hard gates). No migration, no `ekc_schemas` change, no dependency, no
+recipient live-table access, no admin surface change; Alembic head stays
+`0014_handoff_claim_project_label`.
+
+One spec item is DEFERRED from S48 and explicitly recorded here:
+
+- `coverage_contract_confirmed` (the "This coverage looks right" creator
+  acknowledgement) is NOT implemented in S48. S48 ships no wizard-state
+  confirmation and no publish-path audit write, to keep the sprint strictly
+  computed-only (frontend + API-DTO, plus the eval harness). It remains a future,
+  optional, safe-metadata-only, NO-migration backend write on the existing publish
+  path, reusing the existing `HandoffAuditEvent` table. When built, that event must
+  carry only `project_count` and per-kind totals (decisions / open loops /
+  blockers / people) and NEVER claim/evidence text, source `message_id_header`
+  values, recipient tokens/emails, exclusion data, tokens, live/Gmail links, or any
+  raw reason. Until then, the creator reviews the contract in the wizard Review
+  step (read-only) and no confirmation is persisted.

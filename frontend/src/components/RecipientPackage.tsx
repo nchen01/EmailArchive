@@ -5,6 +5,8 @@ import {
   startRecipientSession,
 } from "../api/client";
 import type {
+  CoverageContractEntry,
+  CoverageContractItem,
   RecipientAskResponse,
   RecipientClaim,
   RecipientEvidence,
@@ -293,6 +295,13 @@ function PackageDocument({
   const resolveEvidence = (headers: string[]): RecipientEvidence[] =>
     headers.map((h) => byHeader.get(h)).filter((e): e is RecipientEvidence => e != null);
 
+  // S48: the per-project coverage contract (server-assembled from this package's
+  // frozen snapshot). Matched to the selected area by claim/evidence overlap (not
+  // just label), so it still attaches for pre-S39 / mixed fallback packages whose
+  // area labels are text-clustered rather than the frozen project label.
+  // Snapshot-only: derived purely from the payload.
+  const contract = pkg.coverage_contract ?? [];
+
   return (
     <article className="overflow-hidden rounded-lg bg-surface shadow-sm ring-1 ring-line">
       {/* Document header band — the delivered-package identity. S34: a return
@@ -379,7 +388,11 @@ function PackageDocument({
               />
               <div className="mt-6 min-w-0 lg:mt-0">
                 {selected ? (
-                  <AreaBrief area={selected} resolveEvidence={resolveEvidence} />
+                  <AreaBrief
+                    area={selected}
+                    resolveEvidence={resolveEvidence}
+                    contract={buildAreaContractView(selected, contract)}
+                  />
                 ) : null}
                 {selected ? <PeopleSection area={selected} /> : null}
               </div>
@@ -484,18 +497,115 @@ const BRIEF_SECTIONS: { heading: string; kinds: string[] }[] = [
   { heading: "Key facts", kinds: ["briefing", "project_state", "person_note"] },
 ];
 
+/** Match the S48 coverage contract entry for a selected coverage area by CONTENT
+ * overlap, not just label: prefer the entry whose item claim_ids overlap this
+ * area's claims, then the entry whose evidence_refs overlap this area's evidence
+ * (covers evidence-only / "other" areas), then an exact label match. This keeps a
+ * contract attached even when the area label is a text-clustered fallback (pre-S39
+ * / mixed packages) rather than the frozen project label. Payload-only. */
+function matchContractForArea(
+  area: CoverageArea,
+  entries: CoverageContractEntry[],
+): CoverageContractEntry | null {
+  if (entries.length === 0) return null;
+  const claimIds = new Set(area.claims.map((c) => c.id));
+  const evHeaders = new Set(area.evidence.map((e) => e.message_id_header));
+  const itemsOf = (e: CoverageContractEntry) =>
+    [...e.decisions, ...e.open_loops, ...e.blockers, ...e.people];
+
+  let best: CoverageContractEntry | null = null;
+  let bestScore = 0;
+  for (const e of entries) {
+    const score = itemsOf(e).filter((i) => claimIds.has(i.claim_id)).length;
+    if (score > bestScore) {
+      best = e;
+      bestScore = score;
+    }
+  }
+  if (best) return best;
+
+  for (const e of entries) {
+    const score = e.evidence_refs.filter((h) => evHeaders.has(h)).length;
+    if (score > bestScore) {
+      best = e;
+      bestScore = score;
+    }
+  }
+  if (best) return best;
+
+  return entries.find((e) => e.project_label === area.label) ?? null;
+}
+
+/** An area-scoped view of the matched contract entry. The entry's item lists are
+ * NARROWED to the selected area's own claims, so a broad shared entry (e.g. one
+ * "Unassigned / cross-project" entry that the text-clustered rail split into
+ * several areas) never shows another area's items under this card. The server's
+ * covers summary is kept only for a clean 1:1 match (nothing narrowed away); when
+ * narrowed we drop it so its counts can never disagree with the items shown. The
+ * boundary (a per-project statement) is always kept. Payload-only. */
+interface AreaContractView {
+  covers_summary: string | null;
+  boundary: string;
+  decisions: CoverageContractItem[];
+  open_loops: CoverageContractItem[];
+  blockers: CoverageContractItem[];
+  people: CoverageContractItem[];
+}
+
+function buildAreaContractView(
+  area: CoverageArea,
+  entries: CoverageContractEntry[],
+): AreaContractView | null {
+  const entry = matchContractForArea(area, entries);
+  if (!entry) return null;
+  const claimIds = new Set(area.claims.map((c) => c.id));
+  const narrow = (items: CoverageContractItem[]) => items.filter((i) => claimIds.has(i.claim_id));
+  const decisions = narrow(entry.decisions);
+  const open_loops = narrow(entry.open_loops);
+  const blockers = narrow(entry.blockers);
+  const people = narrow(entry.people);
+  const totalEntry =
+    entry.decisions.length + entry.open_loops.length + entry.blockers.length + entry.people.length;
+  const totalArea = decisions.length + open_loops.length + blockers.length + people.length;
+  const narrowed = totalArea !== totalEntry;
+  return {
+    covers_summary: narrowed ? null : entry.covers_summary,
+    boundary: entry.boundary,
+    decisions,
+    open_loops,
+    blockers,
+    people,
+  };
+}
+
+/** The S48 recipient contract sections, in reading order. People renders only when
+ * present; the three core sections always render (with a neutral "None in this
+ * handoff" when empty, never "none exist"). */
+const CONTRACT_SECTIONS: {
+  heading: string;
+  key: "decisions" | "open_loops" | "blockers";
+}[] = [
+  { heading: "Settled (decisions)", key: "decisions" },
+  { heading: "Open / next", key: "open_loops" },
+  { heading: "Blockers", key: "blockers" },
+];
+
 /** Middle reading surface: a compact brief for the selected coverage area.
- * Evidence is attached INLINE to the specific claim it supports (an expandable
- * disclosure inside each claim), not a separate global section. A claim with no
- * in-package evidence is dropped entirely ("no citation, no claim"). */
+ * When an S48 coverage contract entry is matched, the brief renders its labeled
+ * sections (Settled / Open / Blockers / People) with evidence collapsed inline;
+ * otherwise it falls back to the pre-S48 kind-grouped rendering of the area's
+ * claims. Evidence is attached INLINE to the item it supports; an item with no
+ * in-package evidence is dropped ("no citation, no claim"). Package-local only. */
 function AreaBrief({
   area,
   resolveEvidence,
+  contract,
 }: {
   area: CoverageArea;
   resolveEvidence: (headers: string[]) => RecipientEvidence[];
+  contract: AreaContractView | null;
 }) {
-  // Only claims backed by in-package evidence are shown.
+  // Fallback (no contract match): kind-grouped rendering of the area's own claims.
   const supported = area.claims.filter(
     (c) => resolveEvidence(c.source_message_id_headers).length > 0,
   );
@@ -514,6 +624,18 @@ function AreaBrief({
     </ul>
   );
 
+  const renderItems = (items: CoverageContractItem[]) => (
+    <ul className="mt-2 space-y-2">
+      {items.map((it) => (
+        <ContractItemRow
+          key={it.claim_id}
+          item={it}
+          evidence={resolveEvidence(it.source_message_id_headers)}
+        />
+      ))}
+    </ul>
+  );
+
   return (
     <section className="rounded-lg border border-line bg-surface p-5">
       <h2 className="text-lg font-semibold text-ink">{area.label}</h2>
@@ -523,32 +645,101 @@ function AreaBrief({
         {area.evidenceCount} message{area.evidenceCount === 1 ? "" : "s"}
       </div>
 
-      {BRIEF_SECTIONS.map((sec) => {
-        const claims = sec.kinds.flatMap((k) => grouped[k] ?? []);
-        if (claims.length === 0) return null;
-        return (
-          <div key={sec.heading} className="mt-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-brass">
-              {sec.heading}
+      {contract ? (
+        <>
+          {/* Coverage contract: what this project covers + its boundary. Safe
+              metadata only (no exclusion counts / hidden-content categories). The
+              covers summary is shown only for a clean 1:1 project match; when the
+              entry was narrowed to this area we show the boundary alone. */}
+          <div className="mt-3 rounded-md border border-line bg-app2 px-3 py-2 text-xs">
+            {contract.covers_summary ? (
+              <div className="font-medium text-ink">{contract.covers_summary}</div>
+            ) : null}
+            <div className={contract.covers_summary ? "mt-1 text-muted" : "text-muted"}>
+              {contract.boundary}
             </div>
-            {renderClaims(claims)}
           </div>
-        );
-      })}
 
-      {extraKinds.map((kind) => (
-        <div key={kind} className="mt-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-brass">
-            {PANEL_KIND_HEADING[kind] ?? kind}
-          </div>
-          {renderClaims(grouped[kind])}
-        </div>
-      ))}
+          {CONTRACT_SECTIONS.map((sec) => (
+            <div key={sec.key} className="mt-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-brass">
+                {sec.heading}
+              </div>
+              {contract[sec.key].length === 0 ? (
+                <p className="mt-1 text-xs text-faint">None in this handoff.</p>
+              ) : (
+                renderItems(contract[sec.key])
+              )}
+            </div>
+          ))}
 
-      {supported.length === 0 ? (
-        <p className="mt-3 text-sm text-faint">No summary points in this area.</p>
-      ) : null}
+          {contract.people.length > 0 ? (
+            <div className="mt-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-brass">
+                People
+              </div>
+              {renderItems(contract.people)}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {BRIEF_SECTIONS.map((sec) => {
+            const claims = sec.kinds.flatMap((k) => grouped[k] ?? []);
+            if (claims.length === 0) return null;
+            return (
+              <div key={sec.heading} className="mt-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-brass">
+                  {sec.heading}
+                </div>
+                {renderClaims(claims)}
+              </div>
+            );
+          })}
+
+          {extraKinds.map((kind) => (
+            <div key={kind} className="mt-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-brass">
+                {PANEL_KIND_HEADING[kind] ?? kind}
+              </div>
+              {renderClaims(grouped[kind])}
+            </div>
+          ))}
+
+          {supported.length === 0 ? (
+            <p className="mt-3 text-sm text-faint">No summary points in this area.</p>
+          ) : null}
+        </>
+      )}
     </section>
+  );
+}
+
+/** One S48 contract item (a decision / open loop / blocker / person note) with its
+ * own supporting evidence collapsed inline. Mirrors ClaimRow; package-local. */
+function ContractItemRow({
+  item,
+  evidence,
+}: {
+  item: CoverageContractItem;
+  evidence: RecipientEvidence[];
+}) {
+  return (
+    <li className="rounded-md border border-line bg-surface px-3 py-2 text-sm shadow-sm">
+      <div className="text-ink">{item.text}</div>
+      {evidence.length > 0 ? (
+        <details className="mt-1.5">
+          <summary className="cursor-pointer select-none text-xs font-medium text-brass hover:text-brass">
+            {evidence.length} supporting message{evidence.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-2 space-y-2">
+            {evidence.map((e) => (
+              <EvidenceItem key={e.message_id_header} ev={e} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </li>
   );
 }
 

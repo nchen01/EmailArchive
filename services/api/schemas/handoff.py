@@ -79,6 +79,43 @@ class SafetyFindingOut(BaseModel):
     evidence_header: str | None = None
 
 
+# -- Coverage contract (S48) --------------------------------------------------
+
+class CoverageContractSafetyPosture(BaseModel):
+    """Neutral, per-entry posture. Booleans only - NO per-project exclusion counts
+    and NO hidden-content categories (anti-oracle; see S47 spec section 8)."""
+    scope_limited: bool = True
+    sensitive_excluded: bool = True
+
+
+class CoverageContractItemOut(BaseModel):
+    """One contract line (a decision / open loop / blocker / person note). Every
+    item is citation-backed: ``source_message_id_headers`` holds >= 1 in-package
+    HandoffEvidence header. Text is a package claim already present in the payload."""
+    claim_id: str
+    kind: str
+    text: str
+    source_message_id_headers: list[str]
+
+
+class CoverageContractEntryOut(BaseModel):
+    """Per-project coverage contract entry (S48). Assembled purely from frozen
+    claims + evidence, grouped by the S39 frozen ``project_label`` (with honest
+    unassigned / other-evidence fallbacks). Identical, recipient-safe shape on the
+    creator and recipient DTOs: no exclusion counts, no hidden-content categories,
+    no source/live links beyond the citation headers already in the package."""
+    project_label: str
+    is_fallback: bool
+    covers_summary: str
+    decisions: list[CoverageContractItemOut] = Field(default_factory=list)
+    open_loops: list[CoverageContractItemOut] = Field(default_factory=list)
+    blockers: list[CoverageContractItemOut] = Field(default_factory=list)
+    people: list[CoverageContractItemOut] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    boundary: str
+    safety_posture: CoverageContractSafetyPosture
+
+
 class HandoffPackageOut(BaseModel):
     id: str
     mailbox_id: str
@@ -103,6 +140,10 @@ class HandoffPackageOut(BaseModel):
     # Creator-only pre-publish safety findings (S44); [] when none. Never sent to a
     # recipient and never in admin DTOs.
     findings: list[SafetyFindingOut] = Field(default_factory=list)
+    # S48: per-project coverage contract, computed from this package's frozen
+    # claims/evidence. Safe metadata only (same shape the recipient receives); the
+    # creator's exclusion posture stays in `exclusion_counts` above, never here.
+    coverage_contract: list[CoverageContractEntryOut] = Field(default_factory=list)
 
 
 # ── Publish (creator) — S17.5 ────────────────────────────────────────────────
@@ -200,6 +241,10 @@ class RecipientPackageOut(BaseModel):
     claims: list[RecipientClaimOut]
     evidence: list[RecipientEvidenceOut]
     privacy_posture: PrivacyPosture
+    # S48: per-project coverage contract, assembled from THIS package's frozen
+    # claims/evidence only (no live Project/Event/Message access). Carries no
+    # exclusion counts and no hidden-content categories (anti-oracle).
+    coverage_contract: list[CoverageContractEntryOut] = Field(default_factory=list)
 
 
 # ── Recipient package-local ask — S17.9 ──────────────────────────────────────
