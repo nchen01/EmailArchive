@@ -1015,7 +1015,17 @@ function ReviewStep({
 
       <ExclusionSummary counts={pkg.exclusion_counts} />
       <SafetyReviewPanel findings={pkg.findings ?? []} />
-      <CoverageContractSummary entries={pkg.coverage_contract ?? []} />
+      <CoverageContractSummary
+        entries={pkg.coverage_contract ?? []}
+        onSelectProject={(label) => {
+          onFilter(label);
+          requestAnimationFrame(() =>
+            document
+              .getElementById("wizard-review-groups")
+              ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+          );
+        }}
+      />
 
       {empty ? (
         <div className="mt-4 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-sm text-warn">
@@ -1031,7 +1041,7 @@ function ReviewStep({
         </div>
       ) : (
         <>
-          <div className="mt-3 rounded-md border border-line bg-surface p-3">
+          <div id="wizard-review-groups" className="mt-3 scroll-mt-4 rounded-md border border-line bg-surface p-3">
             <input
               type="text"
               value={reviewFilter}
@@ -1122,31 +1132,49 @@ function ReviewStep({
   );
 }
 
-/** S48 creator-side coverage contract overview: one line per project stating what
+/** S48 creator-side coverage contract overview: one row per project stating what
  * the package covers and its boundary, assembled server-side from frozen claims/
  * evidence. Safe metadata only (no exclusion counts here; the creator's exclusion
- * posture stays in the separate ExclusionSummary). Renders nothing when empty. */
-function CoverageContractSummary({ entries }: { entries: CoverageContractEntry[] }) {
+ * posture stays in the separate ExclusionSummary). Each row is a button that
+ * filters the review list below to that project (linking the by-kind counts to the
+ * claims they summarize). Renders nothing when empty. */
+function CoverageContractSummary({
+  entries,
+  onSelectProject,
+}: {
+  entries: CoverageContractEntry[];
+  onSelectProject: (label: string) => void;
+}) {
   if (entries.length === 0) return null;
   return (
     <section className="mt-4 rounded-md border border-line bg-surface p-3">
       <h3 className="text-sm font-semibold text-ink">Coverage contract</h3>
       <p className="mt-1 text-[11px] text-faint">
         What this package covers per project, and its boundary. Assembled from the cited claims and
-        evidence below; the recipient sees the same statements (never your exclusion counts).
+        evidence below; the recipient sees the same statements (never your exclusion counts). Select
+        a project to filter the review list to its claims.
       </p>
       <ul className="mt-2 space-y-2">
         {entries.map((e) => (
-          <li key={e.project_label} className="rounded border border-line bg-app2 px-3 py-2">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="text-sm font-medium text-ink">{e.project_label}</span>
-              <span className="text-[11px] text-muted">
-                {e.decisions.length} decided / {e.open_loops.length} open / {e.blockers.length} blocked
-                {e.people.length > 0 ? ` / ${e.people.length} people` : ""}
-              </span>
-            </div>
-            <div className="mt-1 text-xs text-ink">{e.covers_summary}</div>
-            <div className="mt-0.5 text-[11px] text-muted">{e.boundary}</div>
+          <li key={e.project_label}>
+            <button
+              type="button"
+              onClick={() => onSelectProject(e.project_label)}
+              className="w-full rounded border border-line bg-app2 px-3 py-2 text-left hover:border-brass hover:bg-surface"
+              title={`Filter the review list to ${e.project_label}`}
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-medium text-ink underline decoration-dotted underline-offset-2">
+                  {e.project_label}
+                </span>
+                <span className="text-[11px] text-muted">
+                  {e.decisions.length} decided / {e.open_loops.length} open / {e.blockers.length} blocked
+                  {e.people.length > 0 ? ` / ${e.people.length} people` : ""}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-ink">{e.covers_summary}</div>
+              <div className="mt-0.5 text-[11px] text-muted">{e.boundary}</div>
+            </button>
           </li>
         ))}
       </ul>

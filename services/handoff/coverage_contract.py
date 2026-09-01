@@ -21,6 +21,12 @@ Design invariants (see the S47 spec sections 6 + 8):
 The module is deliberately DB-free and pydantic-free so it is trivially unit
 testable and reusable by the S43 eval harness. Callers map the returned plain
 dicts into their DTOs.
+
+Deferred from S48 (see docs/s47 "S48 implementation status"): the
+``coverage_contract_confirmed`` creator acknowledgement is NOT implemented here.
+S48 is read-only/computed-only; the confirmation stays a future, optional,
+safe-metadata-only (project_count + per-kind totals), NO-migration audit write on
+the existing publish path.
 """
 from __future__ import annotations
 
