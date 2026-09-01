@@ -71,8 +71,11 @@ allow-list; anything not listed is dropped at ingest):
 - meeting-link PRESENCE as a boolean only (has_conferencing = true/false). The
   actual join URL is NOT stored by default and NEVER snapshotted to the recipient
   (a live link is a browsing affordance; roadmap section 5).
-- calendar source / provider metadata (provider = "google", calendar id/name as
-  safe label, the creator's own account label)
+- calendar source / provider metadata: the provider FAMILY is displayed as
+  "Google Calendar"; the service-DB provider enum/value is `google_calendar` (see
+  section 8 - display label vs. the stored provider value are distinct, so S50
+  implementers do not guess). Plus calendar id/name as a safe label and the
+  creator's own account label.
 
 Explicitly conditional:
 
@@ -95,10 +98,12 @@ Explicitly out of scope (never read):
 Calendar sensitivity reuses the S44 pre-publish safety model and the existing
 sensitivity/exclusion posture, adapted to calendar:
 
-- Private / "private visibility" events are EXCLUDED by default before anything is
-  offered to the creator for review. A private event never becomes a package
-  candidate unless the creator explicitly overrides for that single event (and even
-  then only title/time, never description).
+- Private / "private visibility" events are NEVER included in the MVP. This is a
+  LOCKED default: a private event is excluded at ingest, is NOT offered to the
+  creator as a candidate, and CANNOT be overridden in S50-S53. There is no
+  per-event override path for private events in the MVP. (Any future private-event
+  override is a post-MVP decision requiring explicit product/security approval -
+  see section 13 open questions; the default is no override.)
 - Personal / out-of-work events (detected by the calendar's own private/personal
   visibility flag, or a personal calendar source) are excluded by default.
 - Events whose title matches HR / legal / medical / compensation / security
@@ -204,10 +209,14 @@ change (these are product-layer tables, mirroring the S23/S24 precedent where
 - Provider: Google Calendar first (matches the shipped Google/Gmail OAuth in S23;
   reuses `services/oauth/` - PKCE + state, fail-closed callback, vault-backed
   tokens).
-- Read-only least-privilege scope: `https://www.googleapis.com/auth/calendar.
-  events.readonly` (or `calendar.readonly`) ONLY. Never a write scope. The scope is
-  added to the S23 scope set for a calendar connect, and `scopes_granted` records
-  exactly what was granted.
+- Read-only least-privilege scope. The recommended default is EXACTLY ONE scope:
+  `https://www.googleapis.com/auth/calendar.events.readonly`. Never a write scope.
+  `https://www.googleapis.com/auth/calendar.readonly` is a FALLBACK ONLY (broader:
+  it also exposes calendar list/settings), permitted only with explicit
+  product/security review and a written reason recorded at the time - it is NOT an
+  equal-preference alternative and must not be requested by default. The chosen
+  scope is added to the S23 scope set for a calendar connect, and `scopes_granted`
+  records exactly what was granted.
 - Refresh tokens stay in the vault. The app DB stores only a `vault_ref` + safe
   provider metadata, exactly as S20/S23 mandate; the token vault boundary is
   unchanged. The shipped `DevTokenVault` remains dev/test-only.
@@ -344,8 +353,22 @@ Encode these defaults unless the product lead objects:
   M365 stays stubbed). (Default: Google only.)
 - Kill switch: DEFAULT calendar sync is globally disable-able via config without a
   deploy (section 9). (Default: yes.)
+- Private events: LOCKED for the MVP - private / private-visibility events are never
+  included, never offered as candidates, and cannot be overridden in S50-S53
+  (section 4). (Default: no private events, no override.)
 
 Open (for product lead):
+
+- Private-event override (POST-MVP only): should a later sprint ever allow a creator
+  to include a specific private event (title/time only, never description)? This is a
+  sensitive product decision and is explicitly OUT of the MVP; it would require
+  explicit product/security approval, its own S44 gate, and per-event audit before
+  being considered. (Recommended: keep private events fully excluded; do not add an
+  override.)
+- OAuth scope: keep the single default
+  `https://www.googleapis.com/auth/calendar.events.readonly`; only escalate to the
+  broader `calendar.readonly` with a written product/security-reviewed reason
+  (section 8). (Recommended: events.readonly only.)
 
 - Should recurring-meeting context be summarized (one row per series) or expanded
   per occurrence in the window? (Recommended: one row per series with a recurrence
