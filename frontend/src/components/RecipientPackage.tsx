@@ -391,7 +391,7 @@ function PackageDocument({
                   <AreaBrief
                     area={selected}
                     resolveEvidence={resolveEvidence}
-                    contract={matchContractForArea(selected, contract)}
+                    contract={buildAreaContractView(selected, contract)}
                   />
                 ) : null}
                 {selected ? <PeopleSection area={selected} /> : null}
@@ -536,6 +536,48 @@ function matchContractForArea(
   return entries.find((e) => e.project_label === area.label) ?? null;
 }
 
+/** An area-scoped view of the matched contract entry. The entry's item lists are
+ * NARROWED to the selected area's own claims, so a broad shared entry (e.g. one
+ * "Unassigned / cross-project" entry that the text-clustered rail split into
+ * several areas) never shows another area's items under this card. The server's
+ * covers summary is kept only for a clean 1:1 match (nothing narrowed away); when
+ * narrowed we drop it so its counts can never disagree with the items shown. The
+ * boundary (a per-project statement) is always kept. Payload-only. */
+interface AreaContractView {
+  covers_summary: string | null;
+  boundary: string;
+  decisions: CoverageContractItem[];
+  open_loops: CoverageContractItem[];
+  blockers: CoverageContractItem[];
+  people: CoverageContractItem[];
+}
+
+function buildAreaContractView(
+  area: CoverageArea,
+  entries: CoverageContractEntry[],
+): AreaContractView | null {
+  const entry = matchContractForArea(area, entries);
+  if (!entry) return null;
+  const claimIds = new Set(area.claims.map((c) => c.id));
+  const narrow = (items: CoverageContractItem[]) => items.filter((i) => claimIds.has(i.claim_id));
+  const decisions = narrow(entry.decisions);
+  const open_loops = narrow(entry.open_loops);
+  const blockers = narrow(entry.blockers);
+  const people = narrow(entry.people);
+  const totalEntry =
+    entry.decisions.length + entry.open_loops.length + entry.blockers.length + entry.people.length;
+  const totalArea = decisions.length + open_loops.length + blockers.length + people.length;
+  const narrowed = totalArea !== totalEntry;
+  return {
+    covers_summary: narrowed ? null : entry.covers_summary,
+    boundary: entry.boundary,
+    decisions,
+    open_loops,
+    blockers,
+    people,
+  };
+}
+
 /** The S48 recipient contract sections, in reading order. People renders only when
  * present; the three core sections always render (with a neutral "None in this
  * handoff" when empty, never "none exist"). */
@@ -561,7 +603,7 @@ function AreaBrief({
 }: {
   area: CoverageArea;
   resolveEvidence: (headers: string[]) => RecipientEvidence[];
-  contract: CoverageContractEntry | null;
+  contract: AreaContractView | null;
 }) {
   // Fallback (no contract match): kind-grouped rendering of the area's own claims.
   const supported = area.claims.filter(
@@ -606,10 +648,16 @@ function AreaBrief({
       {contract ? (
         <>
           {/* Coverage contract: what this project covers + its boundary. Safe
-              metadata only (no exclusion counts / hidden-content categories). */}
+              metadata only (no exclusion counts / hidden-content categories). The
+              covers summary is shown only for a clean 1:1 project match; when the
+              entry was narrowed to this area we show the boundary alone. */}
           <div className="mt-3 rounded-md border border-line bg-app2 px-3 py-2 text-xs">
-            <div className="font-medium text-ink">{contract.covers_summary}</div>
-            <div className="mt-1 text-muted">{contract.boundary}</div>
+            {contract.covers_summary ? (
+              <div className="font-medium text-ink">{contract.covers_summary}</div>
+            ) : null}
+            <div className={contract.covers_summary ? "mt-1 text-muted" : "text-muted"}>
+              {contract.boundary}
+            </div>
           </div>
 
           {CONTRACT_SECTIONS.map((sec) => (

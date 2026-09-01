@@ -142,8 +142,11 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
   const [selectedPersons, setSelectedPersons] = useState<Set<string>>(() => new Set());
   const [selectedThreads, setSelectedThreads] = useState<Set<string>>(() => new Set());
 
-  // Review filter / disclosure.
+  // Review filter / disclosure. `reviewFocus` additionally narrows the review list
+  // to one project + kind (set by clicking a coverage-contract count chip); typing
+  // in the filter box clears it.
   const [reviewFilter, setReviewFilter] = useState("");
+  const [reviewFocus, setReviewFocus] = useState<{ heading: string; kinds: string[] } | null>(null);
   const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(() => new Set());
   const [openEvidence, setOpenEvidence] = useState<Set<string>>(() => new Set());
 
@@ -210,6 +213,7 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
     setAcked(new Set());
     setAckReason("");
     setReviewFilter("");
+    setReviewFocus(null);
     setViewMode("guided");
     if (pkg) {
       setFrom(pkg.scope.date_from ?? "");
@@ -413,11 +417,41 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
     [pkg?.id, pkg?.claims, pkg?.evidence, labelById],
   );
   const q = reviewFilter.trim().toLowerCase();
+  const focusKindSet = reviewFocus ? new Set(reviewFocus.kinds) : null;
   const visibleGroups = groups
     .map((g) => ({ group: g, ...filterHandoffGroup(g, q) }))
+    .map((fg) => {
+      // Kind focus: narrow to the chosen kind(s), keeping only the evidence those
+      // surviving claims cite (so an evidence card never outlives its claim).
+      if (!focusKindSet) return fg;
+      const claims = fg.claims.filter((c) => focusKindSet.has(c.kind));
+      const keep = new Set(claims.flatMap((c) => c.source_message_id_headers));
+      const evidence = fg.evidence.filter((e) => keep.has(e.message_id_header));
+      return { ...fg, claims, evidence };
+    })
     .filter((fg) => fg.claims.length > 0 || fg.evidence.length > 0);
   const excludedHeaders = new Set(pkg?.scope.excluded_message_id_headers ?? []);
   const excludedCount = excludedHeaders.size;
+
+  // Typing in the filter clears any active kind focus; selecting a contract count
+  // sets the project filter + kind focus and jumps to the review list.
+  const onReviewFilter = (v: string) => {
+    setReviewFilter(v);
+    setReviewFocus(null);
+  };
+  const focusProjectKind = (label: string, focus: { heading: string; kinds: string[] } | null) => {
+    setReviewFilter(label);
+    setReviewFocus(focus);
+    requestAnimationFrame(() =>
+      document
+        .getElementById("wizard-review-groups")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
+  const clearReviewFocus = () => {
+    setReviewFilter("");
+    setReviewFocus(null);
+  };
 
   const highFindings = (pkg?.findings ?? []).filter((f) => f.severity === "high");
   const highIds = highFindings.map((f) => f.id);
@@ -560,7 +594,10 @@ export function HandoffWizard({ mailboxId }: { mailboxId: string }) {
                   groups={groups}
                   visibleGroups={visibleGroups}
                   reviewFilter={reviewFilter}
-                  onFilter={setReviewFilter}
+                  onFilter={onReviewFilter}
+                  reviewFocus={reviewFocus}
+                  onFocusProject={focusProjectKind}
+                  onClearFocus={clearReviewFocus}
                   excludedHeaders={excludedHeaders}
                   excludedCount={excludedCount}
                   collapsedAreas={collapsedAreas}
@@ -948,6 +985,9 @@ function ReviewStep({
   visibleGroups,
   reviewFilter,
   onFilter,
+  reviewFocus,
+  onFocusProject,
+  onClearFocus,
   excludedHeaders,
   excludedCount,
   collapsedAreas,
@@ -969,6 +1009,9 @@ function ReviewStep({
   visibleGroups: { group: HandoffGroup; claims: HandoffGroup["claims"]; evidence: HandoffGroup["evidence"] }[];
   reviewFilter: string;
   onFilter: (v: string) => void;
+  reviewFocus: { heading: string; kinds: string[] } | null;
+  onFocusProject: (label: string, focus: { heading: string; kinds: string[] } | null) => void;
+  onClearFocus: () => void;
   excludedHeaders: Set<string>;
   excludedCount: number;
   collapsedAreas: Set<string>;
@@ -1017,14 +1060,7 @@ function ReviewStep({
       <SafetyReviewPanel findings={pkg.findings ?? []} />
       <CoverageContractSummary
         entries={pkg.coverage_contract ?? []}
-        onSelectProject={(label) => {
-          onFilter(label);
-          requestAnimationFrame(() =>
-            document
-              .getElementById("wizard-review-groups")
-              ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-          );
-        }}
+        onFocusProject={onFocusProject}
       />
 
       {empty ? (
@@ -1050,6 +1086,20 @@ function ReviewStep({
               className="w-full rounded border border-line2 bg-surface px-2 py-1 text-sm text-ink"
               aria-label="Filter project groups"
             />
+            {reviewFocus ? (
+              <div className="mt-2 flex items-center gap-2 text-[11px]">
+                <span className="rounded-full border border-brass bg-brass-soft px-2 py-0.5 font-medium text-brass">
+                  Showing: {reviewFocus.heading}
+                </span>
+                <button
+                  type="button"
+                  className="text-muted underline underline-offset-2 hover:text-ink"
+                  onClick={onClearFocus}
+                >
+                  Clear
+                </button>
+              </div>
+            ) : null}
             <p className="mt-2 text-[11px] text-faint">
               Grouped into {groups.length} project group{groups.length === 1 ? "" : "s"}. Evidence is
               collapsed under each group; expand to inspect or remove. A claim left without evidence
@@ -1132,18 +1182,33 @@ function ReviewStep({
   );
 }
 
+/** Contract count chip -> the raw claim kind(s) it summarizes, so a click can
+ * narrow the review list to that project + kind. */
+const CONTRACT_COUNTS: {
+  key: "decisions" | "open_loops" | "blockers" | "people";
+  short: string;
+  heading: string;
+  kinds: string[];
+}[] = [
+  { key: "decisions", short: "decided", heading: "decisions", kinds: ["decision"] },
+  { key: "open_loops", short: "open", heading: "open loops", kinds: ["open_loop", "project_state"] },
+  { key: "blockers", short: "blocked", heading: "blockers", kinds: ["blocker"] },
+  { key: "people", short: "people", heading: "people", kinds: ["person_note"] },
+];
+
 /** S48 creator-side coverage contract overview: one row per project stating what
  * the package covers and its boundary, assembled server-side from frozen claims/
  * evidence. Safe metadata only (no exclusion counts here; the creator's exclusion
- * posture stays in the separate ExclusionSummary). Each row is a button that
- * filters the review list below to that project (linking the by-kind counts to the
- * claims they summarize). Renders nothing when empty. */
+ * posture stays in the separate ExclusionSummary). The project name filters the
+ * review list to that project; each by-kind count chip narrows it further to that
+ * project + kind, linking the count to the claims it summarizes. Empty when no
+ * contract. */
 function CoverageContractSummary({
   entries,
-  onSelectProject,
+  onFocusProject,
 }: {
   entries: CoverageContractEntry[];
-  onSelectProject: (label: string) => void;
+  onFocusProject: (label: string, focus: { heading: string; kinds: string[] } | null) => void;
 }) {
   if (entries.length === 0) return null;
   return (
@@ -1152,29 +1217,44 @@ function CoverageContractSummary({
       <p className="mt-1 text-[11px] text-faint">
         What this package covers per project, and its boundary. Assembled from the cited claims and
         evidence below; the recipient sees the same statements (never your exclusion counts). Select
-        a project to filter the review list to its claims.
+        a project, or a count, to filter the review list to those claims.
       </p>
       <ul className="mt-2 space-y-2">
         {entries.map((e) => (
-          <li key={e.project_label}>
-            <button
-              type="button"
-              onClick={() => onSelectProject(e.project_label)}
-              className="w-full rounded border border-line bg-app2 px-3 py-2 text-left hover:border-brass hover:bg-surface"
-              title={`Filter the review list to ${e.project_label}`}
-            >
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-sm font-medium text-ink underline decoration-dotted underline-offset-2">
-                  {e.project_label}
-                </span>
-                <span className="text-[11px] text-muted">
-                  {e.decisions.length} decided / {e.open_loops.length} open / {e.blockers.length} blocked
-                  {e.people.length > 0 ? ` / ${e.people.length} people` : ""}
-                </span>
-              </div>
-              <div className="mt-1 text-xs text-ink">{e.covers_summary}</div>
-              <div className="mt-0.5 text-[11px] text-muted">{e.boundary}</div>
-            </button>
+          <li key={e.project_label} className="rounded border border-line bg-app2 px-3 py-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => onFocusProject(e.project_label, null)}
+                className="text-sm font-medium text-ink underline decoration-dotted underline-offset-2 hover:text-brass"
+                title={`Filter the review list to ${e.project_label}`}
+              >
+                {e.project_label}
+              </button>
+              <span className="flex flex-wrap gap-1">
+                {CONTRACT_COUNTS.map((cc) =>
+                  cc.key === "people" && e.people.length === 0 ? null : (
+                    <button
+                      key={cc.key}
+                      type="button"
+                      onClick={() =>
+                        onFocusProject(e.project_label, {
+                          heading: `${e.project_label} - ${cc.heading}`,
+                          kinds: cc.kinds,
+                        })
+                      }
+                      disabled={e[cc.key].length === 0}
+                      className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted hover:border-brass hover:text-brass disabled:cursor-default disabled:opacity-40 disabled:hover:border-line disabled:hover:text-muted"
+                      title={`Show only ${cc.heading} for ${e.project_label}`}
+                    >
+                      {e[cc.key].length} {cc.short}
+                    </button>
+                  ),
+                )}
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-ink">{e.covers_summary}</div>
+            <div className="mt-0.5 text-[11px] text-muted">{e.boundary}</div>
           </li>
         ))}
       </ul>

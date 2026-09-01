@@ -266,8 +266,11 @@ and it is frozen at publish like every other handoff row.
     shipped in S48 the item also inlines the claim `text` (already in the payload
     via `claims[]`) so a contract section renders without a second lookup; this is
     the intended final MVP shape.
-  - The recipient entry carries NO exclusion counts and NO out-of-scope content
-    (section 8); the creator entry may carry the creator-only exclusion posture.
+  - The `coverage_contract` block is IDENTICAL and recipient-safe on both the
+    creator and recipient DTOs: it carries NO exclusion counts and NO out-of-scope
+    content (section 8). As shipped in S48 the creator's exclusion posture is NOT
+    part of the contract block; it stays in the separate, pre-existing creator-only
+    `exclusion_counts` field on the package DTO.
 - These are additive response fields; existing recipient/admin fields are
   unchanged. Because the recipient shape is a strict subset assembled server-side,
   this is not an `ekc_schemas` contract change (the shared schema package is not
