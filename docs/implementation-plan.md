@@ -314,7 +314,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29–S31, S34, S35–S44, S46; S42 + S45 docs-only):**
+**Implemented (S22–S27, S29–S31, S34, S35–S44, S46, S48; S42 + S45 + S47 + S49 docs-only):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -534,6 +534,33 @@ components of the handoff-package experience.
   default to the original creator is exercised (coverage packages still require a non-blank
   recipient). No backend/schema/migration/dependency/ekc_schemas/recipient/admin change;
   recipient stays snapshot-only. Alembic head stays `0014_handoff_claim_project_label`.
+- **S47 (docs/spec-only)** Coverage-contract-per-project spec
+  (`docs/s47-project-coverage-contract-plan.md`); computed-only MVP recommendation.
+  Implemented by S48.
+- **S48 ✓ (computed-only)** Per-project coverage contract MVP
+  (`services/handoff/coverage_contract.py`): a pure, DB-free assembler over a package's
+  FROZEN `handoff_claim` + `handoff_evidence` rows, grouped by the S39 frozen
+  `project_label` (unassigned / other-evidence fallbacks). Additive `coverage_contract`
+  block on both the creator and recipient package DTOs - identical recipient-safe shape
+  (no exclusion counts / hidden-content categories; the creator's exclusion posture stays
+  in the separate `exclusion_counts`). Citation-backed by construction; recipient stays
+  package-local snapshot-only. Recipient card renders selected-area items (Settled / Open /
+  Blockers / optional People, evidence collapsed); the creator wizard contract overview's
+  project names + per-kind count chips filter the review list. Three additive S43 hard
+  gates; `coverage_contract_confirmed` audit explicitly deferred. No migration, no
+  ekc_schemas change, no dependency, no admin change. Alembic head stays
+  `0014_handoff_claim_project_label`.
+- **S49 (docs/spec-only)** Calendar-first handoff context spec
+  (`docs/s49-calendar-first-handoff-context-plan.md`): calendar as the first connector
+  (meetings / deadlines / coverage-window context) via read-only least-privilege Google
+  Calendar OAuth reusing the S23 vault, a `calendar_sync_window` job on the S24 runner,
+  service-DB live tables + a package-local `handoff_calendar_item` snapshot, the S48
+  coverage-contract meeting/deadline view, a time-aware S40 Ask, and S43/S44 calendar
+  eval/safety gates. Hard boundaries: no surveillance/productivity scoring, no recipient
+  live-calendar access (snapshot-only), no Slack/Teams/Jira, read-only scopes, creator
+  reviews before publish; no ekc_schemas change, every migration service-DB only. Proposed
+  order S50 (OAuth/connect) -> S51 (sync job + live layer) -> S52 (wizard/package
+  integration) -> S53 (recipient Ask/eval). Not implemented.
 
 **Originating spec, implemented by S29 + S30 (S28):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):

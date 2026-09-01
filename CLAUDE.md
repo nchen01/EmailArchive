@@ -266,6 +266,37 @@ Key docs:
   creator>"; publishes `recipient_email: ""` so the server default is exercised).
   No backend/schema/migration/dependency/ekc_schemas/recipient/admin change; recipient
   stays snapshot-only. **Alembic head stays `0014_handoff_claim_project_label`.**
+- **S47 (docs/spec-only).** Coverage-contract-per-project SPEC
+  (`docs/s47-project-coverage-contract-plan.md`): a per-project contract over the
+  frozen package (covers/decisions/open-loops/blockers/people/evidence/boundary),
+  computed-only MVP recommendation. No code; implemented by S48.
+- **S48 ✓ implemented.** Per-project coverage contract MVP, computed-only
+  (`services/handoff/coverage_contract.py`): a pure, DB-free assembler that builds a
+  per-project contract from a package's FROZEN `handoff_claim` + `handoff_evidence`
+  rows, grouped by the S39 frozen `project_label` (with unassigned / other-evidence
+  fallbacks). Additive `coverage_contract` block on BOTH the creator
+  (`HandoffPackageOut`) and recipient (`RecipientPackageOut`) DTOs - identical,
+  recipient-safe shape (no exclusion counts / hidden-content categories; the creator's
+  exclusion posture stays in the separate `exclusion_counts`). Citation-backed by
+  construction; recipient stays package-local snapshot-only (contract survives wiping
+  live Project/Event/Message/Thread rows). Recipient card renders selected-area items
+  (Settled / Open / Blockers / optional People, evidence collapsed); creator wizard
+  shows a contract overview whose project names + per-kind count chips filter the
+  review list. Three additive S43 hard gates (items-cited / evidence-reconciles /
+  excluded-absent). `coverage_contract_confirmed` audit is explicitly DEFERRED.
+  No migration, no ekc_schemas change, no dependency, no admin change. **Alembic head
+  stays `0014_handoff_claim_project_label`.**
+- **S49 - calendar-first handoff context (docs/spec-only).**
+  `docs/s49-calendar-first-handoff-context-plan.md`: plans calendar as the first
+  connector (meetings/deadlines/coverage-window context) - read-only least-privilege
+  Google Calendar OAuth (reuse S23 vault), a `calendar_sync_window` job on the S24
+  runner, service-DB live tables + a package-local `handoff_calendar_item` snapshot,
+  S48 coverage-contract meeting/deadline view, S40 time-aware Ask, and S43/S44
+  calendar eval/safety gates. Hard boundaries: NO surveillance/productivity scoring,
+  NO recipient live-calendar access (snapshot-only), NO Slack/Teams/Jira, read-only
+  scopes, creator-reviews-before-publish. Proposed sub-sprints S50 (OAuth/connect) ->
+  S51 (sync job + live layer) -> S52 (wizard/package integration) -> S53 (recipient
+  Ask/eval). **Not implemented; no code/schema/migration/dependency change.**
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

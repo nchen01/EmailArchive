@@ -142,6 +142,25 @@ finding id with a reason via the existing `safety_ack` contract). The `return_de
 preserved: the recipient field is not auto-filled and Publish sends `recipient_email: ""` so the server
 default to the original creator is exercised. No backend/schema/migration/dependency/ekc_schemas/recipient/
 admin change; recipient stays snapshot-only, and the Alembic head remains `0014_handoff_claim_project_label`.
+**S47 (coverage-contract-per-project spec) is docs/spec-only** (`docs/s47-project-coverage-contract-plan.md`);
+implemented by S48. **S48 (Project Coverage Contract MVP) is implemented, computed-only**:
+`services/handoff/coverage_contract.py` is a pure, DB-free assembler that builds a per-project contract
+(covers summary, decisions, open loops, blockers, optional people, cited evidence, neutral boundary) from a
+package's frozen `handoff_claim` + `handoff_evidence` rows, grouped by the S39 frozen `project_label`. An
+additive `coverage_contract` block is added to both the creator and recipient package DTOs with an identical
+recipient-safe shape (no exclusion counts or hidden-content categories; the creator's exclusion posture stays
+in the separate `exclusion_counts`). It is citation-backed by construction and the recipient stays
+package-local snapshot-only (the contract survives wiping the live Project/Event/Message/Thread rows). Three
+additive S43 hard gates guard it, the `coverage_contract_confirmed` audit is explicitly deferred, and there is
+no migration/ekc_schemas/dependency/admin change (Alembic head stays `0014_handoff_claim_project_label`).
+**S49 (calendar-first handoff context) is docs/spec-only** (`docs/s49-calendar-first-handoff-context-plan.md`):
+it plans calendar as the first connector (meetings, deadlines, coverage-window context) via read-only
+least-privilege Google Calendar OAuth reusing the S23 token vault, a `calendar_sync_window` job on the S24
+runner, service-DB live tables plus a package-local `handoff_calendar_item` snapshot, an S48 coverage-contract
+meeting/deadline view, a time-aware S40 recipient Ask, and S43/S44 calendar eval/safety gates - with hard
+boundaries (no surveillance or productivity scoring, no recipient live-calendar access, no Slack/Teams/Jira,
+read-only scopes, creator reviews before publish). It is not implemented and adds no code/schema/migration/
+dependency change.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 Roadmap (post-S41): **quality-first** - prove package accuracy/safety/pilot-readiness before adding more intelligence or broad integrations; calendar is the first likely connector, Slack/Teams only after pilot evidence. See `docs/product-roadmap-quality-first.md`.
