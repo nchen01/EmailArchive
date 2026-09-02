@@ -297,6 +297,23 @@ Key docs:
   scopes, creator-reviews-before-publish. Proposed sub-sprints S50 (OAuth/connect) ->
   S51 (sync job + live layer) -> S52 (wizard/package integration) -> S53 (recipient
   Ask/eval). **Not implemented; no code/schema/migration/dependency change.**
+- **S50 ✓ implemented.** Google Calendar OAuth/connect foundation ONLY (the
+  OAuth/vault/account boundary; NO event fetch, NO calendar_event/
+  handoff_calendar_item tables). Reuses the S23 flow as a DISTINCT provider
+  `google_calendar`: **migration 0015** widens the `mailbox_provider_account`
+  provider CHECK to `gmail + google_calendar` (service-DB only; **Alembic head is now
+  `0015_calendar_provider`**; no ekc_schemas/SCHEMA_VERSION change). New owner/tenant-
+  guarded router `services/api/routers/oauth_calendar.py`:
+  `POST /api/mailbox/{id}/calendar/connect/start`, `GET /api/oauth/calendar/callback`,
+  `GET /api/mailbox/{id}/calendar/status`, `POST /api/mailbox/{id}/calendar/disconnect`.
+  Scope is EXACTLY `https://www.googleapis.com/auth/calendar.events.readonly` (never
+  the broad `calendar.readonly`). The shared `services/oauth/flow.py` was generalized
+  with a `provider` param (Gmail behavior byte-identical by default); the callback
+  derives the provider from the single-use state row; vault_ref is provider-prefixed;
+  disconnect reuses the S30 fail-closed semantics (vault unavailable / revoke failure
+  -> 503, no DB mutation; already-disconnected -> idempotent 200). App DB stores only
+  `vault_ref` + safe provider metadata; status exposes safe metadata only. Recipient
+  routes untouched (snapshot-only). No frontend change.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

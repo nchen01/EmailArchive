@@ -24,6 +24,7 @@ from .routers import (
     handoff_recipient,
     jobs,
     network_map,
+    oauth_calendar,
     oauth_gmail,
     pipeline_jobs,
     preflight,
@@ -94,6 +95,7 @@ app.include_router(gmail_ingest.router, prefix="/api")
 app.include_router(handoff.router, prefix="/api")
 app.include_router(handoff_recipient.router, prefix="/api")
 app.include_router(oauth_gmail.router, prefix="/api")
+app.include_router(oauth_calendar.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(pipeline_jobs.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")

@@ -46,15 +46,24 @@ class GmailOAuthClient(Protocol):
 
 
 class GoogleGmailOAuthClient:
-    """Real Google OAuth client (confidential web app). Used in production."""
+    """Real Google OAuth client (confidential web app). Used in production.
 
-    def __init__(self, config: GmailOAuthConfig | None = None) -> None:
+    Scope-parameterized (S50): defaults to `GMAIL_SCOPES` so existing Gmail
+    behavior is byte-identical, but the calendar registry constructs the SAME
+    client with `CALENDAR_SCOPES`. The token-exchange / userinfo / refresh / revoke
+    logic is provider-agnostic (all Google endpoints), so only the requested scopes
+    differ."""
+
+    def __init__(
+        self, config: GmailOAuthConfig | None = None, *, scopes: tuple[str, ...] = GMAIL_SCOPES
+    ) -> None:
         self.config = config or load_config()
+        self.scopes = tuple(scopes)
 
     def _require_configured(self) -> None:
         if not self.config.configured:
             raise OAuthClientError(
-                "Gmail OAuth is not configured (set GOOGLE_OAUTH_CLIENT_ID / "
+                "Google OAuth is not configured (set GOOGLE_OAUTH_CLIENT_ID / "
                 "GOOGLE_OAUTH_CLIENT_SECRET)."
             )
 
@@ -64,7 +73,7 @@ class GoogleGmailOAuthClient:
             "client_id": self.config.client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": " ".join(GMAIL_SCOPES),
+            "scope": " ".join(self.scopes),
             "state": state,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
@@ -153,3 +162,24 @@ def get_oauth_client() -> GmailOAuthClient:
 def set_oauth_client(client: GmailOAuthClient | None) -> None:
     global _client
     _client = client
+
+
+# -- Calendar client registry (S50) - a distinct, calendar-scoped Google client.
+# Kept separate from the Gmail registry so a test/prod can swap one without the
+# other, and so the calendar flow requests ONLY the calendar scopes.
+_calendar_client: GmailOAuthClient | None = None
+
+
+def get_calendar_oauth_client() -> GmailOAuthClient:
+    global _calendar_client
+    if _calendar_client is None:
+        from .config import CALENDAR_SCOPES, load_calendar_config
+        _calendar_client = GoogleGmailOAuthClient(
+            config=load_calendar_config(), scopes=CALENDAR_SCOPES
+        )
+    return _calendar_client
+
+
+def set_calendar_oauth_client(client: GmailOAuthClient | None) -> None:
+    global _calendar_client
+    _calendar_client = client

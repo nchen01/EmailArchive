@@ -165,7 +165,11 @@ class MailboxProviderAccount(Base):
         UniqueConstraint(
             "tenant_id", "mailbox_id", "provider", name="uq_provider_account_mailbox"
         ),
-        CheckConstraint("provider IN ('gmail')", name="ck_provider_account_provider"),
+        # S50 widened this from gmail-only to gmail + google_calendar (migration
+        # 0015). Still service-DB only (no ekc_schemas / SCHEMA_VERSION change).
+        CheckConstraint(
+            "provider IN ('gmail','google_calendar')", name="ck_provider_account_provider"
+        ),
         CheckConstraint(
             "status IN ('connected','refresh_failed','revoked','disconnected','mismatch_blocked')",
             name="ck_provider_account_status",
