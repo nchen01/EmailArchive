@@ -100,6 +100,7 @@ async def calendar_callback(
         flow.complete_callback(
             db, code=code, state=state,
             oauth_client=get_calendar_oauth_client(), vault=vault, config=load_calendar_config(),
+            expected_provider=_PROVIDER,
         )
     except flow.OAuthStateError:
         return redirect("invalid_state")

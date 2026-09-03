@@ -454,6 +454,75 @@ def test_recipient_route_unaffected_by_calendar_oauth(env, monkeypatch):
     assert r.status_code != 401
 
 
+# -- Provider/route binding (P1 fix): a state minted for one provider cannot be
+#    completed through the other provider's callback route. ---------------------
+
+def _insert_state(env, provider):
+    """Insert a valid, unconsumed OAuthState bound to the owner for `provider`,
+    as if `start_connect` had minted it. Returns the state id."""
+    from datetime import datetime, timedelta, timezone
+
+    from services.db import models as orm
+    from services.oauth.pkce import new_code_verifier, new_state
+    s = _fresh()
+    try:
+        sid = new_state()
+        s.add(orm.OAuthState(
+            id=sid, tenant_id=env.owner.tenant_id, user_id=env.owner.user_id,
+            mailbox_id=env.mid, provider=provider, code_verifier=new_code_verifier(),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        ))
+        s.commit()
+        return sid
+    finally:
+        s.close()
+
+
+def _no_account_and_state_unconsumed(env, state_id):
+    from services.db import models as orm
+    from sqlalchemy import select
+    s = _fresh()
+    try:
+        acct = s.execute(select(orm.MailboxProviderAccount).where(
+            orm.MailboxProviderAccount.mailbox_id == env.mid)).scalars().first()
+        st = s.get(orm.OAuthState, state_id)
+        connect_audits = s.execute(select(orm.AuditLog).where(
+            orm.AuditLog.mailbox_id == env.mid,
+            orm.AuditLog.action == "provider_account_connected")).scalars().all()
+        return acct, st, connect_audits
+    finally:
+        s.close()
+
+
+@requires_db
+def test_gmail_state_rejected_at_calendar_callback(env, monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "production")
+    sid = _insert_state(env, "gmail")  # a Gmail-minted state
+    r = env.client.get(f"/api/oauth/calendar/callback?state={sid}&code=abc", follow_redirects=False)
+    # Fail closed as a generic invalid state; no leak.
+    assert r.status_code == 302 and "calendar_connect=invalid_state" in r.headers["location"]
+    # No token was exchanged/vaulted, no account bound, and the legitimate Gmail
+    # state was NOT consumed (rejection happens before the atomic claim).
+    assert env.fake.revoked == []
+    acct, st, connect_audits = _no_account_and_state_unconsumed(env, sid)
+    assert acct is None
+    assert st is not None and st.consumed_at is None
+    assert connect_audits == []
+
+
+@requires_db
+def test_calendar_state_rejected_at_gmail_callback(env, monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "production")
+    sid = _insert_state(env, "google_calendar")  # a Calendar-minted state
+    r = env.client.get(f"/api/oauth/gmail/callback?state={sid}&code=abc", follow_redirects=False)
+    assert r.status_code == 302 and "gmail_connect=invalid_state" in r.headers["location"]
+    assert env.fake.revoked == []
+    acct, st, connect_audits = _no_account_and_state_unconsumed(env, sid)
+    assert acct is None
+    assert st is not None and st.consumed_at is None
+    assert connect_audits == []
+
+
 # -- Callback access-log redaction already covers any path (param-based) ------
 
 def test_calendar_callback_code_and_state_are_redacted_in_logs():

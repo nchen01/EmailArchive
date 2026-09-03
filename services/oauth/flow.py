@@ -94,7 +94,8 @@ def start_connect(
 
 
 def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClient,
-                      vault: TokenVault, config: GmailOAuthConfig) -> orm.MailboxProviderAccount:
+                      vault: TokenVault, config: GmailOAuthConfig,
+                      expected_provider: str | None = None) -> orm.MailboxProviderAccount:
     st = db.get(orm.OAuthState, state) if state else None
     now = _now()
     if st is None or st.consumed_at is not None or st.expires_at <= now:
@@ -102,6 +103,18 @@ def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClie
                actor=(st.user_id if st else "unknown"),
                action="oauth_callback_failed", scope="invalid_or_expired_state")
         raise OAuthStateError("invalid, expired, or already-used state")
+
+    # Provider-route binding: each callback route passes the provider it serves, and
+    # the state must have been minted for that same provider. This is enforced BEFORE
+    # the state is claimed and BEFORE any token exchange / vault write, so a gmail
+    # state can never be completed through the calendar callback (or vice versa), and
+    # a wrong-route hit does NOT consume the legitimate state. Fail closed with a safe
+    # category only (no code/state/token/provider data); surfaced as the same generic
+    # "invalid state" so it never reveals that a valid state exists for another route.
+    if expected_provider is not None and (st.provider or "gmail") != expected_provider:
+        _audit(db, mailbox_id=st.mailbox_id, actor=st.user_id,
+               action="oauth_callback_failed", scope="provider_route_mismatch")
+        raise OAuthStateError("state provider does not match this callback route")
 
     # Atomically claim the state (single-use); a replay matches zero rows.
     claimed = db.execute(

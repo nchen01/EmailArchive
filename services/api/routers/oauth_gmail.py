@@ -86,6 +86,7 @@ async def gmail_callback(
         flow.complete_callback(
             db, code=code, state=state,
             oauth_client=get_oauth_client(), vault=vault, config=load_config(),
+            expected_provider="gmail",
         )
     except flow.OAuthStateError:
         return redirect("invalid_state")
