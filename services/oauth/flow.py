@@ -16,12 +16,19 @@ from sqlalchemy.orm import Session
 
 from services.db import models as orm
 
-from .config import GMAIL_SCOPES, GmailOAuthConfig
+from .config import CALENDAR_SCOPES, GMAIL_SCOPES, GmailOAuthConfig
 from .gmail_client import GmailOAuthClient
 from .pkce import code_challenge, new_code_verifier, new_state
 from .vault import TokenVault
 
 STATE_TTL = timedelta(minutes=10)
+
+# Per-provider fallback scopes used only when the token response omits `scope`.
+# The provider is bound on the OAuth state, so the callback selects the right set.
+_DEFAULT_SCOPES: dict[str, tuple[str, ...]] = {
+    "gmail": GMAIL_SCOPES,
+    "google_calendar": CALENDAR_SCOPES,
+}
 
 
 class OAuthStateError(RuntimeError):
@@ -60,15 +67,20 @@ def _audit(db: Session, *, mailbox_id: str | None, actor: str, action: str, scop
         db.rollback()
 
 
-def start_connect(db, *, principal, mailbox, oauth_client: GmailOAuthClient, config: GmailOAuthConfig) -> str:
+def start_connect(
+    db, *, principal, mailbox, oauth_client: GmailOAuthClient, config: GmailOAuthConfig,
+    provider: str = "gmail",
+) -> str:
     """Create single-use state (bound to tenant/user/mailbox/provider) + PKCE and
-    return the Google authorization URL. Stores no tokens."""
+    return the Google authorization URL. Stores no tokens. ``provider`` selects the
+    provider row this connect targets (``gmail`` default, ``google_calendar`` for
+    S50); the authorization scopes come from the (provider-specific) oauth_client."""
     verifier = new_code_verifier()
     state = new_state()
     db.add(
         orm.OAuthState(
             id=state, tenant_id=principal.tenant_id, user_id=principal.user_id,
-            mailbox_id=str(mailbox.id), provider="gmail", code_verifier=verifier,
+            mailbox_id=str(mailbox.id), provider=provider, code_verifier=verifier,
             expires_at=_now() + STATE_TTL,
         )
     )
@@ -77,12 +89,13 @@ def start_connect(db, *, principal, mailbox, oauth_client: GmailOAuthClient, con
         state=state, code_challenge=code_challenge(verifier), redirect_uri=config.redirect_uri
     )
     _audit(db, mailbox_id=str(mailbox.id), actor=principal.user_id,
-           action="oauth_start_created", scope="gmail")
+           action="oauth_start_created", scope=provider)
     return url
 
 
 def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClient,
-                      vault: TokenVault, config: GmailOAuthConfig) -> orm.MailboxProviderAccount:
+                      vault: TokenVault, config: GmailOAuthConfig,
+                      expected_provider: str | None = None) -> orm.MailboxProviderAccount:
     st = db.get(orm.OAuthState, state) if state else None
     now = _now()
     if st is None or st.consumed_at is not None or st.expires_at <= now:
@@ -90,6 +103,18 @@ def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClie
                actor=(st.user_id if st else "unknown"),
                action="oauth_callback_failed", scope="invalid_or_expired_state")
         raise OAuthStateError("invalid, expired, or already-used state")
+
+    # Provider-route binding: each callback route passes the provider it serves, and
+    # the state must have been minted for that same provider. This is enforced BEFORE
+    # the state is claimed and BEFORE any token exchange / vault write, so a gmail
+    # state can never be completed through the calendar callback (or vice versa), and
+    # a wrong-route hit does NOT consume the legitimate state. Fail closed with a safe
+    # category only (no code/state/token/provider data); surfaced as the same generic
+    # "invalid state" so it never reveals that a valid state exists for another route.
+    if expected_provider is not None and (st.provider or "gmail") != expected_provider:
+        _audit(db, mailbox_id=st.mailbox_id, actor=st.user_id,
+               action="oauth_callback_failed", scope="provider_route_mismatch")
+        raise OAuthStateError("state provider does not match this callback route")
 
     # Atomically claim the state (single-use); a replay matches zero rows.
     claimed = db.execute(
@@ -104,6 +129,9 @@ def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClie
         raise OAuthStateError("state already consumed")
 
     mailbox = db.get(orm.Mailbox, st.mailbox_id)
+    # The provider is bound on the state (gmail | google_calendar). Everything below
+    # is scoped to it, so a calendar connect never collides with a gmail row.
+    provider = st.provider or "gmail"
 
     try:
         result = oauth_client.exchange_code(
@@ -131,7 +159,7 @@ def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClie
     if result.account_sub:
         others = db.execute(
             select(orm.MailboxProviderAccount).where(
-                orm.MailboxProviderAccount.provider == "gmail",
+                orm.MailboxProviderAccount.provider == provider,
                 orm.MailboxProviderAccount.provider_account_sub == result.account_sub,
                 orm.MailboxProviderAccount.status == "connected",
             )
@@ -142,8 +170,9 @@ def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClie
                        action="oauth_account_mismatch", scope="cross_owner")
                 raise AccountMismatchError("this Google account is connected elsewhere")
 
-    # Store the refresh token ONLY in the vault; the DB gets a vault_ref.
-    vault_ref = f"gmail:{st.mailbox_id}:{uuid.uuid4()}"
+    # Store the refresh token ONLY in the vault; the DB gets a vault_ref. The ref is
+    # provider-prefixed so gmail / google_calendar refs never collide.
+    vault_ref = f"{provider}:{st.mailbox_id}:{uuid.uuid4()}"
     vault.store_refresh_token(
         vault_ref, result.refresh_token,
         metadata={"email": result.account_email, "sub": result.account_sub},
@@ -153,13 +182,13 @@ def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClie
         select(orm.MailboxProviderAccount).where(
             orm.MailboxProviderAccount.mailbox_id == st.mailbox_id,
             orm.MailboxProviderAccount.tenant_id == st.tenant_id,
-            orm.MailboxProviderAccount.provider == "gmail",
+            orm.MailboxProviderAccount.provider == provider,
         )
     ).scalar_one_or_none()
     if acct is None:
         acct = orm.MailboxProviderAccount(
             tenant_id=st.tenant_id, owner_user_id=st.user_id,
-            mailbox_id=st.mailbox_id, provider="gmail",
+            mailbox_id=st.mailbox_id, provider=provider,
             provider_account_email=result.account_email,
         )
         db.add(acct)
@@ -173,7 +202,9 @@ def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClie
     acct.provider_account_email = result.account_email
     acct.provider_account_sub = result.account_sub or None
     acct.vault_ref = vault_ref
-    acct.scopes_granted = list(result.scopes) if result.scopes else list(GMAIL_SCOPES)
+    acct.scopes_granted = (
+        list(result.scopes) if result.scopes else list(_DEFAULT_SCOPES.get(provider, GMAIL_SCOPES))
+    )
     acct.status = "connected"
     acct.connected_at = now
     acct.last_verified_at = now
@@ -183,20 +214,31 @@ def complete_callback(db, *, code: str, state: str, oauth_client: GmailOAuthClie
     db.commit()
 
     _audit(db, mailbox_id=st.mailbox_id, actor=st.user_id,
-           action="provider_account_connected", scope="gmail")
+           action="provider_account_connected", scope=provider)
     _audit(db, mailbox_id=st.mailbox_id, actor=st.user_id,
-           action="oauth_callback_succeeded", scope="gmail")
+           action="oauth_callback_succeeded", scope=provider)
     return acct
 
 
-def get_connected_account(db, *, tenant_id: str, mailbox_id: str) -> orm.MailboxProviderAccount | None:
-    acct = db.execute(
+def get_account(
+    db, *, tenant_id: str, mailbox_id: str, provider: str = "gmail"
+) -> orm.MailboxProviderAccount | None:
+    """The provider-account row for this (tenant, mailbox, provider) REGARDLESS of
+    status (may be disconnected). Used by status endpoints that surface safe
+    disconnected metadata; never exposes tokens/vault_ref."""
+    return db.execute(
         select(orm.MailboxProviderAccount).where(
             orm.MailboxProviderAccount.mailbox_id == mailbox_id,
             orm.MailboxProviderAccount.tenant_id == tenant_id,
-            orm.MailboxProviderAccount.provider == "gmail",
+            orm.MailboxProviderAccount.provider == provider,
         )
     ).scalar_one_or_none()
+
+
+def get_connected_account(
+    db, *, tenant_id: str, mailbox_id: str, provider: str = "gmail"
+) -> orm.MailboxProviderAccount | None:
+    acct = get_account(db, tenant_id=tenant_id, mailbox_id=mailbox_id, provider=provider)
     return acct if (acct and acct.status == "connected") else None
 
 
@@ -222,16 +264,16 @@ def disconnect_account(db, *, account: orm.MailboxProviderAccount | None, vault:
     return True
 
 
-def disconnect(db, *, principal, mailbox, vault: TokenVault) -> bool:
+def disconnect(db, *, principal, mailbox, vault: TokenVault, provider: str = "gmail") -> bool:
     acct = db.execute(
         select(orm.MailboxProviderAccount).where(
             orm.MailboxProviderAccount.mailbox_id == str(mailbox.id),
             orm.MailboxProviderAccount.tenant_id == principal.tenant_id,
-            orm.MailboxProviderAccount.provider == "gmail",
+            orm.MailboxProviderAccount.provider == provider,
         )
     ).scalar_one_or_none()
     if not disconnect_account(db, account=acct, vault=vault):
         return False
     _audit(db, mailbox_id=str(mailbox.id), actor=principal.user_id,
-           action="provider_account_disconnected", scope="gmail")
+           action="provider_account_disconnected", scope=provider)
     return True

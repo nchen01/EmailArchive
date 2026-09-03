@@ -314,7 +314,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29–S31, S34, S35–S44, S46, S48; S42 + S45 + S47 + S49 docs-only):**
+**Implemented (S22–S27, S29–S31, S34, S35–S44, S46, S48, S50; S42 + S45 + S47 + S49 docs-only):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -561,6 +561,23 @@ components of the handoff-package experience.
   reviews before publish; no ekc_schemas change, every migration service-DB only. Proposed
   order S50 (OAuth/connect) -> S51 (sync job + live layer) -> S52 (wizard/package
   integration) -> S53 (recipient Ask/eval). Not implemented.
+- **S50 ✓ (backend-only)** Google Calendar OAuth/connect FOUNDATION (S49 sub-sprint 1):
+  the OAuth/vault/account boundary ONLY - no calendar event fetch, no
+  `calendar_event` / `handoff_calendar_item` tables (those are S51/S52). Reuses the S23
+  flow as a DISTINCT provider `google_calendar`. **Migration 0015** (`0015_calendar_provider`)
+  widens the `mailbox_provider_account` provider CHECK to `gmail + google_calendar`
+  (service-DB only; no ekc_schemas / SCHEMA_VERSION change; Alembic head is now
+  `0015_calendar_provider`). New owner/tenant-guarded router
+  `services/api/routers/oauth_calendar.py`: `POST /api/mailbox/{id}/calendar/connect/start`,
+  `GET /api/oauth/calendar/callback`, `GET /api/mailbox/{id}/calendar/status`,
+  `POST /api/mailbox/{id}/calendar/disconnect`. Scope is EXACTLY
+  `https://www.googleapis.com/auth/calendar.events.readonly` (never the broad
+  `calendar.readonly`). `services/oauth/flow.py` was generalized with a `provider` param so
+  Gmail behavior is byte-identical; the callback derives the provider from the single-use
+  state row; vault_ref is provider-prefixed; disconnect reuses the S30 fail-closed semantics
+  (vault unavailable / revoke failure -> 503, no DB mutation; already-disconnected ->
+  idempotent 200). App DB stores only `vault_ref` + safe provider metadata; status is
+  safe-metadata-only. Recipient routes untouched (snapshot-only); no admin/frontend change.
 
 **Originating spec, implemented by S29 + S30 (S28):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):

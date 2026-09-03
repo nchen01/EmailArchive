@@ -159,8 +159,17 @@ least-privilege Google Calendar OAuth reusing the S23 token vault, a `calendar_s
 runner, service-DB live tables plus a package-local `handoff_calendar_item` snapshot, an S48 coverage-contract
 meeting/deadline view, a time-aware S40 recipient Ask, and S43/S44 calendar eval/safety gates - with hard
 boundaries (no surveillance or productivity scoring, no recipient live-calendar access, no Slack/Teams/Jira,
-read-only scopes, creator reviews before publish). It is not implemented and adds no code/schema/migration/
-dependency change.
+read-only scopes, creator reviews before publish). It is implemented incrementally starting with S50.
+**S50 (Google Calendar OAuth/connect foundation) is implemented**: the OAuth/vault/account boundary ONLY - no
+calendar events are fetched or stored yet, and there are no `calendar_event` / `handoff_calendar_item` tables
+(those stay S51/S52). It reuses the shipped S23 flow as a distinct provider `google_calendar`; **migration 0015
+(`0015_calendar_provider`)** widens the `mailbox_provider_account` provider CHECK to `gmail + google_calendar`
+(service-DB only, no `ekc_schemas`/`SCHEMA_VERSION` change; the current Alembic head is now
+`0015_calendar_provider`). A new owner/tenant-guarded router (`services/api/routers/oauth_calendar.py`) adds
+calendar connect/callback/status/disconnect endpoints; the OAuth scope is exactly
+`https://www.googleapis.com/auth/calendar.events.readonly` (never the broad `calendar.readonly`); the app DB
+stores only a `vault_ref` plus safe provider metadata; disconnect reuses the S30 fail-closed semantics; and
+recipient routes stay snapshot-only (no frontend change).
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 Roadmap (post-S41): **quality-first** - prove package accuracy/safety/pilot-readiness before adding more intelligence or broad integrations; calendar is the first likely connector, Slack/Teams only after pilot evidence. See `docs/product-roadmap-quality-first.md`.
