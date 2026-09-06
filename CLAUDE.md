@@ -314,6 +314,24 @@ Key docs:
   -> 503, no DB mutation; already-disconnected -> idempotent 200). App DB stores only
   `vault_ref` + safe provider metadata; status exposes safe metadata only. Recipient
   routes untouched (snapshot-only). No frontend change.
+- **S51 ✓ implemented.** Google Calendar sync job + live layer ONLY (S49 sub-sprint
+  2; NO recipient/package exposure, NO `handoff_calendar_item` snapshot - that is
+  S52). **Migration 0016** (`0016_calendar_events`) adds service-DB `calendar_event`
+  + `calendar_event_attendee` (creator-owned; **Alembic head is now
+  `0016_calendar_events`**; no ekc_schemas/SCHEMA_VERSION change). New
+  `services/calendar/` (deterministic `normalize.py` + a read-only `gcal_client.py`
+  events.list seam), a vault-backed `resolve_calendar_grant` (S23/S50 vault; fail
+  closed if not connected), a `calendar_sync_window` handler on the S24 runner, and
+  an owner/tenant-guarded `POST /api/mailbox/{id}/calendar/sync` (fail-fast 409 with
+  no connected calendar; windowed idempotency key). Stores ONLY the docs/s49
+  section-3 allow-list (title, start/end, all-day, organizer display+domain, is_recurring +
+  human recurrence summary - never raw RRULE, has_conferencing bool, attendee
+  display+domain - never attendee email or response status). **Private-visibility
+  events are excluded at ingest entirely** (no title/attendee persisted). Uses ONLY
+  the events.readonly token minted from the vault; job params/progress/summary are
+  safe counts only; kill switch `EKC_CALENDAR_SYNC_DISABLED=1`. Gmail OAuth/ingest
+  unchanged; recipient routes untouched and cannot read the live calendar tables.
+  No frontend change.
 
 Current status: **S0–S16.0 complete; S17.2–S17.20 (handoff package MVP, incl. the
 deterministic LLM-free recipient package-local ask, new-version re-share /

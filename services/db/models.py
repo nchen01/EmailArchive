@@ -195,6 +195,58 @@ class OAuthState(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+# -- Calendar live layer (S51 - implements docs/s49 section 7 Option B) --------
+# Service-DB only (no ekc_schemas change, SCHEMA_VERSION not bumped). The creator-
+# owned, windowed calendar events a `calendar_sync_window` job fetched from the
+# connected google_calendar account. SAFE allow-list ONLY (docs/s49 section 3):
+# NO description/body, NO join URL (only a has_conferencing boolean), NO raw RRULE
+# (only a human recurrence_summary), NO attendee email or response status. Private-
+# visibility events are excluded at ingest and never persisted here. This LIVE layer
+# is NEVER read by recipient routes; the frozen recipient snapshot is S52.
+class CalendarEvent(Base):
+    __tablename__ = "calendar_event"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    mailbox_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    provider_account_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    # Stable provider event id: the idempotent upsert key + future citation anchor.
+    calendar_item_id: Mapped[str] = mapped_column(Text, nullable=False)
+    calendar_label: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    all_day: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    organizer_display: Mapped[str | None] = mapped_column(Text)
+    organizer_domain: Mapped[str | None] = mapped_column(Text)
+    is_recurring: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    recurrence_summary: Mapped[str | None] = mapped_column(Text)
+    has_conferencing: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    attendee_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("mailbox_id", "calendar_item_id", name="uq_calendar_event_item"),
+    )
+
+
+class CalendarEventAttendee(Base):
+    __tablename__ = "calendar_event_attendee"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    calendar_event_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    # Display name + email domain ONLY - never the raw email, never a response
+    # status (attendance is not a signal this product records).
+    display: Mapped[str | None] = mapped_column(Text)
+    domain: Mapped[str | None] = mapped_column(Text)
+
+
 # ── Background jobs (S24 — implements docs/s21-background-job-orchestration-plan) ─
 # Service-DB only (no ekc_schemas change, SCHEMA_VERSION not bumped). Every job is
 # tenant-scoped. params/progress/summary/error_* carry SAFE metadata only — never

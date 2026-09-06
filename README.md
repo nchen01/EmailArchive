@@ -170,6 +170,20 @@ calendar connect/callback/status/disconnect endpoints; the OAuth scope is exactl
 `https://www.googleapis.com/auth/calendar.events.readonly` (never the broad `calendar.readonly`); the app DB
 stores only a `vault_ref` plus safe provider metadata; disconnect reuses the S30 fail-closed semantics; and
 recipient routes stay snapshot-only (no frontend change).
+**S51 (Google Calendar sync job + live layer) is implemented**: the sync/live layer ONLY - no recipient or
+package exposure and no `handoff_calendar_item` snapshot (that stays S52). **Migration 0016
+(`0016_calendar_events`)** adds the service-DB `calendar_event` + `calendar_event_attendee` creator-owned live
+tables (no `ekc_schemas`/`SCHEMA_VERSION` change; the current Alembic head is now `0016_calendar_events`). A new
+`services/calendar/` package (deterministic `normalize.py` + a read-only `events.list` client seam), a
+vault-backed `resolve_calendar_grant`, a `calendar_sync_window` job on the S24 runner, and an owner/tenant-guarded
+`POST /api/mailbox/{id}/calendar/sync` endpoint (fail-fast 409 without a connected calendar; windowed idempotency
+key) fetch and upsert calendar events. Only the docs/s49 safe allow-list is stored (title, start/end, all-day,
+organizer display+domain, recurring flag + a human recurrence summary, a has-conferencing boolean, and attendee
+display+domain - never descriptions, join URLs, raw RRULEs, attendee emails, or response status). Private-
+visibility events are excluded at ingest entirely; only the `calendar.events.readonly` token (minted from the
+vault, never stored) is used; job metadata is safe counts only; a `EKC_CALENDAR_SYNC_DISABLED` kill switch can
+disable sync without a deploy. Gmail OAuth/ingest are unchanged and recipient routes remain snapshot-only and
+cannot read the live calendar tables.
 Running: Python 3.13 · PostgreSQL 16 + pgvector (Docker) · React frontend.
 Target wedge: **employee-initiated coverage handoff** (covered employee present, reviews scope, publishes an audited package).
 Roadmap (post-S41): **quality-first** - prove package accuracy/safety/pilot-readiness before adding more intelligence or broad integrations; calendar is the first likely connector, Slack/Teams only after pilot evidence. See `docs/product-roadmap-quality-first.md`.

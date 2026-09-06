@@ -314,7 +314,7 @@ components of the handoff-package experience.
   project/owner trees (S17.17 ships a package-local topic brief, not a graph), stronger
   production auth.
 
-**Implemented (S22–S27, S29–S31, S34, S35–S44, S46, S48, S50; S42 + S45 + S47 + S49 docs-only):**
+**Implemented (S22–S27, S29–S31, S34, S35–S44, S46, S48, S50, S51; S42 + S45 + S47 + S49 docs-only):**
 - **S22 ✓** Auth + tenant boundary (implements S19): `Tenant`/`AppUser`/
   `TenantMembership` + `Mailbox.tenant_id`/`owner_user_id` (migration 0010),
   fail-closed `AUTH_MODE`, and `require_owner_mailbox`/`require_owner_package`
@@ -578,6 +578,23 @@ components of the handoff-package experience.
   (vault unavailable / revoke failure -> 503, no DB mutation; already-disconnected ->
   idempotent 200). App DB stores only `vault_ref` + safe provider metadata; status is
   safe-metadata-only. Recipient routes untouched (snapshot-only); no admin/frontend change.
+- **S51 ✓ (backend-only)** Google Calendar sync job + live layer (S49 sub-sprint 2): the
+  sync/live layer ONLY - no recipient/package exposure, no `handoff_calendar_item` (S52).
+  **Migration 0016** (`0016_calendar_events`) adds service-DB `calendar_event` +
+  `calendar_event_attendee` creator-owned live tables (no ekc_schemas / SCHEMA_VERSION
+  change; Alembic head is now `0016_calendar_events`). New `services/calendar/`
+  (deterministic `normalize.py`, read-only `gcal_client.py` events.list seam),
+  `resolve_calendar_grant` (vault-backed token for the connected `google_calendar`
+  account; fail closed if none), a `calendar_sync_window` handler on the S24 runner, and
+  `POST /api/mailbox/{id}/calendar/sync` (owner/tenant-guarded, fail-fast 409 without a
+  connected calendar, windowed idempotency key). Stores ONLY the docs/s49 section-3
+  allow-list (title, start/end, all-day, organizer display+domain, is_recurring + human
+  recurrence summary - never raw RRULE, has_conferencing boolean, attendee display+domain
+  - never attendee email or response status). Private-visibility events are excluded at
+  ingest entirely. Uses ONLY the `events.readonly` token minted from the vault (never
+  stored); job params/progress/summary/errors are safe counts only; kill switch
+  `EKC_CALENDAR_SYNC_DISABLED=1`. Gmail OAuth/ingest unchanged; recipient routes untouched
+  (snapshot-only) and cannot read the live calendar tables; no frontend change.
 
 **Originating spec, implemented by S29 + S30 (S28):**
 - **S28 — Admin / Audit Viewer + Operations Console** (`docs/s28-admin-audit-ops-plan.md`):

@@ -18,6 +18,7 @@ load_local_env()
 
 from .routers import (
     admin,
+    calendar_sync,
     cover_for_me,
     gmail_ingest,
     handoff,
@@ -96,6 +97,7 @@ app.include_router(handoff.router, prefix="/api")
 app.include_router(handoff_recipient.router, prefix="/api")
 app.include_router(oauth_gmail.router, prefix="/api")
 app.include_router(oauth_calendar.router, prefix="/api")
+app.include_router(calendar_sync.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(pipeline_jobs.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
